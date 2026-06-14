@@ -21,6 +21,27 @@ platform: claude-projects
 | Reference images | Up to 3 | Asset or style type |
 | Pricing | $0.40/s (audio) / $0.20/s (no audio) | Fast: $0.15/$0.10 |
 
+## Model Selection — Veo vs GROK (Failover)
+
+VEO 3.1 is the DEFAULT for quality + native audio. But it has TWO hard Google walls on certain clips, and **neither is fixable by prompt wording**:
+
+| Wall | Error | Trigger | Reality |
+|------|-------|---------|---------|
+| **Mandatory audio** | `PUBLIC_ERROR_AUDIO_FILTERED` ("Audio generation failed") | Veo 3.x ALWAYS generates audio (no off-switch); its audio safety filter trips **nondeterministically** | Tweaking the `Audio:` bed (positive ambiance, fewer negations) only *reduces* it — never fully stops it. A model limit, not a prompt bug. |
+| **Prominent people** | `PUBLIC_ERROR_PROMINENT_PEOPLE_FILTER_FAILED` | A recognizable public figure's FACE is in the source/keyframe (NOT the prompt words) | Renaming/rewording the prompt does nothing — the filter reads the IMAGE. Veo will never animate the celebrity. |
+
+**GROK (xAI `grok-3` → grok-video) is the failover** — it clears BOTH (audio is stripped on download anyway; xAI ≠ Google, so figures pass). Use it when:
+
+1. **A public figure is on the source frame → GROK immediately.** Don't waste a Veo attempt — Veo refuses deterministically.
+2. **Veo fails audio (or times out) → retry Veo FIRST (preserve quality), then fail over to GROK** once the retry budget is spent. For a clip whose audio is discarded anyway (re-skin / carousel bookend / B-roll) GROK is the cleaner choice from the start.
+
+**GROK gotchas:**
+- `aspect_ratio` MUST be `2:3` — `9:16` returns **HTTP 400**. Crop the 2:3 output to your target ratio downstream.
+- Audio is stripped on download (GROK has no mandatory audio model) → only use it where you don't need synthetic audio. A narrated promo that NEEDS Veo dialogue/SFX stays on Veo + works the audio bed.
+- Image-to-video from a keyframe via `file_urls`; poll-based delivery (no webhook).
+
+**Rule of thumb:** narrated / audio-driven promo → **Veo**. Audio-stripped re-skin / bookend clips, OR any clip with a recognizable public figure → **GROK**.
+
 ## Prompt Formula
 
 ```
@@ -174,6 +195,8 @@ Spell phonetically: "foh-fur" not "fofr", "eye-oh-tee" not "IoT"
 | Identity drift | Multi-variable change | Same description verbatim across all prompts |
 | "Prominent people" safety error | Real person name in `says:` | Use `Host says:` / `Presenter says:` — never real names |
 | "Prominent people" on First+Last Frame | Two photorealistic face images | Use single I2V (start frame only) for face-dominant scenes |
+| `PROMINENT_PEOPLE_FILTER_FAILED` on a recognizable celebrity keyframe | Veo won't animate a famous face (image-based, not prompt) | Fail over to **GROK** (xAI animates figures) — keep the figure keyframe, dispatch GROK i2v at aspect 2:3 |
+| `AUDIO_FILTERED` ("Audio generation failed"), recurs every retry | Veo 3.x mandatory-audio filter trips nondeterministically — unfixable by prompt | If audio is discarded anyway → fail over to **GROK** (no audio model). If you need Veo audio → retry + simplify the `Audio:` bed (one positive ambiance, ≤1 negation) |
 | On-screen character lip-syncs to VO | Used `Voiceover:` with face visible | Use `Voice-over narrator, [tone]: text` — VEO treats narrator as off-screen |
 | Audio artifact / wrong word | Em dash `—` in dialogue text | Replace `—` with `,` or `. ` in all says:/narrator: text |
 | VEO interpolation distorted/broken | Camera angle or shot size too drastic between start/end frames | Reshoot: max 1-step shot size change, max 15° angle change between frames |
