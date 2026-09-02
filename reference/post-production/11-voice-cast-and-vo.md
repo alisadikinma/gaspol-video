@@ -111,6 +111,24 @@ If drift is real and persistent, the mixed-source strategy itself is wrong and h
 not worked around with a stretch filter, which introduces artefacts in the voice this whole system
 exists to keep consistent.
 
+### The conversion eats the scene, not just the voice
+
+Measured on a real clip (`docs/evals/voice-changer-probe.md` run 2): speech-to-speech converts
+**everything** in the audio it is given. Room tone, a second speaker, machinery — all of it comes back
+rendered as the target voice, and a quarter-second pause in the source came back filled with sound.
+
+Two consequences for how this pass is used:
+
+1. **Feed it dialogue, not a scene bed.** The cleaner the input, the closer the output timing. A clip
+   with a single speaker in close-up — which is exactly what rule C-2 routes here — is the good case.
+   A wide two-hander with ambience is not.
+2. **Expect to rebuild the ambience.** The clip's own bed does not survive the conversion. Phase 6
+   pass 3 already derives domain ambience from `strategic-brief.md`, so lay it back under the
+   converted dialogue rather than assuming what was there still is.
+
+An 80 ms shift on one event was measured on that same wide clip. That is past one frame and visible
+against a moving mouth, which is why the good case matters rather than being a nicety.
+
 ---
 
 ## 6. Prompt-level discipline
