@@ -27,6 +27,7 @@ Claude Code plugin that generates complete promotional video production packages
 | `/video-script` | Phase 2-3.5: script generation, scene breakdown, reference collection |
 | `/video-image` | Phase 4: NB2 asset library + scene keyframes |
 | `/video-gen` | Phase 5: image review + VEO video prompts |
+| `/video-explainer` | Phase 4.5: coded Remotion shots for scenes that must be readable |
 | `/video-validate` | Unified validator: `--script` / `--image` / `--video` / `--refs` / `--all` |
 | `/video-add-platform` | Scaffold new AI video platform support |
 
@@ -42,6 +43,7 @@ Claude Code plugin that generates complete promotional video production packages
 | `skills/video-image/SKILL.md` | Phase 4 — NB2 asset library + scene keyframes |
 | `skills/video-gen/SKILL.md` | Phase 5 — image review + VEO video prompts |
 | `skills/video-full/SKILL.md` | Orchestrator — runs all 4 production skills in sequence |
+| `skills/video-explainer/SKILL.md` | Phase 4.5 — Remotion shots for explainer scenes |
 | `skills/video-validate/SKILL.md` | Unified validator (--script / --image / --video / --refs / --all) |
 | `skills/video-add-platform/SKILL.md` | Scaffold new video platform support |
 | `agents/video-engine-agent.md` | Subagent for batch/complex video production (6-phase pipeline) |
@@ -93,6 +95,7 @@ Claude Code plugin that generates complete promotional video production packages
 | File | When Used |
 |------|-----------|
 | `post-production/10-post-production-pipeline.md` | ALWAYS for Phase 6 — pass order, `{output_folder}` contract, every plan schema, A/V duration gate, degradation policy |
+| `post-production/12-remotion-explainer.md` | Phase 4.5 — scaffolding the workspace, the rules that stop a render crashing, brand from the project, timing from the narration, verify-by-looking, cutaway vs overlay |
 | `post-production/17-music-bed.md` | Phase 6 pass 4 — deriving the track from the script's music direction and tone, sitting 12 dB under the voice by measurement, segment fades and short-track handling, why the music pass fails soft while the A/V gate blocks |
 | `post-production/16-subtitles-and-captions.md` | Phase 6 pass 4 — caption text from the script (recognizer times only), derived keyterms, wrap-or-split rule, font and contrast guards, why this does not conflict with the `no subtitles` prompt negative |
 | `post-production/14-sfx-design.md` | Phase 6 pass 3 — deriving cues from DOMAIN CONTEXT and cultural research, library-first sourcing, gain calibration incl. the transient correction, the four ways an audibility measurement lies, density ceiling, hard audit gate |
