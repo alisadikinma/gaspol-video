@@ -209,6 +209,17 @@ FAIL lists the scene numbers that have both. Mirrors reviewer check C6.
 **How:** Scene-ending clips should have transition end instruction
 **Expected:** Transition instruction present on scene boundaries
 
+### Check V13: No Double Audio (v3.0.0)
+
+Read `audio-plan.md`. For every scene whose `audio_source` is `elevenlabs`, assert its prompt in
+`video-prompts.md` carries no speech line (`Host says:`, `Presenter says:`, `Voice-over narrator`) and
+does carry the verbatim negative `no speech, no voiceover, no dialogue`, with SFX and ambient intact.
+
+Scenes whose `audio_source` is `platform-native` are checked by V3 to V6 as before — flagging a
+required `Voice-over narrator` line there is a false positive, not a finding.
+
+Mirrors reviewer check C5.
+
 ### Check V12: NB2→VEO Consistency
 **How:** Compare VEO prompt visual description with corresponding NB2 prompt/image
 **Expected:** VEO description matches the actual keyframe content

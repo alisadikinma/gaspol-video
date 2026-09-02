@@ -116,6 +116,22 @@ For EACH prompt in the batch, run ALL checks below. Report PASS or FAIL per chec
 - [ ] Hard cut (env differs) WITH cross-ref → FAIL, recommend drop `scene-{NN-1}-end.png` and use text-only continuity (identity ref + prop ref + costume verbatim + NARRATIVE CONTEXT block)
 - [ ] Same-env cross-ref → PASS
 
+### C5. No Double Audio (Phase 5 platform prompts — v3.0.0)
+
+Read `audio-plan.md` for each scene's `audio_source`, then check its platform prompt.
+
+For a scene whose `audio_source` is `elevenlabs`:
+- FAIL if the prompt contains `Host says:`, `Presenter says:`, or `Voice-over narrator`.
+- FAIL if the negative block does not contain, verbatim, `no speech, no voiceover, no dialogue`.
+- FAIL if SFX or ambient layers were dropped. Only SPEECH moves out; audio is still never optional.
+
+For a scene whose `audio_source` is `platform-native`:
+- The existing rules apply unchanged. A B-Roll scene still needs `Voice-over narrator, [tone]:` plus
+  its `> POST-PROD VO:` backup, and reporting that as a violation is itself a FAIL of this check.
+
+The failure this catches is two voices over one picture: the platform inventing narration while
+ElevenLabs supplies the real one.
+
 ### C6. Render Path Honoured (Phase 3 scene-plan + Phase 4B/5 prompts — v3.0.0)
 
 Cross-check `scene-plan.md`'s `Render Path` column against what was actually produced.
@@ -153,6 +169,7 @@ Return a structured report:
 - C2: Phase 4A (asset list) only — N/A for Phase 4B/Phase 5
 - C3: Phase 4B (scene prompts) only — N/A for Phase 4A/Phase 5
 - C4: Phase 4B (scene prompts) only — N/A for Phase 4A/Phase 5
+- C5: Phase 5 (platform prompts) only — needs audio-plan.md as ground truth
 - C6: Phase 3 (scene-plan) + Phase 4B + Phase 5 — checks the Render Path column is honoured
 
 ### Issues Found (FAIL items only)
