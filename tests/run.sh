@@ -60,7 +60,8 @@ run_node() {
     echo "node         SKIP  no tests yet"
     return 0
   fi
-  if node --test tests/node; then
+  # Node needs a glob here, not a bare directory.
+  if node --test "tests/node/*.test.mjs"; then
     echo "node         PASS"
     return 0
   fi
