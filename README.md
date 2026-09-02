@@ -34,7 +34,7 @@ Each phase has a user approval gate before proceeding. Phase 3.5 (Reference Coll
 claude plugins marketplace add alisadikinma/ai-content-suite
 
 # Step 2: Install plugin
-claude plugins install ai-video-promo-engine
+claude plugins install gaspol-video
 ```
 
 ### Manual Installation
@@ -43,12 +43,12 @@ Clone into your Claude Code plugins directory:
 
 ```bash
 # macOS / Linux
-git clone https://github.com/alisadikin/ai-video-promo-engine.git \
-  ~/.claude/plugins/ai-video-promo-engine
+git clone https://github.com/alisadikinma/gaspol-video.git \
+  ~/.claude/plugins/gaspol-video
 
 # Windows
-git clone https://github.com/alisadikin/ai-video-promo-engine.git ^
-  %USERPROFILE%\.claude\plugins\ai-video-promo-engine
+git clone https://github.com/alisadikinma/gaspol-video.git ^
+  %USERPROFILE%\.claude\plugins\gaspol-video
 ```
 
 Then restart Claude Code. The plugin auto-registers on session start.

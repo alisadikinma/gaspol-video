@@ -277,7 +277,7 @@ FOR each batch (ACT or sub-batch):
      END FOR
 
   3. VALIDATE — spawn prompt-reviewer agent:
-     → Agent tool: subagent_type="ai-video-promo-engine:video-prompt-reviewer"
+     → Agent tool: subagent_type="gaspol-video:video-prompt-reviewer"
      → Pass: this batch's generated prompts + cast-profile.md + scene-plan.md
      → Agent returns: PASS / FAIL with per-prompt feedback
 

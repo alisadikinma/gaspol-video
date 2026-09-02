@@ -1,19 +1,20 @@
 {
-  "name": "ai-video-promo-engine",
-  "description": "End-to-end AI video promo production engine: brainstorm → script → image prompts (NB2) → video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0). Generates complete 2-3 minute promotional video production packages for any brand.",
-  "version": "2.4.0",
+  "name": "gaspol-video",
+  "description": "End-to-end AI video production: brainstorm → script → image prompts (NB2) → video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0) → post-production. Routes information-heavy scenes to coded Remotion shots instead of a video model that cannot render legible text, generates voice-over with a per-character voice, assembles with ffmpeg under an A/V duration gate, and mixes domain-aware SFX, burned subtitles and a music bed into a finished file.",
+  "version": "3.0.0",
   "author": {
     "name": "Ali Sadikin",
-    "url": "https://github.com/alisadikin"
+    "url": "https://github.com/alisadikinma"
   },
-  "homepage": "https://github.com/alisadikin/ai-video-promo-engine",
-  "repository": "https://github.com/alisadikin/ai-video-promo-engine",
+  "homepage": "https://github.com/alisadikinma/gaspol-video",
+  "repository": "https://github.com/alisadikinma/gaspol-video",
   "license": "MIT",
   "keywords": [
     "video",
     "promo",
     "promotional",
     "production",
+    "post-production",
     "storytelling",
     "script",
     "NB2",
@@ -21,6 +22,12 @@
     "Seedance",
     "Kling",
     "image-to-video",
+    "voice-over",
+    "ElevenLabs",
+    "Remotion",
+    "ffmpeg",
+    "subtitles",
+    "sound-design",
     "AI video",
     "video agency",
     "marketing"

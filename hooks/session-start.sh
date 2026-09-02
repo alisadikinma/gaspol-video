@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "ai-video-promo-engine loaded. Skills available:"
+echo "gaspol-video loaded. Skills available:"
 echo "  video-full        — end-to-end pipeline (brainstorm → script → images → video)"
 echo "  video-brainstorm  — Phase 1: brainstorm, cast, product, location, domain research"
 echo "  video-script      — Phase 2-3.5: script, scene breakdown, reference collection"
