@@ -29,3 +29,8 @@ if [ -z "$a" ] || [ -z "$b" ] || [ "$a" -ge "$b" ]; then
   fail=1
 fi
 exit $fail
+
+# A clip with two speakers must not be converted whole — that rewrites the wrong voices.
+need skills/video-post/SKILL.md "--spans"
+need skills/video-post/SKILL.md "MANDATORY whenever the scene has more than one speaker"
+need reference/post-production/11-voice-cast-and-vo.md "--spans"

@@ -113,6 +113,46 @@ This is still a wide shot — the speaker's face is roughly 5% of frame. Rule C-
 `native+changer` at face >30%, and no run has yet tested that. Three clips in, the timing evidence is
 consistent and good, but the case the rule was written for has not been seen.
 
+## Run 4 — 2026-09-03, the multi-speaker failure, and the fix
+
+Run 3's output was played back and rejected: the female supporting character in
+`S03a-empat-pertanyaan.mp4` had become the male target voice. This is the run that turned a
+suspected weakness into a measured defect and a fix.
+
+| Segment | Source | Whole-track conversion (run 3) | Span conversion (this run) |
+|---|---|---|---|
+| male, 0.03-3.50s | ZCR 1014 Hz | 1163 Hz — converted | 1015 Hz timbre changed, 90% of samples differ |
+| female, 4.25-5.95s | ZCR 1317 Hz | **906 Hz — converted too, wrongly** | **1317 Hz, bit-identical** |
+
+### What went wrong
+
+Speech-to-speech takes an audio file, not a speaker. `voice_changer.mjs` sent the whole
+track, so every voice on it was rewritten. Nothing in the tool or the reference said
+otherwise, which is why it shipped.
+
+### The fix
+
+`--spans START-END[,START-END]` converts only the named turns and splices them into the
+original bed with a 50 ms crossfade, level-matched to what they replace. `parseSpans`
+refuses reversed or overlapping ranges rather than sorting them, because a wrong span
+converts the wrong person while appearing to work. Whole-track conversion still exists and
+now warns on every run.
+
+### Diarization did not solve this, and should not be trusted to
+
+AssemblyAI labelled both speakers `A`, even with `speakers_expected: 2` — the two
+AI-generated voices are too close in its embedding space. What separated them cleanly was
+pitch: 150 Hz / 136 Hz for the male turns against 214 Hz for the female one. The reliable
+source of span boundaries is `av-script.md`, which already records who says what; pitch is
+the check when the script is ambiguous.
+
+### One more, smaller finding
+
+An 8.4s sample produces a usable Instant Voice Clone, but ElevenLabs leaves `preview_url`
+empty on API-created clones, so the web UI shows "This voice does not have a sample to
+play". The clone is fine; only its preview is missing. Generating TTS with it does not
+populate the field.
+
 ## What run 1 proves, and what it does not
 
 **Proved:** the conversion returns audio of the same total length. Total-length drift was the failure

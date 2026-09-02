@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -159,3 +159,133 @@ test("the request carries no text: speech-to-speech converts audio, it does not 
       assert.ok(calls[0].url.includes("speech-to-speech"));
     });
   });
+
+// --- Per-speaker spans -------------------------------------------------------------
+// Converting a whole track converts every voice on it. Measured on a real clip: a
+// second speaker came back in the target voice, which is a wrong result, not a rough
+// one. Spans name the target's turns so the rest of the bed is left alone.
+
+import { SEAM_PAD_S, convertSpans, parseSpans, spansWarning } from "../../tools/voice_changer.mjs";
+
+test("spans parse into ordered, non-overlapping ranges", () => {
+  assert.deepEqual(parseSpans("0-3.88,5.2-7"), [
+    { start_s: 0, end_s: 3.88 },
+    { start_s: 5.2, end_s: 7 },
+  ]);
+});
+
+test("a reversed or overlapping span is refused, never silently repaired", () => {
+  assert.throws(() => parseSpans("3-1"), /start.*before.*end|reversed/i);
+  assert.throws(() => parseSpans("0-4,3-6"), /overlap/i);
+  assert.throws(() => parseSpans("-1-2"), /negative|invalid/i);
+});
+
+test("one request per span, each carrying that span only", async () => {
+  await withTmp(async (dir) => {
+    const calls = [];
+    const extracted = [];
+    const result = await convertSpans({
+      ...BASE,
+      inputPath: path.join(dir, "clip.mp4"),
+      outPath: path.join(dir, "out.mp3"),
+      spans: [{ start_s: 0, end_s: 3.88 }, { start_s: 5.2, end_s: 7 }],
+      fetchImpl: okFetch(calls),
+      extract: async (src, out, range) => {
+        extracted.push(range ? { ...range } : null);
+        await mkdir(path.dirname(out), { recursive: true });
+        await writeFile(out, Buffer.from("RIFF....fake wav"));
+        return out;
+      },
+      durationOf: async () => 8.0,
+      splice: async ({ outPath }) => {
+        await writeFile(outPath, Buffer.from("spliced"));
+        return outPath;
+      },
+    });
+    assert.equal(calls.length, 2, "one speech-to-speech request per span");
+    // The first extract is the full bed; the rest are the spans, each carrying
+    // SEAM_PAD_S of extra audio either side for the crossfade to land on.
+    assert.equal(extracted[0], null);
+    const round = (v) => Number(v.toFixed(3));
+    assert.deepEqual(extracted.slice(1).map((r) => [round(r.start_s), round(r.end_s)]), [
+      [0, round(3.88 + SEAM_PAD_S)],
+      [round(5.2 - SEAM_PAD_S), round(7 + SEAM_PAD_S)],
+    ]);
+    assert.equal(result.spans_converted, 2);
+  });
+});
+
+test("the untouched bed is spliced back, at the offsets the spans named", async () => {
+  await withTmp(async (dir) => {
+    let seen = null;
+    await convertSpans({
+      ...BASE,
+      inputPath: path.join(dir, "clip.mp4"),
+      outPath: path.join(dir, "out.mp3"),
+      spans: [{ start_s: 1.0, end_s: 2.5 }],
+      fetchImpl: okFetch([]),
+      extract: async (src, out) => {
+        await mkdir(path.dirname(out), { recursive: true });
+        await writeFile(out, Buffer.from("RIFF....fake wav"));
+        return out;
+      },
+      durationOf: async () => 8.0,
+      splice: async (args) => {
+        seen = args;
+        await writeFile(args.outPath, Buffer.from("spliced"));
+        return args.outPath;
+      },
+    });
+    assert.ok(seen, "splice must run — otherwise the other speakers are gone");
+    assert.ok(seen.bedPath, "the original audio is the bed");
+    assert.equal(seen.pieces.length, 1);
+    assert.equal(seen.pieces[0].start_s, 1.0);
+    assert.equal(seen.pieces[0].end_s, 2.5);
+  });
+});
+
+test("the drift gate is applied to the spliced result, not to each piece", async () => {
+  await withTmp(async (dir) => {
+    const durations = [8.0, 8.6]; // the bed, then the spliced result
+    let i = 0;
+    await assert.rejects(
+      convertSpans({
+        ...BASE,
+        inputPath: path.join(dir, "clip.mp4"),
+        outPath: path.join(dir, "out.mp3"),
+        spans: [{ start_s: 1.0, end_s: 2.5 }],
+        fetchImpl: okFetch([]),
+        extract: async (src, out) => {
+          await mkdir(path.dirname(out), { recursive: true });
+          await writeFile(out, Buffer.from("RIFF....fake wav"));
+          return out;
+        },
+        durationOf: async () => durations[Math.min(i++, durations.length - 1)],
+        splice: async ({ outPath }) => {
+          await writeFile(outPath, Buffer.from("spliced"));
+          return outPath;
+        },
+      }),
+      (err) => err.message.includes(driftMessage) && /8\.600/.test(err.message),
+    );
+  });
+});
+
+test("converting a whole track warns that every voice on it changes", async () => {
+  await withTmp(async (dir) => {
+    const lines = [];
+    await convert({
+      ...BASE,
+      log: (line) => lines.push(line),
+      inputPath: path.join(dir, "clip.mp4"),
+      outPath: path.join(dir, "out.mp3"),
+      fetchImpl: okFetch([]),
+      extract: async () => path.join(dir, "in.wav"),
+      durationOf: async () => 4.0,
+    });
+    assert.ok(
+      lines.some((l) => l.includes(spansWarning)),
+      "a clip with a second speaker must not convert silently",
+    );
+  });
+});

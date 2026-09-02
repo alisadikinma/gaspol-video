@@ -87,11 +87,19 @@ One entry per scene, layers ordered by `at_s`, per the schema in `10-post-produc
 ```bash
 node tools/gen_vo.mjs {output_folder}
 node tools/voice_changer.mjs {output_folder}/clips/scene-NN.mp4 \
-     --voice-env ELEVENLABS_VOICE_C2 --out {output_folder}/vo/scene-NN-c2.mp3
+     --voice-env ELEVENLABS_VOICE_C2 --spans 0-3.88 \
+     --out {output_folder}/vo/scene-NN-c2.mp3
 ```
 
 `gen_vo.mjs` stitches consecutive requests so prosody carries across scenes, and writes
 `vo-manifest.json` with measured durations and word timings — the input for pass 2 and pass 4.
+
+**`--spans` is MANDATORY whenever the scene has more than one speaker.** Speech-to-speech converts
+whatever audio you hand it, so a whole-track conversion rewrites every voice in the clip, including
+the ones that were already right. Take the target's turns from `av-script.md` — it already records
+who says what — and cross-check against `vo-manifest.json` word timings. Do not rely on speaker
+diarization: it merged two AI voices into one label on a real clip. Where the script is ambiguous,
+pitch separates them (see `11-voice-cast-and-vo.md` §5).
 
 `voice_changer.mjs` prints the duration drift on every conversion and refuses beyond 0.05s. **That
 line is evidence, not noise.** A refusal means the mixed-source decision needs reopening, never an

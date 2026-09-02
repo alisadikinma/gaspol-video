@@ -111,6 +111,32 @@ If drift is real and persistent, the mixed-source strategy itself is wrong and h
 not worked around with a stretch filter, which introduces artefacts in the voice this whole system
 exists to keep consistent.
 
+### One clip, two speakers: convert the SPANS, never the track
+
+Speech-to-speech has no idea which voice you meant. Hand it a whole clip and it converts
+every voice on it. Measured on a real three-hander (`docs/evals/voice-changer-probe.md`
+run 4): a female supporting character came back as the male target voice, her pitch pulled
+from 214 Hz to the target's range. That is a wrong result, not an approximate one.
+
+So for any clip with more than one speaker, pass the target's turns:
+
+```bash
+node tools/voice_changer.mjs <clip> --voice-env ELEVENLABS_VOICE_C2 \
+  --spans 0-3.88 --out vo/scene-03-c2.mp3
+```
+
+The tool then converts only those ranges, splices them back into the ORIGINAL audio with a
+50 ms crossfade at each seam, and level-matches each converted piece to the audio it
+replaces. Everything outside a span comes through bit-identical — verified, not assumed.
+Without `--spans` the tool still runs and still warns, in those words, on every invocation.
+
+**Where the span boundaries come from.** From `av-script.md`, which already records who says
+what, cross-checked against the word timings the subtitle pass produces. **Not from speaker
+diarization:** AssemblyAI merged both speakers of that clip into one label even with
+`speakers_expected: 2`, because AI-generated voices sit close together in its embedding
+space. Pitch (F0) told them apart instantly — 136-150 Hz against 214 Hz — so measure pitch
+when the script is ambiguous, and never trust diarization alone here.
+
 ### The conversion eats the scene, not just the voice
 
 Measured on a real clip (`docs/evals/voice-changer-probe.md` run 2): speech-to-speech converts
