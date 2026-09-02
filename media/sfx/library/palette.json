@@ -1,0 +1,18 @@
+{
+  "_comment": "Generation recipes for the shared SFX library. Ids stay GENERIC so the next project reuses them. Audio files are never committed; run tools/gen_sfx.py to fill clips/.",
+  "recipes": [
+    { "id": "whoosh-soft", "prompt": "soft air whoosh, short, clean, no reverb tail", "duration_s": 0.8, "category": "motion", "tags": ["transition", "generic"] },
+    { "id": "pop-reveal", "prompt": "soft UI pop, single, clean, no reverb", "duration_s": 0.4, "category": "emphasis", "tags": ["ui", "reveal"] },
+    { "id": "impact-soft", "prompt": "low soft impact, felt not heard, short decay", "duration_s": 0.9, "category": "emphasis", "tags": ["impact", "generic"] },
+    { "id": "riser-short", "prompt": "short tonal riser building to a stop, no cymbal", "duration_s": 1.8, "category": "tension", "tags": ["riser", "build"] },
+    { "id": "ui-click-soft", "prompt": "quiet mechanical interface click, single", "duration_s": 0.2, "category": "snap", "tags": ["ui", "click"] },
+
+    { "id": "amb-factory-floor", "prompt": "industrial hall ambience, distant conveyor hum, occasional metal contact, no music, no voices", "duration_s": 15.0, "category": "ambience", "tags": ["industrial", "domain"] },
+    { "id": "amb-port-yard", "prompt": "container yard ambience, distant reach stacker, wind, faint radio chatter, no music", "duration_s": 15.0, "category": "ambience", "tags": ["port", "logistics", "domain"] },
+    { "id": "amb-control-room", "prompt": "quiet control room, server fan hum, soft keyboard, no voices", "duration_s": 15.0, "category": "ambience", "tags": ["control-room", "domain"] },
+    { "id": "amb-clinic-corridor", "prompt": "hospital corridor ambience, distant trolley, soft ventilation, no voices", "duration_s": 15.0, "category": "ambience", "tags": ["healthcare", "domain"] },
+    { "id": "machine-conveyor-loop", "prompt": "conveyor belt running, steady mechanical loop, close", "duration_s": 8.0, "category": "machine", "tags": ["industrial", "domain"] },
+    { "id": "vehicle-forklift-pass", "prompt": "electric forklift passing, tyre on concrete, reverse beeper distant", "duration_s": 4.0, "category": "vehicle", "tags": ["logistics", "domain"] },
+    { "id": "gate-barrier-lift", "prompt": "boom barrier motor lifting, mechanical, outdoor", "duration_s": 2.5, "category": "machine", "tags": ["gate", "domain"] }
+  ]
+}
