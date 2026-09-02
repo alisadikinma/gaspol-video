@@ -487,6 +487,12 @@ Every cue in `subtitle-plan.json` carries its script line verbatim. ASR output s
 text that differs from the script is a FAIL. Cues must not overlap and must sit inside the master.
 An em dash in a caption is correct — the ban is on spoken text. Mirrors reviewer check C9.
 
+### Check P5: Music Under The Voice, Fail-Soft (v3.0.0)
+
+The bed measures at least 12 dB below the voice, segments do not overlap, and the track traces back
+to the script's music direction. A music failure that left a voice-only master plus a warning is a
+PASS, not a finding. Mirrors reviewer check C10.
+
 ## Output Format
 
 ```

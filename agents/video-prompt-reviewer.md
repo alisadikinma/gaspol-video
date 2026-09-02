@@ -189,6 +189,17 @@ Check `subtitle-plan.json` against `av-script.md`.
 - An em dash in a caption is **correct** and must not be flagged. The em-dash ban covers spoken text,
   where the audio engine mistranslates it; printed text is not read aloud.
 
+### C10. Music Sits Under The Voice, And Fails Soft (Phase 6 music — v3.0.0)
+
+- The bed measures at least 12 dB below the voice at every window. A bed that peaks above the voice
+  at any point is a FAIL: music is the floor, never a layer that competes.
+- The track was derived from the per-scene music direction in `av-script.md` and the video tone, not
+  chosen freshly. A bed unrelated to what the script asked for is a FAIL.
+- Segments do not overlap. Touching end-to-start is correct.
+- **A failed music mix is NOT a failed phase.** If a track could not load or mix, the correct state is
+  a shipped voice-only master plus a recorded warning. Reporting that as a blocking failure is itself
+  a FAIL of this check — the asymmetry against the A/V gate is deliberate.
+
 ## Output Format
 
 Return a structured report:
@@ -215,6 +226,7 @@ Return a structured report:
 - C7: Phase 6 (rendered master) only — needs the output file, not the prompts
 - C8: Phase 5 + Phase 6 — needs cast-profile.md and audio-plan.json
 - C9: Phase 6 (subtitles) only — needs subtitle-plan.json and av-script.md
+- C10: Phase 6 (music) only — needs music-plan.json and the mixed master
 
 ### Issues Found (FAIL items only)
 
