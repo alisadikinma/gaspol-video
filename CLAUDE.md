@@ -29,6 +29,7 @@ Claude Code plugin that generates complete promotional video production packages
 | `/video-gen` | Phase 5: image review + VEO video prompts |
 | `/video-explainer` | Phase 4.5: coded Remotion shots for scenes that must be readable |
 | `/video-post` | Phase 6: voice-over, assembly, SFX, subtitles, music, final mix |
+| `/video-package` | Phase 7: locked title, three thumbnail bets, description |
 | `/video-validate` | Unified validator: `--script` / `--image` / `--video` / `--refs` / `--all` |
 | `/video-add-platform` | Scaffold new AI video platform support |
 
@@ -46,6 +47,7 @@ Claude Code plugin that generates complete promotional video production packages
 | `skills/video-full/SKILL.md` | Orchestrator — runs all 4 production skills in sequence |
 | `skills/video-explainer/SKILL.md` | Phase 4.5 — Remotion shots for explainer scenes |
 | `skills/video-post/SKILL.md` | Phase 6 — five post-production passes, clips to a finished file |
+| `skills/video-package/SKILL.md` | Phase 7 — title, thumbnail bets, description; rendering routed to the image plugin |
 | `skills/video-validate/SKILL.md` | Unified validator (--script / --image / --video / --refs / --all) |
 | `skills/video-add-platform/SKILL.md` | Scaffold new video platform support |
 | `agents/video-engine-agent.md` | Subagent for batch/complex video production (6-phase pipeline) |
@@ -97,6 +99,7 @@ Claude Code plugin that generates complete promotional video production packages
 | File | When Used |
 |------|-----------|
 | `post-production/10-post-production-pipeline.md` | ALWAYS for Phase 6 — pass order, `{output_folder}` contract, every plan schema, A/V duration gate, degradation policy |
+| `post-production/15-packaging.md` | Phase 7 — Views = Reach x CTR, three bets on three levers, honesty guardrail, calibration honesty, hand-off to the image plugin |
 | `post-production/12-remotion-explainer.md` | Phase 4.5 — scaffolding the workspace, the rules that stop a render crashing, brand from the project, timing from the narration, verify-by-looking, cutaway vs overlay |
 | `post-production/17-music-bed.md` | Phase 6 pass 4 — deriving the track from the script's music direction and tone, sitting 12 dB under the voice by measurement, segment fades and short-track handling, why the music pass fails soft while the A/V gate blocks |
 | `post-production/16-subtitles-and-captions.md` | Phase 6 pass 4 — caption text from the script (recognizer times only), derived keyterms, wrap-or-split rule, font and contrast guards, why this does not conflict with the `no subtitles` prompt negative |
