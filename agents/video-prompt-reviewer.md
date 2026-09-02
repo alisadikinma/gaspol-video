@@ -116,6 +116,22 @@ For EACH prompt in the batch, run ALL checks below. Report PASS or FAIL per chec
 - [ ] Hard cut (env differs) WITH cross-ref → FAIL, recommend drop `scene-{NN-1}-end.png` and use text-only continuity (identity ref + prop ref + costume verbatim + NARRATIVE CONTEXT block)
 - [ ] Same-env cross-ref → PASS
 
+### C6. Render Path Honoured (Phase 3 scene-plan + Phase 4B/5 prompts — v3.0.0)
+
+Cross-check `scene-plan.md`'s `Render Path` column against what was actually produced.
+
+- Every scene has a `Render Path`, either `live-action` or `explainer`. A blank cell is a FAIL, not a
+  default.
+- An `explainer` scene has **no** NB2 keyframe prompt and **no** platform prompt. Either one present
+  is a FAIL — it means credits were spent on an artefact nothing consumes.
+- A `live-action` scene has BOTH, as before.
+- A scene recorded as `live-action + overlay:<shot-id>` is checked as `live-action`, and the named
+  shot id must exist in the Phase 4.5 shot list.
+- `Render Path` is not `Scene Type`. `Scene Type` (B-Roll / Presenter) says who is on screen and is
+  unrelated; do not report one as the other.
+
+FAIL output names the scene, the declared Render Path, and which artefact should not exist.
+
 ## Output Format
 
 Return a structured report:
@@ -137,6 +153,7 @@ Return a structured report:
 - C2: Phase 4A (asset list) only — N/A for Phase 4B/Phase 5
 - C3: Phase 4B (scene prompts) only — N/A for Phase 4A/Phase 5
 - C4: Phase 4B (scene prompts) only — N/A for Phase 4A/Phase 5
+- C6: Phase 3 (scene-plan) + Phase 4B + Phase 5 — checks the Render Path column is honoured
 
 ### Issues Found (FAIL items only)
 

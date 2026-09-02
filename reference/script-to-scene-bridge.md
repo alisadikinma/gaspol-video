@@ -194,15 +194,48 @@ See reference/image-video-gen/08-kling-production-guide.md for full specs and 5-
 
 ## Scene Breakdown
 
-| # | Beat | Duration | VEO Mode | Extend? | Resolution | Scene Type | Dialogue? |
-|---|------|----------|----------|---------|------------|------------|-----------|
-| 1 | Pattern Interrupt | 4s | Frame | No | 1080p | B-Roll | No |
-| 2 | Hook | 6s | Frame | No | 1080p | Presenter | Yes (lip sync) |
-| 3 | Foreshadow | 8s | Frame | No | 720p | Presenter | Yes (lip sync) |
-| 4 | Agitate | 15s | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
-| 5 | Guide 1 | 8s | Frame | No | 720p | B-Roll | VO only |
-| 6 | Guide 2 | 15s | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
-| ... | ... | ... | ... | ... | ... | ... | ... |
+| # | Beat | Duration | Render Path | VEO Mode | Extend? | Resolution | Scene Type | Dialogue? |
+|---|------|----------|-------------|----------|---------|------------|------------|-----------|
+| 1 | Pattern Interrupt | 4s | live-action | Frame | No | 1080p | B-Roll | No |
+| 2 | Hook | 6s | live-action | Frame | No | 1080p | Presenter | Yes (lip sync) |
+| 3 | Foreshadow | 8s | live-action | Frame | No | 720p | Presenter | Yes (lip sync) |
+| 4 | Agitate | 15s | live-action | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
+| 5 | Guide 1 | 5s | explainer | — | No | 720p | B-Roll | VO only |
+| 6 | Guide 2 | 15s | live-action | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
+
+### Render Path — which engine builds this scene (v3.0.0)
+
+`Render Path` decides WHICH ENGINE builds the scene. It is orthogonal to `Scene Type`, which decides
+WHO is on screen. A Presenter scene can be live-action; a B-Roll scene can be explainer.
+
+| Value | Built by | Gets an NB2 keyframe? | Gets a platform prompt? |
+|---|---|---|---|
+| `live-action` | VEO 3.1 / Seedance 2.0 / Kling 3.0 | Yes, Phase 4B | Yes, Phase 5 |
+| `explainer` | Remotion shot, Phase 4.5 `/video-explainer` | **No** | **No** |
+
+**Assignment rule — apply to every scene in Phase 3:**
+
+```
+A scene is `explainer` when its job is to make legible information readable:
+  - on-screen numbers, metrics, KPI, before/after comparison
+  - a diagram, flow, architecture, timeline, map with labels
+  - a product UI walkthrough where the text itself must be read
+  - a list, checklist, price table, spec table
+Otherwise the scene is `live-action`.
+```
+
+**Why this is decided here and not later.** No supported platform renders legible text — VEO,
+Seedance and Kling all warp it to gibberish. A scene whose whole job is a number or a diagram is
+therefore unbuildable as a generated clip, and finding that out in Phase 5 means the NB2 keyframes for
+it were already paid for. Deciding in Phase 3 costs nothing and saves the whole chain.
+
+**The mixed case.** A scene that needs BOTH a human performance and readable data stays
+`live-action`, and the readable part becomes an overlay shot composited on top in Phase 6. Record it
+as `live-action + overlay:<shot-id>`. A presenter reading a chart is this case, not an explainer.
+
+**Duration for explainer scenes** is not bound by any platform's clip limit. A Remotion shot can be
+any length, so its duration comes from the narration that runs over it, not from an 8-second budget.
 
 ## Extension Chain Map
 

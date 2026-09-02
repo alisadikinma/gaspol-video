@@ -162,6 +162,26 @@ READ these files ONLY:
 3. `reference/image-video-gen/03-workflow-pipeline.md`
 Total: 3 files. Do NOT load NB2 or storytelling files.
 
+### Render Path per Scene (v3.0.0 — MANDATORY)
+
+Every scene row in `scene-plan.md` carries a `Render Path`: `live-action` or `explainer`. Apply the
+assignment rule in `reference/script-to-scene-bridge.md` > "Render Path". In short: a scene whose job
+is to make information READABLE (numbers, diagram, table, UI text) is `explainer` and is built as a
+Remotion shot in Phase 4.5; everything else is `live-action`.
+
+An `explainer` scene gets NO platform mode, NO extension, and NO resolution entry — none of those
+apply to a coded shot. Leave those cells as `—`.
+
+A scene that needs a human performance AND readable data stays `live-action` and records the readable
+part as an overlay: `live-action + overlay:<shot-id>`.
+
+The Phase 3 approval gate MUST report the split, so the user sees what it saved:
+
+```
+Render path: {N} live-action, {M} explainer
+Explainer scenes skip NB2 keyframes and platform generation entirely.
+```
+
 #### Step 3.1: Auto-Calculate Scene Decomposition
 
 Follow `script-to-scene-bridge.md` Section 1:

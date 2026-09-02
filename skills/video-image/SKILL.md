@@ -62,6 +62,23 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or VEO 
 
 ---
 
+### Rule 33: Explainer scenes are skipped in Phase 4B (v3.0.0)
+
+`scene-plan.md` gives every scene a `Render Path`. Phase 4B generates keyframes for `live-action`
+scenes ONLY. An `explainer` scene is built as a Remotion shot by `/video-explainer` in Phase 4.5, so
+generating an NB2 keyframe for it spends credits on an image nothing will ever use.
+
+**Phase 4A is NOT filtered.** An explainer shot still needs its assets — a logo, a product photo, a
+UI reference, a face for a portrait inset. Generate those in Phase 4A exactly as before; only the
+scene keyframes in 4B are skipped.
+
+The batch summary must name the skipped scenes, so a scene that is `explainer` by mistake is visible
+rather than silently missing:
+
+```
+Batch {N}: {X} keyframes generated, {Y} scenes skipped (explainer): {list}
+```
+
 ## Hard Rules (NON-NEGOTIABLE)
 
 1. **Ingredients ≠ First+Last Frame** — mutually exclusive VEO modes, NEVER combine
@@ -241,6 +258,10 @@ Build scene-to-asset mapping from scene-plan.md.
 Group scenes by ACT from scene-plan.md. Each ACT = 1 batch. If an ACT has >5 scenes, split into sub-batches of max 5.
 
 ```
+FILTER scenes: keep only rows whose Render Path is `live-action`
+  (an `explainer` scene is built as a Remotion shot in Phase 4.5 and gets NO keyframe here —
+   skip it, and list what was skipped in the batch summary)
+
 FOR each batch (ACT or sub-batch):
 
   1. CONTEXT RELOAD (fresh per batch):

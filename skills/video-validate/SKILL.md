@@ -127,6 +127,14 @@ E) All — validate everything
 
 ### Part B: Actual Image Checks (Multimodal)
 
+### Check I17: Explainer Scenes Have No Keyframe (v3.0.0)
+
+Read `scene-plan.md`. For every scene whose `Render Path` is `explainer`, assert `image-prompts.md`
+contains NO prompt for it. An explainer scene is built as a Remotion shot in Phase 4.5; a keyframe
+for it is spend with no consumer.
+
+FAIL lists the scene numbers that have both. Mirrors reviewer check C6.
+
 ### Check I11: Read Keyframe Images
 **How:** READ each .png file in keyframes/ folder (multimodal)
 **Expected:** Images are readable and match scene numbering
