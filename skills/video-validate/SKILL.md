@@ -19,6 +19,7 @@ Unified validation skill for the AI Video Promo Engine. Covers 5 validation targ
 | `--script` | Script output quality | av-script.md + strategic-brief.md |
 | `--image` | NB2 prompt rules + actual keyframe image review | image-prompts.md + keyframes/*.png |
 | `--video` | VEO prompt rules | video-prompts.md + scene-plan.md |
+| `--post` | Post-production: rendered master and plan files (P1-P3) |
 | `--refs` | Cross-file reference consistency (24 checks) | All reference + skill + agent files |
 | `--all` | Everything above | All files |
 
@@ -453,6 +454,32 @@ Run 24 automated consistency checks across all operational files. Reports PASS/F
 7. Verify `video-prompt-reviewer.md` has checklist item for inline-only pattern verification
 
 ---
+
+## Post-Production Validation (`--post`)
+
+Runs against the rendered artefacts in `{output_folder}/output/` and the plan files in
+`{output_folder}/work/`. Unlike the other modes this one reads MEDIA, not prompts.
+
+### Check P1: A/V Duration Gate (v3.0.0)
+
+```bash
+ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 output/master.mp4
+ffprobe -v error -select_streams a:0 -show_entries stream=duration -of csv=p=0 output/master.mp4
+```
+
+Equal within 0.04s. A larger difference is a FAIL and the render is rejected. A missing audio stream
+is a FAIL. Mirrors reviewer check C7.
+
+### Check P2: Every Scene Accounted For (v3.0.0)
+
+Every scene in `scene-plan.md` appears in `edit-plan.json` exactly once, as a `clip` segment when its
+Render Path is `live-action` and as a `shot` segment when it is `explainer`. A missing scene is a
+silently shortened video.
+
+### Check P3: No Oversized Pads (v3.0.0)
+
+No segment has `pad_end_s` above 1.0s without a note in the plan saying why. A long freeze reads as a
+stall; if it is intentional, it is written down.
 
 ## Output Format
 

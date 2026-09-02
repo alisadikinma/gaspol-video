@@ -148,6 +148,18 @@ Cross-check `scene-plan.md`'s `Render Path` column against what was actually pro
 
 FAIL output names the scene, the declared Render Path, and which artefact should not exist.
 
+### C7. A/V Duration Gate (Phase 6 rendered master — v3.0.0)
+
+For any rendered master, assert `ffprobe` reports the same duration for `v:0` and `a:0` within
+**0.04s**, one frame at 25fps.
+
+- A difference above the tolerance is a FAIL. The render is rejected, never shipped with a note.
+- A missing audio stream is a FAIL: a master with no sound is a defect, not a style.
+- **Do not accept a tolerance that grows with the timeline.** Drift accumulates, so a budget scaled to
+  duration hides the fault this check exists to catch. Equality is the only version that works.
+- A few milliseconds of audio overhang is normal — AAC encodes in frames of 1024 samples — which is
+  what the fixed tolerance covers.
+
 ### C8. Voice Profile Resolvable (Phase 5 + Phase 6 — v3.0.0)
 
 Cross-check `cast-profile.md` against `av-script.md` and `audio-plan.json`.
@@ -187,6 +199,7 @@ Return a structured report:
 - C4: Phase 4B (scene prompts) only — N/A for Phase 4A/Phase 5
 - C5: Phase 5 (platform prompts) only — needs audio-plan.md as ground truth
 - C6: Phase 3 (scene-plan) + Phase 4B + Phase 5 — checks the Render Path column is honoured
+- C7: Phase 6 (rendered master) only — needs the output file, not the prompts
 - C8: Phase 5 + Phase 6 — needs cast-profile.md and audio-plan.json
 
 ### Issues Found (FAIL items only)

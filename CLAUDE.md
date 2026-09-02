@@ -46,7 +46,9 @@ Claude Code plugin that generates complete promotional video production packages
 | `skills/video-add-platform/SKILL.md` | Scaffold new video platform support |
 | `agents/video-engine-agent.md` | Subagent for batch/complex video production (6-phase pipeline) |
 | `agents/video-prompt-reviewer.md` | Independent validator — reviews NB2/VEO prompt batches for quality |
-| `reference/` | 24 reference docs read on-demand by skill/agent |
+| `reference/` | reference docs read on-demand by skill/agent |
+| `tools/` | Executable helpers for Phase 6 (stdlib Python + ESM Node, no installs) |
+| `tests/` | `bash tests/run.sh` — consistency checks, python unittest, node --test |
 | `README.md` | Repo README |
 | `LICENSE` | MIT license |
 
@@ -91,6 +93,7 @@ Claude Code plugin that generates complete promotional video production packages
 | File | When Used |
 |------|-----------|
 | `post-production/10-post-production-pipeline.md` | ALWAYS for Phase 6 — pass order, `{output_folder}` contract, every plan schema, A/V duration gate, degradation policy |
+| `post-production/13-ffmpeg-edit.md` | Phase 6 pass 2 — trim vs pad vs regenerate, inserting explainer shots, why every segment is normalised before concat, the A/V duration gate, playable transcode |
 | `post-production/11-voice-cast-and-vo.md` | Voice per cast member — `VOICE:` block, `tts` vs `native+changer`, VO-first duration budgeting, prosody stitching, Voice Changer 0.05s drift rule, prompt-level discipline |
 
 #### Global Config & Bridge (3 files)

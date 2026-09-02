@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # The old plugin name must not survive anywhere a user or a tool would read it.
+# -I skips binary files: a .pyc caches the absolute build path, which contains the old
+# folder name and says nothing about the source.
 # docs/plans/ is exempt on purpose: those files are historical records of what the
 # plugin was called when they were written, and rewriting history there would be a lie.
 set -uo pipefail
@@ -14,7 +16,7 @@ for path in skills reference agents hooks templates tools media README.md CLAUDE
     [ -n "$line" ] || continue
     echo "FAIL old name: $line"
     hits=$((hits + 1))
-  done <<< "$(grep -rn "$old" "$path" 2>/dev/null || true)"
+  done <<< "$(grep -rnI "$old" "$path" 2>/dev/null || true)"
 done
 
 if [ "$hits" -gt 0 ]; then

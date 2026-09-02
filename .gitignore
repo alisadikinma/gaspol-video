@@ -2,3 +2,5 @@
 .DS_Store
 .gaspol/
 .env
+__pycache__/
+*.pyc
