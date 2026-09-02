@@ -86,11 +86,17 @@ Claude Code plugin that generates complete promotional video production packages
 | `image-video-gen/09-voice-consistency-workflow.md` | **Cross-platform** voice-over consistency — applies to VEO 3.1 + Seedance 2.0 + Kling 3.0. 3 solution paths (Path A native voice lock per platform, Path B universal ElevenLabs post-prod, Path C single VO + sync), prompt-level discipline rules, hybrid workflow per video type, plugin integration spec for Phase 5 Step 5.0. **MANDATORY** for any video with >1 scene or character voice continuity. |
 | `image-video-gen/project-instruction.md` | Image/video project instructions — critical rules, example workflows |
 
+#### Post-Production (Phase 6)
+
+| File | When Used |
+|------|-----------|
+| `post-production/10-post-production-pipeline.md` | ALWAYS for Phase 6 — pass order, `{output_folder}` contract, every plan schema, A/V duration gate, degradation policy |
+
 #### Global Config & Bridge (3 files)
 
 | File | When Used |
 |------|-----------|
-| `global-promo-config.md` | ALWAYS (read FIRST) — single source of truth for all configurable values |
+| `global-promo-config.md` | ALWAYS (read FIRST) — single source of truth for all configurable values (Section 29 = post-production defaults) |
 | `creator-profile-system.md` | Phase 1 (Cast Builder) — multi-character cast profiles, institution detection, generic + Ali Sadikin preset |
 | `script-to-scene-bridge.md` | Phase 3 (Scene Breakdown) — script → scene list → VEO mode → image/video prompts |
 
