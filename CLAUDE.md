@@ -91,6 +91,7 @@ Claude Code plugin that generates complete promotional video production packages
 | File | When Used |
 |------|-----------|
 | `post-production/10-post-production-pipeline.md` | ALWAYS for Phase 6 — pass order, `{output_folder}` contract, every plan schema, A/V duration gate, degradation policy |
+| `post-production/11-voice-cast-and-vo.md` | Voice per cast member — `VOICE:` block, `tts` vs `native+changer`, VO-first duration budgeting, prosody stitching, Voice Changer 0.05s drift rule, prompt-level discipline |
 
 #### Global Config & Bridge (3 files)
 

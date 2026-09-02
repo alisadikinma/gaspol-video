@@ -148,6 +148,22 @@ Cross-check `scene-plan.md`'s `Render Path` column against what was actually pro
 
 FAIL output names the scene, the declared Render Path, and which artefact should not exist.
 
+### C8. Voice Profile Resolvable (Phase 5 + Phase 6 — v3.0.0)
+
+Cross-check `cast-profile.md` against `av-script.md` and `audio-plan.json`.
+
+- Every cast member with a spoken line has a `VOICE:` block. Missing block = FAIL, and the correct
+  response is to stop and ask, never to pick a voice.
+- Each block names a `voice_env`, not a voice id. **A literal voice id in the repo is a FAIL** — it is
+  account-specific data in a client-agnostic plugin.
+- `model` is `eleven_multilingual_v2`. `v3` is a FAIL: no PVC fine-tune means the identity drifts
+  between requests.
+- `source` matches the character's screen presence: `native+changer` where they speak with the face
+  over 30% of frame, `tts` where they never do.
+- A character whose `source` is `native+changer` has a conversion layer in `audio-plan.json` for every
+  scene where they speak. A locked-voice character shipping with un-converted platform audio is a
+  FAIL — that is the drift this whole system exists to prevent.
+
 ## Output Format
 
 Return a structured report:
@@ -171,6 +187,7 @@ Return a structured report:
 - C4: Phase 4B (scene prompts) only — N/A for Phase 4A/Phase 5
 - C5: Phase 5 (platform prompts) only — needs audio-plan.md as ground truth
 - C6: Phase 3 (scene-plan) + Phase 4B + Phase 5 — checks the Render Path column is honoured
+- C8: Phase 5 + Phase 6 — needs cast-profile.md and audio-plan.json
 
 ### Issues Found (FAIL items only)
 

@@ -691,3 +691,37 @@ TECHNICAL: {aspect_ratio}, {resolution}.
 ```
 
 This is the default template for most scenes. Multi-character templates from above are only used when 2+ characters share the frame.
+
+---
+
+## VOICE Block (v3.0.0) — a speaking character carries its own voice
+
+Any cast member with a spoken line gets a `VOICE:` block in `cast-profile.md`. Without one, Phase 6
+stops and asks rather than picking a voice, because a substituted voice is worse than a missing one.
+
+```markdown
+VOICE:
+  provider: elevenlabs
+  voice_env: ELEVENLABS_VOICE_C1        # env var NAME holding the voice id — never the id itself
+  model: eleven_multilingual_v2         # never v3
+  settings: stability=0.55, similarity_boost=0.8, style=0.3, speed=0.95
+  source: tts | native+changer
+  description: "<10-15 words, verbatim in every platform prompt for this character>"
+```
+
+**Naming convention for `voice_env`:** `ELEVENLABS_VOICE_C{N}` for cast slot N,
+`ELEVENLABS_VOICE_NARRATOR` for the narrator slot. The value lives in the user's `.env`; this repo
+only ever names the variable, the same rule that forbids hardcoding a client name.
+
+**`source` picks itself** from whether the character speaks on camera:
+
+- Face over 30% of frame while speaking → `native+changer`. The platform speaks so the lips match,
+  then the voice is converted in Phase 6.
+- Never speaks on camera → `tts`. ElevenLabs speaks it directly.
+
+The **Ali Sadikin preset** fills a Pemeran Utama slot as before; its VOICE block reads
+`voice_env: ELEVENLABS_VOICE_C1` and `source: tts` for narration, and the preset does NOT carry a
+voice id — the user supplies it in their own `.env`.
+
+Full workflow, the 0.05s Voice Changer tolerance, and the prompt-level discipline rules live in
+`reference/post-production/11-voice-cast-and-vo.md`.

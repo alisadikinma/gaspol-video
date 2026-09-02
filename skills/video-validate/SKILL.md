@@ -220,6 +220,16 @@ required `Voice-over narrator` line there is a false positive, not a finding.
 
 Mirrors reviewer check C5.
 
+### Check V14: Voice Profile Resolvable (v3.0.0)
+
+For every cast member with a spoken line in `av-script.md`, assert `cast-profile.md` has a `VOICE:`
+block naming a `voice_env` (not a voice id), with `model: eleven_multilingual_v2`, and a `source` that
+matches whether they speak on camera.
+
+FAIL lists the characters with no block. The fix is to ask the user, never to substitute a voice.
+
+Mirrors reviewer check C8.
+
 ### Check V12: NB2→VEO Consistency
 **How:** Compare VEO prompt visual description with corresponding NB2 prompt/image
 **Expected:** VEO description matches the actual keyframe content
