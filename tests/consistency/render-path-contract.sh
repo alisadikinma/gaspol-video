@@ -8,7 +8,7 @@ cd "$ROOT"
 fail=0
 
 need() { # need <file> <needle> <message>
-  if ! grep -qF "$2" "$1"; then
+  if ! grep -qF -- "$2" "$1"; then
     echo "FAIL $3"
     fail=1
   fi

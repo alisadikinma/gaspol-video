@@ -5,7 +5,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 fail=0
-need() { if ! grep -qF "$2" "$1"; then echo "FAIL $3"; fail=1; fi; }
+need() { if ! grep -qF -- "$2" "$1"; then echo "FAIL $3"; fail=1; fi; }
 
 CP=reference/creator-profile-system.md
 need "$CP" "VOICE:"        "VOICE: block not defined in $CP"

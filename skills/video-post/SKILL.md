@@ -165,13 +165,158 @@ The gate is equality within 0.04s. A failure rejects the render.
 
 ---
 
+## Pass 3 — SFX
+
+### 3.1 Derive cues from what this plugin already knows
+
+For each scene, in this order:
+
+1. **`strategic-brief.md` > DOMAIN CONTEXT** — the machinery actually in that room, from the six
+   location-qualified research queries. `amb-factory-floor` is not "factory sounds"; it is the bed
+   this specific place has.
+2. **Cultural research** (Phase 3.5) — outdoor scenes carry the traffic and birdlife of that place,
+   or they sound like stock footage of nowhere.
+3. **The visual beat** — the cut, the reveal, the moment a number lands.
+
+Score the ambience first. It carries most of the realism and it is the part a generic SFX pass
+cannot do.
+
+### 3.2 Library first
+
+```bash
+python3 tools/gen_sfx.py --library media/sfx/library --dry-run   # what is missing
+python3 tools/gen_sfx.py --library media/sfx/library             # generate only the misses
+```
+
+Reuse a catalogued clip before generating one. New recipes get GENERIC ids so the next project
+reuses them.
+
+### 3.3 Author `work/sfx-plan.json`, then AUDIT
+
+```bash
+python3 tools/mix_sfx.py {output_folder} --print
+```
+
+**This is a hard gate**, the same kind as the Phase 3.5 reference gate: the user reads the cue sheet
+and approves it BEFORE anything is mixed. Not a formality, and not skippable because the sheet looks
+obviously fine.
+
+Density 8 to 12 cues per minute; everything past that carries `optional: true`.
+
+### 3.4 Mix and verify with numbers
+
+```bash
+python3 tools/mix_sfx.py {output_folder}
+```
+
+The tool prints how many dB each cue actually added over the voice-only reference:
+
+| Cue kind | Must add |
+|---|---|
+| Story-critical | **+4 dB** or more |
+| Texture | +1 to +3 dB |
+
+Four ways this measurement lies, all handled by the tool but worth knowing when reading its output:
+
+- a **0.3s** window is used for transients, because 0.6s averages a 50ms click into nothing
+- a riser is measured at its final third, where its energy is
+- an adjacent loud cue can leak into a wide window and fake a pass
+- **a cue sitting fully under continuous speech measures +0 dB at ANY gain.** Accept it as
+  felt-not-heard or delete it. Never chase it with gain: it spikes the moment a pause arrives.
+
+A cue the user calls "noisy" is a CHARACTER problem. Swap the sound or use silence; turning it down
+just makes quiet noise.
+
+---
+
+## Pass 4 — Subtitles and music
+
+Both are fail-soft. A caption or music failure warns and still ships the video.
+
+### 4.1 Subtitles
+
+```bash
+python3 tools/gen_subs.py {output_folder}          # cues + output/master.srt
+python3 tools/burn_subs.py {output_folder}         # burn them in
+```
+
+Caption text comes from the script, always. A recognizer supplies timing only, and only for dialogue
+the platform generated — narration from ElevenLabs already carries word timings in
+`vo-manifest.json`, so those captions cost nothing extra.
+
+Review the cue text with the user before burning. Nothing is guessed: a scene with no timing source
+is listed as untimed rather than given invented timings.
+
+The `no subtitles` negative stays in every platform prompt and does not conflict — that stops the
+model drawing text into the picture. An em dash in a caption is correct; the ban covers spoken text.
+
+### 4.2 Music
+
+```bash
+python3 tools/mix_music.py {output_folder}
+```
+
+The track is derived from the per-scene music direction already in `av-script.md` plus the video
+tone, not asked for again. The bed sits at least 12 dB below the voice by measurement.
+
+Mix SFX before music: cues are short and land on moments, the bed is continuous, and a bed competing
+with a cue makes both mushy.
+
+### Pass 4 edge cases
+
+| Situation | Behaviour |
+|---|---|
+| No `ASSEMBLYAI_API_KEY` | TTS-timed cues still built; scenes needing the recognizer listed as untimed |
+| Font cannot draw a character | Refuse and name the characters. A box ships silently otherwise. |
+| Caption contrast below 4.5:1 | Refuse. It disappears on the frames that happen to match. |
+| Line too long for one screen | Split into consecutive cues, never squeezed or clipped |
+| No music direction in the script | Pass does nothing and says so |
+| Track fails to load or mix | **Warn and ship the voice-only master.** Exit 0. |
+
+---
+
+## Pass 5 — Final mix
+
+```bash
+python3 tools/mix_sfx.py {output_folder}            # duck + limiter
+```
+
+- Sidechain duck under the voice, safety limiter after it
+- Integrated loudness to **-14 LUFS**, true peak ceiling -1.0 dBTP
+- Re-run the A/V duration gate on the mixed file: equality within 0.04s, or the render is rejected
+- Print the per-cue dB table one final time and read it
+
+Then produce the playable transcode if the master is 10-bit HEVC, with `-r` before `-i` so no frame
+is dropped:
+
+```bash
+ffmpeg -r <src_fps> -i master-mixed.mp4 -c:v libx264 -crf 19 -pix_fmt yuv420p -c:a aac master-h264.mp4
+```
+
+### Final summary
+
+Report what exists and what did not run:
+
+```
+output/master.mp4         assembled, A/V gate passed
+output/master-mixed.mp4   {N} SFX cues, music {yes/no}, captions {burned/sidecar/none}
+output/master.srt         {M} cues, {K} scenes untimed
+Not run: {anything that degraded, and why}
+```
+
+A pass that could not run is named here. It is never reported as done.
+
+---
+
 ## Degradation
 
 | Missing | Lost | Still works |
 |---|---|---|
-| `ffmpeg` / `ffprobe` | assembly, compositing | every plan file is still authored and printed |
-| `ELEVENLABS_API_KEY` | generated speech, voice conversion | platform-native audio and the whole edit |
+| `ffmpeg` / `ffprobe` | assembly, compositing, mixing, burn-in | every plan file is still authored and printed |
+| `ELEVENLABS_API_KEY` | generated speech, voice conversion, SFX generation | platform-native audio, the edit, and any catalogued SFX |
+| `ASSEMBLYAI_API_KEY` | timing for platform-spoken dialogue | captions for ElevenLabs narration, from TTS timestamps |
 | A voice env var | that character's voice | the pass stops and names the variable |
+| A music track | the bed | the voice-only master still ships, with a warning |
 
 Silent degradation is banned: a pass that could not run says so in the summary, and the skill never
 reports a step as done when it was skipped.

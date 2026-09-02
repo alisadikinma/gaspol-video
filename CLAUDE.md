@@ -28,6 +28,7 @@ Claude Code plugin that generates complete promotional video production packages
 | `/video-image` | Phase 4: NB2 asset library + scene keyframes |
 | `/video-gen` | Phase 5: image review + VEO video prompts |
 | `/video-explainer` | Phase 4.5: coded Remotion shots for scenes that must be readable |
+| `/video-post` | Phase 6: voice-over, assembly, SFX, subtitles, music, final mix |
 | `/video-validate` | Unified validator: `--script` / `--image` / `--video` / `--refs` / `--all` |
 | `/video-add-platform` | Scaffold new AI video platform support |
 
@@ -44,6 +45,7 @@ Claude Code plugin that generates complete promotional video production packages
 | `skills/video-gen/SKILL.md` | Phase 5 — image review + VEO video prompts |
 | `skills/video-full/SKILL.md` | Orchestrator — runs all 4 production skills in sequence |
 | `skills/video-explainer/SKILL.md` | Phase 4.5 — Remotion shots for explainer scenes |
+| `skills/video-post/SKILL.md` | Phase 6 — five post-production passes, clips to a finished file |
 | `skills/video-validate/SKILL.md` | Unified validator (--script / --image / --video / --refs / --all) |
 | `skills/video-add-platform/SKILL.md` | Scaffold new video platform support |
 | `agents/video-engine-agent.md` | Subagent for batch/complex video production (6-phase pipeline) |
@@ -266,6 +268,11 @@ Each phase loads ONLY the reference files it needs — NOT all 23. This prevents
 | Phase 5 (VEO) | global-promo-config, 02-veo, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
 | Phase 5 (Seedance) | global-promo-config, 07-seedance, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
 | Phase 5 (Kling) | global-promo-config, 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
+| Phase 4.5 (explainer) | global-promo-config §29.5, 12-remotion-explainer | 2 per shot |
+| Phase 6 pass 1 (audio) | global-promo-config §29, 11-voice-cast-and-vo | 2 |
+| Phase 6 pass 2 (edit) | global-promo-config §29, 13-ffmpeg-edit | 2 |
+| Phase 6 pass 3 (SFX) | global-promo-config §29, 14-sfx-design | 2 |
+| Phase 6 pass 4 (subs+music) | global-promo-config §29-30, 16-subtitles-and-captions, 17-music-bed | 3 |
 | Phase 5 (Mixed) | global-promo-config, 02-veo + 07-seedance + 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 7 per batch (one-time platform-guide load + voice workflow, then filter per scene) |
 
 Phase 4B and 5 also load per-batch filtered data from output files (cast entries + scene entries for current batch only).

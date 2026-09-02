@@ -10,7 +10,7 @@ SKILL=skills/video-post/SKILL.md
 
 [ -f "$SKILL" ] || { echo "FAIL $SKILL missing"; exit 1; }
 
-need() { if ! grep -qF "$2" "$1"; then echo "FAIL $3"; fail=1; fi; }
+need() { if ! grep -qF -- "$2" "$1"; then echo "FAIL $3"; fail=1; fi; }
 
 need "$SKILL" "Pass 1"  "pass 1 (audio) not documented"
 need "$SKILL" "Pass 2"  "pass 2 (edit) not documented"

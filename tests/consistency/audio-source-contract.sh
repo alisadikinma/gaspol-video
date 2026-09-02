@@ -9,7 +9,7 @@ fail=0
 GEN=skills/video-gen/SKILL.md
 
 need() {
-  if ! grep -qF "$2" "$1"; then echo "FAIL $3"; fail=1; fi
+  if ! grep -qF -- "$2" "$1"; then echo "FAIL $3"; fail=1; fi
 }
 
 need "$GEN" "audio_source"      "audio_source enum not found in $GEN"
