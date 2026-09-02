@@ -481,6 +481,12 @@ silently shortened video.
 No segment has `pad_end_s` above 1.0s without a note in the plan saying why. A long freeze reads as a
 stall; if it is intentional, it is written down.
 
+### Check P4: Caption Text Matches The Script (v3.0.0)
+
+Every cue in `subtitle-plan.json` carries its script line verbatim. ASR output supplies timing only;
+text that differs from the script is a FAIL. Cues must not overlap and must sit inside the master.
+An em dash in a caption is correct — the ban is on spoken text. Mirrors reviewer check C9.
+
 ## Output Format
 
 ```

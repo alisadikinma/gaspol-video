@@ -1600,3 +1600,39 @@ user's `.env`. This is the same client-agnostic rule that forbids hardcoding cli
 | `min_contrast_ratio` | 4.5:1 against its own background |
 | `title_safe_margin_pct` | 5 |
 | palette / fonts | from the project's `strategic-brief.md`. **No palette ships in this plugin.** |
+
+---
+
+## Section 30 — Subtitle Style (v3.0.0)
+
+Read with `reference/post-production/16-subtitles-and-captions.md`.
+
+### 30.1 Defaults per aspect ratio
+
+| Key | 16:9 (1920x1080) | 9:16 (1080x1920) | 1:1 |
+|---|---|---|---|
+| `font` | Inter | Inter | Inter |
+| `size_px` | 54 | 68 | 60 |
+| `stroke_px` | 3 | 4 | 3 |
+| `position` | bottom | bottom | bottom |
+| `margin_v_pct` | 8 | 18 | 12 |
+| `max_chars_per_line` | 38 | 26 | 32 |
+| `max_lines` | 2 | 2 | 2 |
+
+Vertical carries a much higher bottom margin because the platform's own interface — caption text,
+buttons, the progress bar — sits over the lower band and will cover anything placed there.
+
+### 30.2 Floors that are not style choices
+
+| Rule | Value |
+|---|---|
+| Contrast, caption against its outline and backing | ≥ 4.5:1 |
+| Every character drawable by the chosen font | required |
+| Text clipped to fit | never — wrap, or split into two cues |
+| Timing invented when no source exists | never — list the scene as untimed |
+
+### 30.3 Captions vs the `no subtitles` prompt negative
+
+Both apply at once and do not conflict. The prompt negative stops the video model drawing text into
+the picture; burned captions are added afterwards from the script. The em-dash ban applies to spoken
+text only: a printed caption keeps the em dash.

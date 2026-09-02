@@ -10,7 +10,7 @@ fail=0
 
 # required: references this ticket adds. The list grows one phase at a time, so each
 # phase starts red on its own file rather than on a list somebody has to remember to fill.
-REQUIRED="post-production/10-post-production-pipeline.md post-production/11-voice-cast-and-vo.md post-production/13-ffmpeg-edit.md post-production/14-sfx-design.md"
+REQUIRED="post-production/10-post-production-pipeline.md post-production/11-voice-cast-and-vo.md post-production/13-ffmpeg-edit.md post-production/14-sfx-design.md post-production/16-subtitles-and-captions.md"
 
 for rel in $REQUIRED; do
   if [ ! -f "reference/$rel" ]; then

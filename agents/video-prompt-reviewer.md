@@ -176,6 +176,19 @@ Cross-check `cast-profile.md` against `av-script.md` and `audio-plan.json`.
   scene where they speak. A locked-voice character shipping with un-converted platform audio is a
   FAIL — that is the drift this whole system exists to prevent.
 
+### C9. Caption Text Comes From The Script (Phase 6 subtitles — v3.0.0)
+
+Check `subtitle-plan.json` against `av-script.md`.
+
+- Every cue's text matches its script line word for word. **ASR output must never reach the screen** —
+  the recognizer supplies timing only. A cue whose text differs from the script is a FAIL even when it
+  reads plausibly, because that is exactly what a mangled product name looks like.
+- No cue starts before its scene or ends after the master.
+- No two cues overlap in time.
+- A scene listed under `untimed` is reported, not silently missing: captions were not invented for it.
+- An em dash in a caption is **correct** and must not be flagged. The em-dash ban covers spoken text,
+  where the audio engine mistranslates it; printed text is not read aloud.
+
 ## Output Format
 
 Return a structured report:
@@ -201,6 +214,7 @@ Return a structured report:
 - C6: Phase 3 (scene-plan) + Phase 4B + Phase 5 — checks the Render Path column is honoured
 - C7: Phase 6 (rendered master) only — needs the output file, not the prompts
 - C8: Phase 5 + Phase 6 — needs cast-profile.md and audio-plan.json
+- C9: Phase 6 (subtitles) only — needs subtitle-plan.json and av-script.md
 
 ### Issues Found (FAIL items only)
 
