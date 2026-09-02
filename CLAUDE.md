@@ -585,3 +585,8 @@ All configurable values live in `reference/global-promo-config.md` — single so
 - **project-instruction.md:** Added BODY 1 COVERAGE line in Production Notes output template + 2 new entries in Structural Failures table
 - **script-to-scene-bridge.md:** Updated sequential cross-ref rule (env-gated), Required Reference Images table row 11 conditional, production checklist 4 new v2.2.0 checks
 - **01-nb2-image-generation.md:** Added Uniqueness Filter subsection + Max 5 Inline References subsection
+
+## gaspol Ticket Counter
+
+Prefix: GV
+Last ticket: GV-1
