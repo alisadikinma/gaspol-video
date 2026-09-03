@@ -1,0 +1,52 @@
+gaspol-video
+Copyright (c) 2026 Ali Sadikin
+
+This product includes methods adapted from two MIT-licensed projects. No source
+file from either project is vendored here; what was adopted is documented method
+— the shape of a workflow, a schema, a measured calibration constant — rewritten
+for this plugin's inputs. Both are named so the debt is visible.
+
+-------------------------------------------------------------------------------
+claude-youtube-editor — https://github.com/hassancs91/claude-youtube-editor
+MIT License, Copyright (c) Hassan
+
+Adapted:
+  * The plan-then-tool shape used throughout post-production: a declarative JSON
+    plan is the source of truth, a tool consumes it, a shared library grows, and
+    a hard user-audit gate stands before anything is rendered or mixed.
+  * SFX method — library-first sourcing, the per-cue plan schema, the sidechain
+    duck under voice, and the measured gain calibration: long-form -12..-18 dB,
+    short-form corrections, and the +3..+5 dB transient correction that exists
+    because percussive clips hit the -1.5 dBFS peak ceiling before reaching the
+    -20 LUFS loudness target.
+  * The RMS audibility check and its pitfalls: the >= +4 dB threshold for a
+    story-critical cue, the ~0.3s window for transients, measuring a riser at its
+    final third, and the finding that a cue sitting fully under continuous speech
+    never measures at any gain.
+  * Remotion shot authoring rules that keep a render from crashing: frame-based
+    animation only, strictly monotonic interpolate ranges, Easing.bezier called
+    directly, no useState/useEffect/setTimeout.
+  * ffmpeg assembly discipline: the A/V duration equality gate, and re-stamping
+    constant frame rate by placing -r before -i.
+  * ElevenLabs text-to-speech prosody stitching across consecutive requests.
+  * AssemblyAI as the transcription provider, and the idea of biasing the
+    recognizer with per-video keyterms.
+
+-------------------------------------------------------------------------------
+MoneyPrinterTurbo — https://github.com/harry0703/MoneyPrinterTurbo
+MIT License, Copyright (c) 2024 Harry
+
+Adapted:
+  * Subtitle method — repairing recognizer output against the known script
+    (app/services/subtitle.py), so caption text comes from the script and the
+    recognizer supplies only timing.
+  * Subtitle burn-in guards (app/services/video.py): checking that the chosen
+    font can render every character in the text, and that the subtitle colour is
+    distinguishable from its stroke and background.
+  * The fail-soft rule for the music bed (app/services/bgm.py and the BGM half of
+    generate_video): a music track that fails to load, fade, or mix still leaves a
+    finished voice-only video plus a warning, never a missing deliverable.
+
+Not adopted from MoneyPrinterTurbo: stock-footage matching, the LLM script
+writer, the Streamlit web interface, the FastAPI service and its redis task
+queue, moviepy as a render engine, edge-tts, and local whisper models.

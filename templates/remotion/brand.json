@@ -1,0 +1,9 @@
+{
+  "_comment": "Written per project from strategic-brief.md. These placeholder values exist so the template renders before a brand is read; replace every one of them. This plugin ships no palette.",
+  "background": "#0b1f2a",
+  "ink": "#f2f6f7",
+  "inkSoft": "#9fb4bd",
+  "accent": "#5fd0c4",
+  "displayFont": "Inter, system-ui, sans-serif",
+  "bodyFont": "Inter, system-ui, sans-serif"
+}

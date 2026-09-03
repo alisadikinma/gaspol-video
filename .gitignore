@@ -1,0 +1,8 @@
+.claude/worktrees/
+.DS_Store
+.gaspol/
+.env
+__pycache__/
+*.pyc
+media/sfx/library/clips/
+media/music/library/tracks/

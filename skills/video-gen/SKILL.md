@@ -95,24 +95,78 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or NB2-
 
 ## Workflow
 
-### Step 5.0a: VOICE CONSISTENCY STRATEGY (NEW v2.4.0 — runs BEFORE platform selection)
+### Step 5.0a: AUDIO SOURCE (v3.0.0 — runs FIRST, before platform selection and before any prompt)
 
-For any video with >1 scene OR with character voice continuity, voice consistency must be planned BEFORE platform/mode selection.
+This step used to record a voice-consistency PLAN and produce no audio. It now makes a **binding**
+decision that changes how every prompt in this phase is written, and — when the answer is ElevenLabs —
+generates the narration before a single clip is paid for.
 
 ```
 AskUserQuestion:
-"Apakah video ini perlu konsistensi voice-over antar scene?"
+"Suara di video ini dari mana?"
 
-Options:
-A) Ya, ada voice reference (audio sample / video clip dengan suara target) — engine will route to Path A native lock (Kling Elements 3.0 / Seedance @Audio1) or Path B prep
-B) Ya, tapi belum ada voice reference — engine defaults to Path B (post-prod ElevenLabs Voice Changer pass at end)
-C) Ya, saya akan record VO sendiri di post-prod (Path C) — engine generates with placeholder audio, drives final edit by VO track
-D) Tidak perlu (video pendek single-scene atau tanpa VO continuity) — skip voice strategy
+A) platform-native — suara dibuat oleh VEO / Seedance / Kling sendiri.
+   Mulut ikut suara secara otomatis. Tidak butuh API key.
+B) elevenlabs — suara dibuat ElevenLabs, video dibuat tanpa suara bicara.
+   Satu suara konsisten di semua scene, dan durasi klip mengikuti panjang audio.
+C) mixed — scene wajah bicara pakai suara platform, sisanya ElevenLabs.
+   Suaranya diseragamkan belakangan lewat Voice Changer.
 ```
 
-If A/B/C: load `reference/image-video-gen/09-voice-consistency-workflow.md`, save selected path + voice description to `{output_folder}/voice-consistency-plan.md` for Phase 5 prompt injection.
+**Answer B auto-resolves to `mixed` when any scene has an on-screen speaker**, and the skill says so
+rather than doing it quietly:
 
-**Voice description verbatim rule (universal):** Once locked, the SAME 10-15 word voice description must appear in EVERY VEO/Seedance/Kling prompt in this video. Copy-paste, NEVER paraphrase. See `09-voice-consistency-workflow.md` §"Prompt-Level Discipline".
+> "Video ini punya {N} scene wajah bicara. Platform video tidak bisa menyamakan gerak mulut dengan
+> file audio dari luar, jadi scene itu tetap pakai suara platform dan diseragamkan lewat Voice Changer
+> di Phase 6. Sisanya ElevenLabs. Mode: mixed."
+
+**Per-scene resolution rule (binding):**
+
+```
+IF scene has an on-screen speaker with face > 30% of frame
+   -> audio_source = platform-native   (no platform lip-syncs to external audio)
+   -> normalised later by tools/voice_changer.mjs when that cast member's VOICE:
+      block says source = native+changer
+ELSE
+   -> audio_source = elevenlabs        (B-Roll, narration, over-shoulder, mouth not visible)
+```
+
+Write the result to `{output_folder}/audio-plan.md`: the video-level `audio_source`, the per-scene
+value, and the reason for every scene that differs from the video-level choice.
+
+#### VO-first: measured audio sets clip duration
+
+When `audio_source` is `elevenlabs` or `mixed`, generate the narration BEFORE authoring prompts:
+
+1. Build the narration layer list from `av-script.md`.
+2. Run `python3 tools/gen_vo.mjs` (see `reference/post-production/11-voice-cast-and-vo.md`).
+3. Read the **measured** duration of each mp3 from `vo-manifest.json`.
+4. Set each scene's clip duration from that measurement, not from a word count:
+   - Kling: pick the exact second, 3-15s.
+   - VEO: 8s per generation, extend when the audio is longer.
+   - Seedance: up to 15s.
+
+A 12-word line is not a duration. The mp3 is. This is what stops a clip being generated at 5s for a
+line that needs 6.4s, which used to be discovered only after the credits were spent.
+
+No key, or the tool is unavailable? Say which capability is lost, fall back to the word-count estimate
+for this run, and mark the affected scenes in `audio-plan.md` so the duration can be corrected later.
+
+#### Prompt muting (MANDATORY for every scene whose `audio_source` is `elevenlabs`)
+
+The platform prompt for that scene:
+
+- MUST NOT contain `Host says:`, `Presenter says:`, or `Voice-over narrator, [tone]:`.
+- MUST contain, verbatim, in the negative block: `no speech, no voiceover, no dialogue`
+- MUST still specify SFX and ambient layers. Audio is never optional; only the SPEECH moves out.
+
+This is a deliberate, scoped exception to the CLAUDE.md hard rule that every B-Roll scene carries a
+`Voice-over narrator, [tone]:` line. That rule holds for `platform-native` scenes and is unchanged.
+Applying it to an `elevenlabs` scene produces two voices over one picture.
+
+**Voice description verbatim rule (unchanged):** once locked, the SAME 10-15 word voice description
+appears in EVERY prompt for that character, copy-pasted, never paraphrased. See
+`09-voice-consistency-workflow.md` > "Prompt-Level Discipline".
 
 ---
 
@@ -296,7 +350,7 @@ FOR each batch (ACT or sub-batch):
      END FOR
 
   3. VALIDATE — spawn video-prompt-reviewer agent:
-     → Agent tool: subagent_type="ai-video-promo-engine:video-prompt-reviewer"
+     → Agent tool: subagent_type="gaspol-video:video-prompt-reviewer"
      → Pass: this batch's VEO prompts + scene-plan.md + image-prompts.md (this batch only)
      → Agent returns: PASS / FAIL with per-prompt feedback
 

@@ -510,3 +510,24 @@ C) Start over — mulai brainstorm dari awal
 ## Next Step
 
 Run `/video-script` to continue to Phase 2 (Script Generation), Phase 3 (Scene Breakdown), and Phase 3.5 (Reference Collection).
+
+### Voice per Speaking Cast Member (v3.0.0)
+
+For every cast member who has a spoken line, ask which voice they use and record a `VOICE:` block in
+`cast-profile.md` (format in `reference/creator-profile-system.md`).
+
+```
+AskUserQuestion, per speaking character:
+"Suara {nama} pakai apa?"
+
+A) Suara ElevenLabs yang sudah ada — sebutkan nama variabel env-nya
+   (misal ELEVENLABS_VOICE_C1). Nilainya tidak ditulis di sini.
+B) Suara dari platform video saja — tidak perlu VOICE block.
+C) Belum tahu — tandai TBD, Phase 5 menanyakannya lagi sebelum VO dibuat.
+```
+
+`source` is not asked: it follows from whether the character speaks on camera. A character whose face
+fills more than 30% of frame while speaking gets `native+changer`; anyone else gets `tts`.
+
+**Never write a voice id into `cast-profile.md`.** Record the env var name. The id belongs to the
+user's account and this plugin stays client-agnostic.

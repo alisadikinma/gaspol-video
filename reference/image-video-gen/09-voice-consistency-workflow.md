@@ -397,3 +397,29 @@ This file should be referenced by `skills/video-gen/SKILL.md` Step 5.0 and read 
 - Kling 3.0 Omni Audio + Elements 3.0: https://kling.ai/blog/kling-video-3-omni-native-lip-sync-audio-guide
 - Seedance 2.0 @Audio reference system: see `07-seedance-production-guide.md` §"The @ Reference System"
 - VEO 3.1 audio (no voice cloning): see `02-veo-production-guide.md` §"Audio Specs"
+
+---
+
+## Executable path (v3.0.0 — this file is no longer only a plan)
+
+Until v3.0.0 the three paths above were described and never performed: Step 5.0a wrote
+`voice-consistency-plan.md` and no audio file was ever produced. That gap is closed.
+
+| Path | Now performed by | Reference |
+|---|---|---|
+| **A** — native voice lock (Kling Elements 3.0, Seedance @Audio1) | unchanged, done inside the platform UI | this file |
+| **B** — ElevenLabs | `tools/gen_vo.mjs` for narration, `tools/voice_changer.mjs` for converting platform-spoken dialogue into the locked character voice | `reference/post-production/11-voice-cast-and-vo.md` |
+| **C** — single VO recording + sync | `tools/edit_render.py`, driven by the measured VO length | `reference/post-production/13-ffmpeg-edit.md` |
+
+Two things changed in how Path B is reached:
+
+1. **The question is about the audio SOURCE, not about consistency.** Phase 5 Step 5.0a asks where the
+   voice comes from, and the answer is binding on how every prompt is written — see the muting rules
+   there.
+2. **Voice belongs to a cast member, not to a video.** A `VOICE:` block in `cast-profile.md` pins the
+   provider, the env var holding the voice id, the model and the settings per character, so one scene
+   can carry cast-c2 speaking on screen followed by cast-c1 narrating over the same shot.
+
+The `voice_changer.mjs` step depends on speech-to-speech preserving duration, which is what keeps the
+lips matching after the voice is replaced. That tolerance is 0.05s and it is enforced, not assumed:
+see `global-promo-config.md` §29.4 `voice_changer_max_drift_s`.

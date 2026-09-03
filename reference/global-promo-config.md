@@ -1537,3 +1537,102 @@ When cross-ref dropped (different env), maintain continuity via:
 This pattern is **text-only continuity** — sufficient for hard cuts, prevents NB2 from mixing wrong-location elements.
 
 ---
+
+---
+
+## Section 29 — Post-Production Defaults (v3.0.0)
+
+Single source of truth for everything Phase 6 reads. Full pipeline, folder contract and plan
+schemas live in `reference/post-production/10-post-production-pipeline.md`.
+
+### 29.1 Enums
+
+| Key | Values | Default | Decided at |
+|---|---|---|---|
+| `render_path` | `live-action` \| `explainer` | `live-action` | Phase 3, per scene |
+| `audio_source` | `platform-native` \| `elevenlabs` \| `mixed` | `platform-native` | Phase 5 Step 5.0a, video level then per scene |
+| `pad_mode` | `freeze` \| `black` | `freeze` | Phase 6 pass 2, per segment |
+| `subtitle_from` | `tts-timestamps` \| `assemblyai` \| `manual` | `tts-timestamps` | Phase 6 pass 4, per cue |
+
+### 29.2 Master defaults
+
+| Key | Value | Note |
+|---|---|---|
+| `master_fps` | 30 | matches the project aspect ratio in Section 2 |
+| `master_resolution` | 1920x1080 (16:9) / 1080x1920 (9:16) | from Section 2, never re-decided here |
+| `loudness_target` | -14 LUFS integrated | set in the final mix, never earlier |
+| `true_peak_ceiling` | -1.0 dBTP | safety limiter after the duck |
+| `av_duration_tolerance_s` | 0.04 | one frame at 25fps; equality, not a growing budget |
+| `pad_warn_threshold_s` | 1.0 | a longer freeze reads as a stall |
+
+### 29.3 Sound
+
+| Key | Value |
+|---|---|
+| `sfx_library` | `media/sfx/library/` |
+| `sfx_clip_loudness` | -20 LUFS, -1.5 dBFS ceiling |
+| `sfx_density_per_min` | 8 to 12 cues; everything past that is `optional: true` |
+| `music_library` | `media/music/library/` |
+| `music_gain_db` | -22 default, always under voice |
+| `music_fail_soft` | true — a failed music mix still ships a voice-only master |
+
+### 29.4 Voice
+
+| Key | Value |
+|---|---|
+| `tts_provider` | ElevenLabs |
+| `tts_model` | `eleven_multilingual_v2` — never v3 |
+| `tts_settings` | stability 0.55, similarity_boost 0.8, style 0.3, speed 0.95 |
+| `voice_env_pattern` | `ELEVENLABS_VOICE_C{N}`, `ELEVENLABS_VOICE_NARRATOR` |
+| `asr_provider` | AssemblyAI (`ASSEMBLYAI_API_KEY`) — no local model |
+| `voice_changer_max_drift_s` | 0.05 — beyond this the conversion is rejected, because lip-sync depends on duration being preserved |
+
+**Voice ids are never written into this repo.** The config names the env var; the value lives in the
+user's `.env`. This is the same client-agnostic rule that forbids hardcoding client names.
+
+### 29.5 Explainer shots (Remotion)
+
+| Key | Value |
+|---|---|
+| `shot_fps` | 30 |
+| `min_body_px` | 32 at 1080p |
+| `min_headline_px` | 64 at 1080p |
+| `min_contrast_ratio` | 4.5:1 against its own background |
+| `title_safe_margin_pct` | 5 |
+| palette / fonts | from the project's `strategic-brief.md`. **No palette ships in this plugin.** |
+
+---
+
+## Section 30 — Subtitle Style (v3.0.0)
+
+Read with `reference/post-production/16-subtitles-and-captions.md`.
+
+### 30.1 Defaults per aspect ratio
+
+| Key | 16:9 (1920x1080) | 9:16 (1080x1920) | 1:1 |
+|---|---|---|---|
+| `font` | Inter | Inter | Inter |
+| `size_px` | 54 | 68 | 60 |
+| `stroke_px` | 3 | 4 | 3 |
+| `position` | bottom | bottom | bottom |
+| `margin_v_pct` | 8 | 18 | 12 |
+| `max_chars_per_line` | 38 | 26 | 32 |
+| `max_lines` | 2 | 2 | 2 |
+
+Vertical carries a much higher bottom margin because the platform's own interface — caption text,
+buttons, the progress bar — sits over the lower band and will cover anything placed there.
+
+### 30.2 Floors that are not style choices
+
+| Rule | Value |
+|---|---|
+| Contrast, caption against its outline and backing | ≥ 4.5:1 |
+| Every character drawable by the chosen font | required |
+| Text clipped to fit | never — wrap, or split into two cues |
+| Timing invented when no source exists | never — list the scene as untimed |
+
+### 30.3 Captions vs the `no subtitles` prompt negative
+
+Both apply at once and do not conflict. The prompt negative stops the video model drawing text into
+the picture; burned captions are added afterwards from the script. The em-dash ban applies to spoken
+text only: a printed caption keeps the em dash.

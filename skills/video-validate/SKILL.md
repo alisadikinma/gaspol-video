@@ -19,6 +19,7 @@ Unified validation skill for the AI Video Promo Engine. Covers 5 validation targ
 | `--script` | Script output quality | av-script.md + strategic-brief.md |
 | `--image` | NB2 prompt rules + actual keyframe image review | image-prompts.md + keyframes/*.png |
 | `--video` | VEO prompt rules | video-prompts.md + scene-plan.md |
+| `--post` | Post-production: rendered master and plan files (P1-P3) |
 | `--refs` | Cross-file reference consistency (24 checks) | All reference + skill + agent files |
 | `--all` | Everything above | All files |
 
@@ -127,6 +128,14 @@ E) All — validate everything
 
 ### Part B: Actual Image Checks (Multimodal)
 
+### Check I17: Explainer Scenes Have No Keyframe (v3.0.0)
+
+Read `scene-plan.md`. For every scene whose `Render Path` is `explainer`, assert `image-prompts.md`
+contains NO prompt for it. An explainer scene is built as a Remotion shot in Phase 4.5; a keyframe
+for it is spend with no consumer.
+
+FAIL lists the scene numbers that have both. Mirrors reviewer check C6.
+
 ### Check I11: Read Keyframe Images
 **How:** READ each .png file in keyframes/ folder (multimodal)
 **Expected:** Images are readable and match scene numbering
@@ -200,6 +209,27 @@ E) All — validate everything
 ### Check V11: Transition Instructions
 **How:** Scene-ending clips should have transition end instruction
 **Expected:** Transition instruction present on scene boundaries
+
+### Check V13: No Double Audio (v3.0.0)
+
+Read `audio-plan.md`. For every scene whose `audio_source` is `elevenlabs`, assert its prompt in
+`video-prompts.md` carries no speech line (`Host says:`, `Presenter says:`, `Voice-over narrator`) and
+does carry the verbatim negative `no speech, no voiceover, no dialogue`, with SFX and ambient intact.
+
+Scenes whose `audio_source` is `platform-native` are checked by V3 to V6 as before — flagging a
+required `Voice-over narrator` line there is a false positive, not a finding.
+
+Mirrors reviewer check C5.
+
+### Check V14: Voice Profile Resolvable (v3.0.0)
+
+For every cast member with a spoken line in `av-script.md`, assert `cast-profile.md` has a `VOICE:`
+block naming a `voice_env` (not a voice id), with `model: eleven_multilingual_v2`, and a `source` that
+matches whether they speak on camera.
+
+FAIL lists the characters with no block. The fix is to ask the user, never to substitute a voice.
+
+Mirrors reviewer check C8.
 
 ### Check V12: NB2→VEO Consistency
 **How:** Compare VEO prompt visual description with corresponding NB2 prompt/image
@@ -424,6 +454,44 @@ Run 24 automated consistency checks across all operational files. Reports PASS/F
 7. Verify `video-prompt-reviewer.md` has checklist item for inline-only pattern verification
 
 ---
+
+## Post-Production Validation (`--post`)
+
+Runs against the rendered artefacts in `{output_folder}/output/` and the plan files in
+`{output_folder}/work/`. Unlike the other modes this one reads MEDIA, not prompts.
+
+### Check P1: A/V Duration Gate (v3.0.0)
+
+```bash
+ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 output/master.mp4
+ffprobe -v error -select_streams a:0 -show_entries stream=duration -of csv=p=0 output/master.mp4
+```
+
+Equal within 0.04s. A larger difference is a FAIL and the render is rejected. A missing audio stream
+is a FAIL. Mirrors reviewer check C7.
+
+### Check P2: Every Scene Accounted For (v3.0.0)
+
+Every scene in `scene-plan.md` appears in `edit-plan.json` exactly once, as a `clip` segment when its
+Render Path is `live-action` and as a `shot` segment when it is `explainer`. A missing scene is a
+silently shortened video.
+
+### Check P3: No Oversized Pads (v3.0.0)
+
+No segment has `pad_end_s` above 1.0s without a note in the plan saying why. A long freeze reads as a
+stall; if it is intentional, it is written down.
+
+### Check P4: Caption Text Matches The Script (v3.0.0)
+
+Every cue in `subtitle-plan.json` carries its script line verbatim. ASR output supplies timing only;
+text that differs from the script is a FAIL. Cues must not overlap and must sit inside the master.
+An em dash in a caption is correct — the ban is on spoken text. Mirrors reviewer check C9.
+
+### Check P5: Music Under The Voice, Fail-Soft (v3.0.0)
+
+The bed measures at least 12 dB below the voice, segments do not overlap, and the track traces back
+to the script's music direction. A music failure that left a voice-only master plus a warning is a
+PASS, not a finding. Mirrors reviewer check C10.
 
 ## Output Format
 

@@ -116,6 +116,90 @@ For EACH prompt in the batch, run ALL checks below. Report PASS or FAIL per chec
 - [ ] Hard cut (env differs) WITH cross-ref → FAIL, recommend drop `scene-{NN-1}-end.png` and use text-only continuity (identity ref + prop ref + costume verbatim + NARRATIVE CONTEXT block)
 - [ ] Same-env cross-ref → PASS
 
+### C5. No Double Audio (Phase 5 platform prompts — v3.0.0)
+
+Read `audio-plan.md` for each scene's `audio_source`, then check its platform prompt.
+
+For a scene whose `audio_source` is `elevenlabs`:
+- FAIL if the prompt contains `Host says:`, `Presenter says:`, or `Voice-over narrator`.
+- FAIL if the negative block does not contain, verbatim, `no speech, no voiceover, no dialogue`.
+- FAIL if SFX or ambient layers were dropped. Only SPEECH moves out; audio is still never optional.
+
+For a scene whose `audio_source` is `platform-native`:
+- The existing rules apply unchanged. A B-Roll scene still needs `Voice-over narrator, [tone]:` plus
+  its `> POST-PROD VO:` backup, and reporting that as a violation is itself a FAIL of this check.
+
+The failure this catches is two voices over one picture: the platform inventing narration while
+ElevenLabs supplies the real one.
+
+### C6. Render Path Honoured (Phase 3 scene-plan + Phase 4B/5 prompts — v3.0.0)
+
+Cross-check `scene-plan.md`'s `Render Path` column against what was actually produced.
+
+- Every scene has a `Render Path`, either `live-action` or `explainer`. A blank cell is a FAIL, not a
+  default.
+- An `explainer` scene has **no** NB2 keyframe prompt and **no** platform prompt. Either one present
+  is a FAIL — it means credits were spent on an artefact nothing consumes.
+- A `live-action` scene has BOTH, as before.
+- A scene recorded as `live-action + overlay:<shot-id>` is checked as `live-action`, and the named
+  shot id must exist in the Phase 4.5 shot list.
+- `Render Path` is not `Scene Type`. `Scene Type` (B-Roll / Presenter) says who is on screen and is
+  unrelated; do not report one as the other.
+
+FAIL output names the scene, the declared Render Path, and which artefact should not exist.
+
+### C7. A/V Duration Gate (Phase 6 rendered master — v3.0.0)
+
+For any rendered master, assert `ffprobe` reports the same duration for `v:0` and `a:0` within
+**0.04s**, one frame at 25fps.
+
+- A difference above the tolerance is a FAIL. The render is rejected, never shipped with a note.
+- A missing audio stream is a FAIL: a master with no sound is a defect, not a style.
+- **Do not accept a tolerance that grows with the timeline.** Drift accumulates, so a budget scaled to
+  duration hides the fault this check exists to catch. Equality is the only version that works.
+- A few milliseconds of audio overhang is normal — AAC encodes in frames of 1024 samples — which is
+  what the fixed tolerance covers.
+
+### C8. Voice Profile Resolvable (Phase 5 + Phase 6 — v3.0.0)
+
+Cross-check `cast-profile.md` against `av-script.md` and `audio-plan.json`.
+
+- Every cast member with a spoken line has a `VOICE:` block. Missing block = FAIL, and the correct
+  response is to stop and ask, never to pick a voice.
+- Each block names a `voice_env`, not a voice id. **A literal voice id in the repo is a FAIL** — it is
+  account-specific data in a client-agnostic plugin.
+- `model` is `eleven_multilingual_v2`. `v3` is a FAIL: no PVC fine-tune means the identity drifts
+  between requests.
+- `source` matches the character's screen presence: `native+changer` where they speak with the face
+  over 30% of frame, `tts` where they never do.
+- A character whose `source` is `native+changer` has a conversion layer in `audio-plan.json` for every
+  scene where they speak. A locked-voice character shipping with un-converted platform audio is a
+  FAIL — that is the drift this whole system exists to prevent.
+
+### C9. Caption Text Comes From The Script (Phase 6 subtitles — v3.0.0)
+
+Check `subtitle-plan.json` against `av-script.md`.
+
+- Every cue's text matches its script line word for word. **ASR output must never reach the screen** —
+  the recognizer supplies timing only. A cue whose text differs from the script is a FAIL even when it
+  reads plausibly, because that is exactly what a mangled product name looks like.
+- No cue starts before its scene or ends after the master.
+- No two cues overlap in time.
+- A scene listed under `untimed` is reported, not silently missing: captions were not invented for it.
+- An em dash in a caption is **correct** and must not be flagged. The em-dash ban covers spoken text,
+  where the audio engine mistranslates it; printed text is not read aloud.
+
+### C10. Music Sits Under The Voice, And Fails Soft (Phase 6 music — v3.0.0)
+
+- The bed measures at least 12 dB below the voice at every window. A bed that peaks above the voice
+  at any point is a FAIL: music is the floor, never a layer that competes.
+- The track was derived from the per-scene music direction in `av-script.md` and the video tone, not
+  chosen freshly. A bed unrelated to what the script asked for is a FAIL.
+- Segments do not overlap. Touching end-to-start is correct.
+- **A failed music mix is NOT a failed phase.** If a track could not load or mix, the correct state is
+  a shipped voice-only master plus a recorded warning. Reporting that as a blocking failure is itself
+  a FAIL of this check — the asymmetry against the A/V gate is deliberate.
+
 ## Output Format
 
 Return a structured report:
@@ -137,6 +221,12 @@ Return a structured report:
 - C2: Phase 4A (asset list) only — N/A for Phase 4B/Phase 5
 - C3: Phase 4B (scene prompts) only — N/A for Phase 4A/Phase 5
 - C4: Phase 4B (scene prompts) only — N/A for Phase 4A/Phase 5
+- C5: Phase 5 (platform prompts) only — needs audio-plan.md as ground truth
+- C6: Phase 3 (scene-plan) + Phase 4B + Phase 5 — checks the Render Path column is honoured
+- C7: Phase 6 (rendered master) only — needs the output file, not the prompts
+- C8: Phase 5 + Phase 6 — needs cast-profile.md and audio-plan.json
+- C9: Phase 6 (subtitles) only — needs subtitle-plan.json and av-script.md
+- C10: Phase 6 (music) only — needs music-plan.json and the mixed master
 
 ### Issues Found (FAIL items only)
 
