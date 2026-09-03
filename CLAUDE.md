@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that generates complete promotional video production packages: from brainstorm to script to image prompts (NB2) to video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0). 4 production skills + 1 orchestrator + 2 utility skills + 2 agents + 25 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0), Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 10 CLI tools + 33 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -31,6 +31,9 @@ Claude Code plugin that generates complete promotional video production packages
 | `/video-post` | Phase 6: voice-over, assembly, SFX, subtitles, music, final mix |
 | `/video-package` | Phase 7: locked title, three thumbnail bets, description |
 | `/video-validate` | Unified validator: `--script` / `--image` / `--video` / `--refs` / `--all` |
+| `/video-explainer` | Phase 4.5: Remotion shots for scenes that must be readable |
+| `/video-post` | Phase 6: voice-over, edit, SFX, subtitles, music, final mix |
+| `/video-package` | Phase 7: title, thumbnail bets, description |
 | `/video-add-platform` | Scaffold new AI video platform support |
 
 ## Architecture
@@ -49,7 +52,15 @@ Claude Code plugin that generates complete promotional video production packages
 | `skills/video-post/SKILL.md` | Phase 6 — five post-production passes, clips to a finished file |
 | `skills/video-package/SKILL.md` | Phase 7 — title, thumbnail bets, description; rendering routed to the image plugin |
 | `skills/video-validate/SKILL.md` | Unified validator (--script / --image / --video / --refs / --all) |
+| `skills/video-explainer/SKILL.md` | Phase 4.5 — Remotion explainer shots (scenes with legible text) |
+| `skills/video-post/SKILL.md` | Phase 6 — five passes: VO, edit, SFX, subtitles+music, mix |
+| `skills/video-package/SKILL.md` | Phase 7 — title, thumbnail bets, description |
 | `skills/video-add-platform/SKILL.md` | Scaffold new video platform support |
+| `tools/` | 10 zero-dependency CLI tools for phases 4.5-7 (python3 stdlib + node builtins + ffmpeg) |
+| `templates/remotion/` | Remotion shot template, brand token placeholder, workspace scaffolder |
+| `media/sfx/library/` | SFX recipes (`palette.json`); clips are generated per install, never committed |
+| `media/music/library/` | Music mood palette mapped to the six tones; tracks never committed |
+| `.env.example` | Names of the environment variables the tools read. Never their values |
 | `agents/video-engine-agent.md` | Subagent for batch/complex video production (6-phase pipeline) |
 | `agents/video-prompt-reviewer.md` | Independent validator — reviews NB2/VEO prompt batches for quality |
 | `reference/` | reference docs read on-demand by skill/agent |
@@ -268,17 +279,22 @@ Each phase loads ONLY the reference files it needs — NOT all 23. This prevents
 | Phase 3.5 | global-promo-config, creator-profile-system | 2 |
 | Phase 4A | global-promo-config, 01-nb2, script-to-scene-bridge (7B only) | 3 |
 | Phase 4B | global-promo-config, 01-nb2, script-to-scene-bridge, 04-cinematography | 4 per batch |
+| Phase 4.5 (explainer) | global-promo-config §29.5, 12-remotion-explainer | 2 per shot |
 | Phase 5 (VEO) | global-promo-config, 02-veo, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
 | Phase 5 (Seedance) | global-promo-config, 07-seedance, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
 | Phase 5 (Kling) | global-promo-config, 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
-| Phase 4.5 (explainer) | global-promo-config §29.5, 12-remotion-explainer | 2 per shot |
+| Phase 5 (Mixed) | global-promo-config, 02-veo + 07-seedance + 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 7 per batch (one-time platform-guide load + voice workflow, then filter per scene) |
 | Phase 6 pass 1 (audio) | global-promo-config §29, 11-voice-cast-and-vo | 2 |
 | Phase 6 pass 2 (edit) | global-promo-config §29, 13-ffmpeg-edit | 2 |
 | Phase 6 pass 3 (SFX) | global-promo-config §29, 14-sfx-design | 2 |
 | Phase 6 pass 4 (subs+music) | global-promo-config §29-30, 16-subtitles-and-captions, 17-music-bed | 3 |
-| Phase 5 (Mixed) | global-promo-config, 02-veo + 07-seedance + 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 7 per batch (one-time platform-guide load + voice workflow, then filter per scene) |
+| Phase 6 pass 5 (final mix) | global-promo-config §29, 10-post-production-pipeline | 2 |
+| Phase 7 (packaging) | global-promo-config §29, 15-packaging | 2 |
 
 Phase 4B and 5 also load per-batch filtered data from output files (cast entries + scene entries for current batch only).
+
+Phases 4.5, 6 and 7 stay small on purpose: each pass reads its own reference plus the plan file the
+previous pass wrote, never the storytelling set. A post-production pass has no use for the hook vault.
 
 ### Prompt Reviewer Agent (Independent Validator)
 
@@ -556,12 +572,42 @@ All configurable values live in `reference/global-promo-config.md` — single so
 | **(v2.3.0) Kling Motion Control character faces wrong direction** | Character Orientation parameter set wrong. Toggle: `Follow Video` (replicate motion-ref spatial position) for complex motion / `Follow Image` (maintain anchor composition) when camera dominates body motion. |
 | **(v2.3.0) Kling First+Last Frame rejected as "prominent people"** | Same VEO safety filter — 2 photoreal face images = rejection. For face-dominant scenes (face >30% frame) use single I2V mode. First+Last Frame in Kling is for faceless scenes only (dashboards, products, environments). |
 | **(v2.3.0) Kling clip dialogue rushed/clipped** | Dialogue exceeds ~2.5 words/sec budget. Kling has PER-SECOND duration selector (3/4/5/6/7/8/9/10/11/12/13/14/15s) — bump duration up by 1-2 seconds to fit. E.g., 12-word line at 5s = rushed → use 6s instead. No need to split scenes just for pacing. |
+| **(v3.0.0) Same line spoken twice, once by the platform and once by the VO** | Scene has `audio_source: elevenlabs` but its platform prompt still carries a speech line. Strip the line and add the verbatim negative `no speech, no voiceover, no dialogue`. A face >30% frame should be `platform-native` instead, then normalised with the Voice Changer |
+| **(v3.0.0) A second speaker in the clip came back in the target voice** | Whole-track speech-to-speech converts every voice on the track. Pass `--spans START-END` with only the target's turns; take them from `av-script.md`, never from speaker diarization (it merged two AI voices into one label on a real clip) |
+| **(v3.0.0) Voice Changer refuses with a drift number** | Drift past 0.05s means lip-sync would no longer match. Do NOT stretch the audio — that produces exactly the artefact the locked voice exists to avoid. Reopen the mixed-source decision for that scene |
+| **(v3.0.0) `voice env ELEVENLABS_VOICE_C2 not set`** | The `VOICE:` block names an env var that `.env` does not define. Add it. The tool never substitutes another voice, by design |
+| **(v3.0.0) Explainer scene has no rendered shot** | Scene's Render Path is `explainer` but Phase 4.5 never ran for it, or the render failed. Check `{output_folder}/shots/out/`. Never fall back to a generated clip: the platform cannot render legible text, which is the whole reason for the routing |
+| **(v3.0.0) A/V duration mismatch stops the edit** | A clip's audio and video lengths differ past tolerance. Fix the clip or the plan; the gate exists because a drift of a few frames per clip compounds across a whole timeline |
+| **(v3.0.0) An SFX cue measures +0 dB no matter the gain** | The cue sits fully under continuous speech, so the duck suppresses it the whole time. Accept it as felt-not-heard, or delete it. Never chase it with gain — it spikes the moment a pause arrives |
+| **(v3.0.0) Caption text differs from the script** | Captions are built from `av-script.md`; ASR supplies TIMING only. A wrong word means the cue was hand-edited or a scene had no timing source and was left in `untimed` — timings are never guessed |
+| **(v3.0.0) Music makes the voice hard to follow** | Bed is too loud under speech, or the duck is not engaging. Check the headroom measurement the music pass prints; the bed fails soft (no music) rather than shipping a mix that buries the narration |
+| **(v3.0.0) Thumbnail promises more than the video delivers** | Packaging honesty guardrail. The frame's promise must sit inside what the video actually shows. Pick a different lever, not a bigger claim |
 | **(v2.3.0) Kling duration mismatch (padding or rushing)** | Picked 8s default when scene needed 5s (awkward pause) OR picked 5s when needed 9s (rushed). Use Kling's per-second selector — pick exact duration matching natural dialogue/beat pace. Eliminates re-pacing in post-edit. |
 
 ---
 
-**Version:** 2.4.0
-**Last Updated:** 2026-05-16
+**Version:** 3.0.0
+**Last Updated:** 2026-09-03
+
+### v3.0.0 Changelog
+
+- **Renamed** `ai-video-promo-engine` → **`gaspol-video`**, published through the `gaspol-one` marketplace.
+- **Three new skills:** `/video-explainer` (Phase 4.5, Remotion shots for scenes that must be readable),
+  `/video-post` (Phase 6, five passes: VO → edit → SFX → subtitles+music → mix), `/video-package`
+  (Phase 7, title + thumbnail bets + description).
+- **Ten CLI tools** in `tools/`, zero dependencies: python3 stdlib, node builtins, ffmpeg.
+- **Eight new references** in `reference/post-production/` (10 through 17), plus §29-30 in the global config.
+- **Render Path** column added to the Scene Breakdown table: `platform` or `explainer`, decided at Phase 3,
+  before NB2 credits are spent.
+- **Voice cast:** per-character `VOICE:` block in `cast-profile.md`. Voice ids live in `.env` and are named,
+  never written, in the repo.
+- **Speech-to-speech converts spans, not tracks** (fix after a real multi-speaker failure) — see the
+  debugging rows above and `docs/evals/voice-changer-probe.md` run 4.
+- **Adopted from `hassancs91/claude-youtube-editor`:** ElevenLabs VO and voice changing, AssemblyAI timing,
+  ffmpeg assembly, packaging decisions. **From `harry0703/MoneyPrinterTurbo`:** burned subtitles and the
+  music bed. Rejected from both: clean-cut, brand-setup, YouTube upload, stock-footage matching, the LLM
+  script writer, the WebUI and service layer, moviepy, `edge-tts`, and any local whisper model. See `NOTICE`.
+- **Validator:** agent checks C5-C10, plus I17, V13, V14 and a new `--post` section (P1-P5).
 
 ### v2.4.0 Changelog
 

@@ -1,8 +1,15 @@
-# AI Video Promo Engine
+# gaspol-video
 
-**v2.4.0** — Claude Code plugin that generates complete promotional video production packages — from brainstorm to script to image prompts (NB2) to video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0) with cross-platform voice-over consistency workflow.
+**v3.0.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0), Remotion shots for anything that must be readable, then post-production and packaging.
 
-Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
+Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
+
+> **v3.0.0 — the plugin now finishes the video.** Phases 4.5, 6 and 7 are new: `/video-explainer`
+> renders scenes that must be READABLE as coded Remotion shots (no video platform renders legible
+> text); `/video-post` builds the voice-over, assembles with ffmpeg under an A/V duration gate,
+> scores domain-aware SFX, burns captions taken from the script, lays a music bed and mixes;
+> `/video-package` decides the title, three thumbnail bets and the description.
+> Renamed from `ai-video-promo-engine`. See [v3.0.0 Changelog](#v300-changelog).
 
 > **v2.4.0 expansion:** Cross-platform voice-over consistency workflow added. New reference `09-voice-consistency-workflow.md` covers 3 solution paths (native voice lock per platform, ElevenLabs Voice Changer post-prod, single-VO sync), prompt-level discipline rules, hybrid workflows per video type. New Step 5.0a Voice Consistency Strategy in Phase 5 runs BEFORE platform selection. Mandatory for any video with >1 scene or character voice continuity. See [v2.4.0 Changelog](#v240-changelog).
 
@@ -14,7 +21,7 @@ Anyone — video agencies, freelancers, brand owners — can produce professiona
 
 ## What It Does
 
-Give it a product or service, and the engine walks you through a 6-phase pipeline:
+Give it a product or service, and the engine walks you through the pipeline, Phase 1 to Phase 7:
 
 1. **Brainstorm** — language selection, cast builder (1-5 characters), institution detection, target market, awareness level, storyline input, tone/mood selection
 2. **Script** — 2-3 min A/V script with 7-beat narrative arc (or 6-stage user framework alias: HOOK → Foreshadow → BODY 1 → BODY 2 → Peak → Ending+CTA), beat labels, timing, narration, audio direction. v2.2.0+: BODY 1 Completeness rule enforces ALL identified pains dramatized as dedicated scenes.
@@ -23,7 +30,30 @@ Give it a product or service, and the engine walks you through a 6-phase pipelin
 5. **Image Prompts (NB2)** — Phase 4A: asset library (atoms with dependency graph) → Phase 4B: scene keyframes (molecules composed from assets)
 6. **Video Prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0)** — per-scene prompts with camera movement, 3-layer audio, lip sync, extensions, vocal performance direction. Phase 5 starts with platform selection (or Mixed for per-scene routing). VEO 3.1: broadcast cinematic, prompt-faithful, 8s + extend to 148s. Seedance 2.0: native 2K, @ reference system (12 assets), dual-branch AV, 10+ lip-sync languages, unlimited extension. **Kling 3.0 (new in v2.3.0):** 5-part prompt formula, per-second duration (3-15s), multi-shot storyboard (6 shots in single render), mixed-language scene unique, Motion Control sub-model, omni audio (5 languages — no Bahasa Indonesia lip-sync)
 
-Each phase has a user approval gate before proceeding. Phase 3.5 (Reference Collection) is a hard block — 100% of reference images must be validated before image generation.
+6.5. **Explainer Shots (Remotion)** — scenes whose Render Path is `explainer` are coded, not generated: metrics, diagrams, tables, UI walkthroughs. Decided at Phase 3, before any NB2 credit is spent. Reveals are timed to the narration, and each cue is verified by looking at a still.
+7. **Post-Production** — five passes in a fixed order: voice-over (ElevenLabs TTS plus speech-to-speech for platform-spoken dialogue), ffmpeg assembly under an A/V duration gate, domain-aware SFX scored from the brief's DOMAIN CONTEXT, captions built from the script with AssemblyAI supplying timing only, a music bed that ducks under the voice, then the final mix.
+8. **Packaging** — one locked title, three thumbnail bets on different levers, one value-forward description, with an honesty guardrail that keeps the frame's promise inside what the video delivers.
+
+Each phase has a user approval gate before proceeding. Phase 3.5 (Reference Collection) is a hard block — 100% of reference images must be validated before image generation. The Phase 6 SFX cue sheet is a second hard gate: nothing is mixed until you have read it.
+
+## Requirements
+
+| What | Needed for | If missing |
+|---|---|---|
+| Claude Code | everything | — |
+| `ffmpeg` / `ffprobe` on PATH | Phase 6 assembly, SFX, captions, music, mix | Plans are still written and printed; nothing is rendered, and the skill says so |
+| `node` 20+ | voice-over and voice changing | Those passes are skipped, named, not silently dropped |
+| `python3` | every other tool (stdlib only, no pip install) | — |
+| `ELEVENLABS_API_KEY` in `.env` | voice-over, voice changing, SFX generation | Dialogue stays in the platform's own voice; every recipe that could not be made is listed with its prompt |
+| `ASSEMBLYAI_API_KEY` in `.env` | caption timing for platform-spoken dialogue | Those scenes are listed as untimed. Timings are never guessed |
+| Node + `npx` | Remotion explainer shots | Shot source is still written; rendering is left to you |
+
+Copy `.env.example` to `.env` and fill in the values. **`.env` is gitignored and the repo only ever
+names variables, never their values** — a voice id identifies one person's cloned voice on one
+account, and does not belong in a plugin.
+
+**Nothing degrades silently.** Every tool that cannot do its job says what it could not do and what
+to run to fix it, then lets the rest of the pipeline continue.
 
 ## Installation
 
@@ -61,7 +91,7 @@ Then restart Claude Code. The plugin auto-registers on session start.
 /video-full
 ```
 
-Starts the full interactive pipeline. The orchestrator runs all 4 production skills in sequence, asking questions and generating outputs phase-by-phase with approval gates.
+Starts the full interactive pipeline. The orchestrator runs all 7 production skills in sequence, asking questions and generating outputs phase-by-phase with approval gates. It stops before Phase 6 until you have actually rendered the platform clips — post-production runs on video, not on prompts.
 
 **Flags:**
 - `--full` (default) — full production plan with storyboard notes, NB2 prompts, VEO prompts, audio specs, extension strategy, post-production checklist
@@ -76,13 +106,16 @@ Run any phase independently:
 /video-brainstorm      # Phase 1: brainstorm, cast, product, location, domain research
 /video-script          # Phase 2-3.5: script, scene breakdown, reference collection
 /video-image           # Phase 4: NB2 asset library + scene keyframes
-/video-gen             # Phase 5: image review + VEO video prompts
+/video-explainer       # Phase 4.5: Remotion shots for scenes that must be readable
+/video-gen             # Phase 5: image review + VEO / Seedance / Kling prompts
+/video-post            # Phase 6: voice-over, edit, SFX, subtitles, music, final mix
+/video-package         # Phase 7: title, thumbnail bets, description
 ```
 
 ### Utility Skills
 
 ```
-/video-validate            # Unified validator (--script / --image / --video / --refs / --all)
+/video-validate            # Unified validator (--script / --image / --video / --refs / --post / --all)
 /video-add-platform        # Scaffold support for a new AI video platform
 ```
 
@@ -99,7 +132,12 @@ Run any phase independently:
 | Video Generation (Primary) | VEO 3.1 — 720p/1080p, 8s clips, 148s extension chain |
 | Video Generation (Alt) | Seedance 2.0 — native 2K, 15s clips, @ reference system, dual-branch AV |
 | Pipeline (VEO) | NB2 image → VEO First+Last Frame / Ingredients → VEO Extend |
+| Video Generation (Alt) | Kling 3.0 — per-second duration 3-15s, multi-shot storyboard, omni audio |
 | Pipeline (Seedance) | NB2 image → Seedance @Image refs + Omni mode → Seedance @Video extend |
+| Readable Shots | Remotion — coded animation for metrics, diagrams, tables, UI |
+| Voice | ElevenLabs `eleven_multilingual_v2` (TTS) and `eleven_multilingual_sts_v2` (voice changing) |
+| Caption Timing | AssemblyAI. Caption TEXT always comes from the script, never from the recognizer |
+| Assembly and Mix | ffmpeg — concat, sidechain duck, loudnorm, burned subtitles |
 
 ## Key Features
 
@@ -126,6 +164,27 @@ Run any phase independently:
 > Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.
 
 The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
+
+## v3.0.0 Changelog
+
+- **Renamed** to `gaspol-video`, published through the `gaspol-one` marketplace.
+- **`/video-explainer` (Phase 4.5)** — Remotion shots for scenes that must be readable. Routing is
+  decided at Phase 3 through a new **Render Path** column, before NB2 credits are spent.
+- **`/video-post` (Phase 6)** — five passes in a fixed order: voice-over, ffmpeg assembly under an
+  A/V duration gate, domain-aware SFX with a measured audibility gate, captions built from the
+  script, a music bed that ducks under the voice, final mix.
+- **`/video-package` (Phase 7)** — one locked title, three thumbnail bets on different levers, one
+  description. The image itself is rendered by the image plugin through a soft reference.
+- **Voice cast** — a `VOICE:` block per speaking character in `cast-profile.md`. Voice ids live in
+  `.env` and are only ever NAMED in the repo.
+- **Speech-to-speech converts spans, not tracks.** Handing the API a whole clip converts every voice
+  on it: a supporting character came back in the target's voice on a real clip. `--spans` now
+  converts only the target's turns and splices them into the original audio.
+- **Ten CLI tools**, zero dependencies: python3 stdlib, node builtins, ffmpeg.
+- **Attribution** — ElevenLabs VO, voice changing, AssemblyAI timing, ffmpeg assembly and the
+  packaging decisions are adopted from [hassancs91/claude-youtube-editor]; burned subtitles and the
+  music bed from [harry0703/MoneyPrinterTurbo]. What was deliberately NOT taken from either is
+  listed in [NOTICE](NOTICE).
 
 ## v2.4.0 Changelog
 
@@ -258,8 +317,11 @@ skills/
   video-brainstorm/SKILL.md         # Phase 1 — brainstorm, cast, product, location
   video-script/SKILL.md             # Phase 2-3.5 — script, scene, reference collection
   video-image/SKILL.md              # Phase 4 — NB2 asset library + scene keyframes
-  video-gen/SKILL.md                # Phase 5 — image review + VEO video prompts
-  video-full/SKILL.md               # Orchestrator — runs all 4 skills in sequence
+  video-explainer/SKILL.md          # Phase 4.5 — Remotion shots for readable scenes
+  video-gen/SKILL.md                # Phase 5 — image review + video prompts
+  video-post/SKILL.md               # Phase 6 — VO, edit, SFX, subtitles+music, mix
+  video-package/SKILL.md            # Phase 7 — title, thumbnail bets, description
+  video-full/SKILL.md               # Orchestrator — runs all 7 skills in sequence
   video-validate/SKILL.md           # Unified validator (5 targets)
   video-add-platform/SKILL.md       # Scaffold new video platform
 agents/
@@ -271,6 +333,13 @@ reference/
   script-to-scene-bridge.md         # Script → scene → prompts bridge
   storytelling_script_gen/           # 12 storytelling & script reference files
   image-video-gen/                  # 9 image & video production reference files
+  post-production/                  # 8 post-production & packaging reference files
+tools/                              # 10 zero-dependency CLI tools (python3 / node / ffmpeg)
+templates/remotion/                 # Shot template, brand tokens, workspace scaffolder
+media/sfx/library/palette.json      # SFX recipes. Clips generated per install, never committed
+media/music/library/palette.json    # Music moods mapped to the six tones
+docs/evals/                         # Routing fixtures and the Voice Changer probe measurements
+.env.example                        # Variable NAMES the tools read. Never their values
 ```
 
 ## Configuration
@@ -289,4 +358,4 @@ All configurable values live in `reference/global-promo-config.md` — the singl
 
 ## Author
 
-**Ali Sadikin** — [GitHub](https://github.com/alisadikin)
+**Ali Sadikin** — [GitHub](https://github.com/alisadikinma)
