@@ -26,7 +26,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import _venv  # noqa: E402
-from tools.thumb_scrim import ThumbScrimError, parse_box  # noqa: E402
+from tools.thumb_scrim import (  # noqa: E402
+    ThumbScrimError,
+    open_image_or_raise,
+    parse_box,
+    require_min_jpg_size,
+)
 
 # (blur radius px, strength) — the multi-radius bloom that reads as a light source.
 GLOW_LAYERS = [(28, 0.85), (70, 0.70), (170, 0.55), (320, 0.32)]
@@ -60,7 +65,7 @@ def load_logo_layer(path, size):
     Image = _venv.require("PIL.Image")
     ImageChops = _venv.require("PIL.ImageChops")
 
-    src = Image.open(path)
+    src = open_image_or_raise(Image, path)
     has_alpha = src.mode in ("RGBA", "LA") and src.getchannel("A").getextrema() != (255, 255)
     rgb = src.convert("RGB")
     warn = False
@@ -101,15 +106,23 @@ def _save(im, out_path, jpg=False):
 
 
 def composite_logo(base_path, logo_path, out_path, clear_box=None, feather=34,
-                    bg=(4, 5, 6), center=None, size=940, glow=None, jpg=False):
-    """Paste `logo_path` onto `base_path`, writing `out_path`. Returns {"out", "warn"}."""
+                    bg=(4, 5, 6), center=None, size=940, glow=None, jpg=False,
+                    enforce_min_jpg=False):
+    """Paste `logo_path` onto `base_path`, writing `out_path`. Returns {"out", "warn"}.
+
+    `enforce_min_jpg` is the CLI's own `--jpg` size floor (YouTube's stated thumbnail
+    minimum, 1280x720) — off by default so direct/test callers using small fixture images
+    are unaffected; `main()` below turns it on.
+    """
     Image = _venv.require("PIL.Image")
     ImageDraw = _venv.require("PIL.ImageDraw")
     ImageFilter = _venv.require("PIL.ImageFilter")
     ImageChops = _venv.require("PIL.ImageChops")
 
-    base = Image.open(base_path).convert("RGB")
+    base = open_image_or_raise(Image, base_path).convert("RGB")
     W, H = base.size
+    if jpg and enforce_min_jpg:
+        require_min_jpg_size(W, H)
 
     if clear_box:
         box = clear_box if isinstance(clear_box, tuple) else parse_box(clear_box, W, H)
@@ -174,6 +187,7 @@ def main(argv=None):
         result = composite_logo(
             args.base, args.logo, args.out, clear_box=args.clear_box, feather=args.feather,
             bg=bg, center=center, size=args.size, glow=glow, jpg=args.jpg,
+            enforce_min_jpg=True,
         )
         if result["warn"]:
             print(

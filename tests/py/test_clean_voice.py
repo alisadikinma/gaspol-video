@@ -110,6 +110,27 @@ class CleanRnnoiseRealRunTest(unittest.TestCase):
         self.assertIn("duration changed", str(ctx.exception))
         self.assertFalse(out.exists(), "the drifted output must be deleted, not left behind")
 
+    @requires_ffmpeg
+    def test_unmeasurable_source_duration_refuses_rather_than_accepting(self):
+        src = make_clip(self.dir / "in.mp4", seconds=2.0)
+        out = self.dir / "out.mp4"
+        with mock.patch.object(clean_voice, "duration_of", side_effect=[None, 2.0]):
+            with self.assertRaises(clean_voice.CleanError) as ctx:
+                clean_voice.clean(src, out, method="rnnoise", model="sh")
+        self.assertIn("cannot measure duration", str(ctx.exception))
+        self.assertIn("lip-sync", str(ctx.exception))
+        self.assertFalse(out.exists(), "an unverifiable output must not be left behind")
+
+    @requires_ffmpeg
+    def test_unmeasurable_output_duration_refuses_rather_than_accepting(self):
+        src = make_clip(self.dir / "in.mp4", seconds=2.0)
+        out = self.dir / "out.mp4"
+        with mock.patch.object(clean_voice, "duration_of", side_effect=[2.0, None]):
+            with self.assertRaises(clean_voice.CleanError) as ctx:
+                clean_voice.clean(src, out, method="rnnoise", model="sh")
+        self.assertIn("cannot measure duration", str(ctx.exception))
+        self.assertFalse(out.exists(), "an unverifiable output must not be left behind")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -233,7 +233,10 @@ def clean(in_path, out_path, method="isolate", model="sh", preserve_level=True,
 
     src_dur = duration_of(in_path)
     out_dur = duration_of(out_path)
-    if src_dur is not None and out_dur is not None and abs(out_dur - src_dur) > 0.05:
+    if src_dur is None or out_dur is None:
+        out_path.unlink(missing_ok=True)
+        raise CleanError("cannot measure duration; refusing because lip-sync cannot be checked")
+    if abs(out_dur - src_dur) > 0.05:
         drift = out_dur - src_dur
         out_path.unlink(missing_ok=True)
         raise CleanError(f"duration changed by {drift:+.3f}s; lip-sync would drift")

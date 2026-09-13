@@ -23,12 +23,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools.gen_subs import derive_keyterms, transcribe_assemblyai  # noqa: E402
+from tools.gen_subs import SubtitleError, derive_keyterms, transcribe_assemblyai  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 
@@ -521,9 +522,18 @@ def verify(project, master=None, asr_json=None, env=None, log=print):
 
     result = analyze(intended, rendered)
     report_text = build_report(result)
+    header_line = report_text.splitlines()[0]
+
+    scene_count = len(audio_plan.get("scenes", []))
+    segment_count = len(edit_plan.get("segments", []))
+    if segment_count < scene_count:
+        note = f"drift check skipped: {segment_count} edit segments for {scene_count} scenes"
+        log(note)
+        report_text = note + "\n\n" + report_text
+
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(report_text)
-    log(report_text.splitlines()[0])
+    log(header_line)
     return {"exit_code": result["exit_code"], "report_path": str(report_path), "result": result}
 
 
@@ -555,6 +565,12 @@ def main(argv=None):
             print(f"wrote {outcome['report_path']}")
         return outcome["exit_code"]
     except VerifyError as exc:
+        print(f"verify_render: {exc}", file=sys.stderr)
+        return 1
+    except SubtitleError as exc:
+        print(f"verify_render: {exc}", file=sys.stderr)
+        return 1
+    except (urllib.error.URLError, OSError) as exc:
         print(f"verify_render: {exc}", file=sys.stderr)
         return 1
 

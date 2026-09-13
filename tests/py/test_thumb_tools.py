@@ -1,11 +1,15 @@
 import importlib.util
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from tools import thumb_scrim
+from tools import _venv, thumb_scrim
 
 HAS_PIL = importlib.util.find_spec("PIL") is not None
+HAS_VENV = _venv.venv_python().exists()
+ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class WcagContrastTest(unittest.TestCase):
@@ -93,6 +97,37 @@ class ScrimContrastTest(unittest.TestCase):
         top_after = out.getpixel((500, 10))
         self.assertLess(sum(top_after), sum(top_before))
 
+    def test_missing_input_is_a_clear_error_not_a_traceback(self):
+        rc = thumb_scrim.main([
+            "--in", str(self.dir / "does-not-exist.png"), "--out", str(self.dir / "out.png"),
+        ])
+        self.assertEqual(rc, 1)
+
+    def test_unreadable_input_is_a_clear_error(self):
+        bad = self.dir / "not-an-image.png"
+        bad.write_bytes(b"this is not a png file, just text pretending to be one")
+        rc = thumb_scrim.main(["--in", str(bad), "--out", str(self.dir / "out.png")])
+        self.assertEqual(rc, 1)
+
+    def test_jpg_below_youtube_minimum_is_refused(self):
+        # self.path is 640x360, well under the 1280x720 YouTube minimum.
+        rc = thumb_scrim.main([
+            "--in", str(self.path), "--out", str(self.dir / "out.png"), "--jpg",
+        ])
+        self.assertEqual(rc, 1)
+        self.assertFalse((self.dir / "out.jpg").exists())
+
+    def test_jpg_at_or_above_youtube_minimum_is_allowed(self):
+        from PIL import Image
+
+        big_path = self.dir / "big.png"
+        Image.new("RGB", (1280, 720), (50, 50, 50)).save(big_path)
+        rc = thumb_scrim.main([
+            "--in", str(big_path), "--out", str(self.dir / "out.png"), "--jpg",
+        ])
+        self.assertEqual(rc, 0)
+        self.assertTrue((self.dir / "out.jpg").exists())
+
 
 @unittest.skipUnless(HAS_PIL, "Pillow not installed on this interpreter")
 class CompositeLogoTest(unittest.TestCase):
@@ -162,6 +197,94 @@ class CompositeLogoTest(unittest.TestCase):
         self.assertNotIn("247,130,74", source)
         self.assertNotIn("217,119,87", source)
         self.assertNotIn("--tile", source)
+
+    def test_missing_base_is_a_clear_error_not_a_traceback(self):
+        from tools import composite_logo
+
+        rc = composite_logo.main([
+            "--base", str(self.dir / "does-not-exist.png"), "--logo", str(self.logo_path),
+            "--out", str(self.dir / "out.png"),
+        ])
+        self.assertEqual(rc, 1)
+
+    def test_missing_logo_is_a_clear_error(self):
+        from tools import composite_logo
+
+        rc = composite_logo.main([
+            "--base", str(self.base_path), "--logo", str(self.dir / "does-not-exist.png"),
+            "--out", str(self.dir / "out.png"),
+        ])
+        self.assertEqual(rc, 1)
+
+    def test_unreadable_base_is_a_clear_error(self):
+        from tools import composite_logo
+
+        bad = self.dir / "not-an-image.png"
+        bad.write_bytes(b"definitely not a png")
+        rc = composite_logo.main([
+            "--base", str(bad), "--logo", str(self.logo_path), "--out", str(self.dir / "out.png"),
+        ])
+        self.assertEqual(rc, 1)
+
+    def test_jpg_below_youtube_minimum_is_refused(self):
+        from tools import composite_logo
+
+        # self.base_path is 400x400, well under the 1280x720 YouTube minimum.
+        rc = composite_logo.main([
+            "--base", str(self.base_path), "--logo", str(self.logo_path),
+            "--out", str(self.dir / "out.png"), "--jpg",
+        ])
+        self.assertEqual(rc, 1)
+        self.assertFalse((self.dir / "out.jpg").exists())
+
+    def test_jpg_at_or_above_youtube_minimum_is_allowed(self):
+        from PIL import Image
+        from tools import composite_logo
+
+        big_path = self.dir / "big-base.png"
+        Image.new("RGB", (1280, 720), (10, 10, 10)).save(big_path)
+        rc = composite_logo.main([
+            "--base", str(big_path), "--logo", str(self.logo_path),
+            "--out", str(self.dir / "out.png"), "--jpg",
+        ])
+        self.assertEqual(rc, 0)
+        self.assertTrue((self.dir / "out.jpg").exists())
+
+
+@unittest.skipUnless(HAS_VENV, "no dedicated venv (tools/setup.sh) on this machine")
+class StdlibSafeMissingFileTest(unittest.TestCase):
+    """These tests never import PIL themselves — they shell out to the CLI under the bare
+    `python3` on PATH, relying on `tools/_venv.py`'s own re-exec into the dedicated venv (the
+    same thing a real invocation does), so the missing-file path is exercised without this
+    test file needing Pillow at all."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _run(self, script, args):
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tools" / script)] + args,
+            capture_output=True, text=True,
+        )
+
+    def test_thumb_scrim_missing_input(self):
+        proc = self._run("thumb_scrim.py", [
+            "--in", str(self.dir / "nope.png"), "--out", str(self.dir / "out.png"),
+        ])
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("thumb_scrim:", proc.stderr)
+
+    def test_composite_logo_missing_base(self):
+        proc = self._run("composite_logo.py", [
+            "--base", str(self.dir / "nope.png"), "--logo", str(self.dir / "nope2.png"),
+            "--out", str(self.dir / "out.png"),
+        ])
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("composite_logo:", proc.stderr)
 
 
 if __name__ == "__main__":

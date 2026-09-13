@@ -268,6 +268,84 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def run_steps(page, steps, project, base_url):
+    """Execute `steps` against `page` (a Playwright Page, or any object with the same
+    goto/wait_for_timeout/wait_for_selector/click/fill/keyboard.press/mouse.wheel/screenshot
+    surface — a fake in tests). Returns `(entries, shot_count)`.
+
+    Every step failure is wrapped as `ScreenError(f"step {i:02d} {key}: {message}")` so a
+    broken step names itself and its position instead of leaking a raw Playwright traceback.
+    An optional `click` that fails is the one exception: it is logged and skipped, not raised.
+    """
+    entries = []
+    shot_count = 0
+
+    for i, step in enumerate(steps):
+        key = next(iter(k for k in step if k in ALLOWED_ACTION_KEYS))
+        try:
+            if key == "goto":
+                url = step["goto"]
+                full_url = url if url.startswith("http") else base_url.rstrip("/") + "/" + url.lstrip("/")
+                print(f"step {i:02d} goto {full_url}")
+                page.goto(full_url)
+            elif key == "wait":
+                ms = step["wait"]
+                print(f"step {i:02d} wait {ms}")
+                page.wait_for_timeout(ms)
+            elif key == "wait_for":
+                selector = step["wait_for"]
+                print(f"step {i:02d} wait_for {selector}")
+                page.wait_for_selector(selector, timeout=30000)
+            elif key == "click":
+                selector = step["click"]
+                optional = step.get("optional", False)
+                timeout = step.get("timeout", 30000)
+                print(f"step {i:02d} click {selector}")
+                try:
+                    page.click(selector, timeout=timeout)
+                except Exception as exc:  # noqa: BLE001 - swallowed only when optional
+                    if optional:
+                        print(f"  optional click skipped: {selector}")
+                    else:
+                        raise
+            elif key == "fill":
+                selector, value = step["fill"]
+                print(f"step {i:02d} fill {selector}")
+                page.fill(selector, value)
+            elif key == "press":
+                press_key = step["press"]
+                print(f"step {i:02d} press {press_key}")
+                page.keyboard.press(press_key)
+            elif key == "scroll":
+                amount = step["scroll"]
+                print(f"step {i:02d} scroll {amount}")
+                page.mouse.wheel(0, amount)
+            elif key == "shot":
+                name = step["shot"]
+                out_path = shot_path(project, name)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(out_path))
+                shot_count += 1
+                print(f"shot [{shot_count:02d}] {out_path.name}")
+                entries.append(
+                    {
+                        "name": name,
+                        "file": out_path.name,
+                        "url_label": step.get("url_label", ""),
+                        "title": step.get("title", ""),
+                        "source": "capture",
+                        "simulated": False,
+                        "captured_at": _now_iso(),
+                    }
+                )
+        except ScreenError:
+            raise
+        except Exception as exc:
+            raise ScreenError(f"step {i:02d} {key}: {exc}") from exc
+
+    return entries, shot_count
+
+
 def run_capture(project, headed=False):
     """Drive Playwright through `capture.steps`, screenshot every `shot`, return the new
     manifest entries. Playwright is imported here, not at module import time, so the pure
@@ -283,9 +361,6 @@ def run_capture(project, headed=False):
     device_scale = config.get("device_scale", 1)
     base_url = capture.get("base_url", "")
     browser_profile = capture.get("browser_profile")
-
-    entries = []
-    shot_count = 0
 
     with sync_playwright() as p:
         viewport_size = {"width": viewport[0], "height": viewport[1]}
@@ -306,62 +381,7 @@ def run_capture(project, headed=False):
             page = context.new_page()
 
         try:
-            for i, step in enumerate(steps):
-                if "goto" in step:
-                    url = step["goto"]
-                    full_url = url if url.startswith("http") else base_url.rstrip("/") + "/" + url.lstrip("/")
-                    print(f"step {i:02d} goto {full_url}")
-                    page.goto(full_url)
-                elif "wait" in step:
-                    ms = step["wait"]
-                    print(f"step {i:02d} wait {ms}")
-                    page.wait_for_timeout(ms)
-                elif "wait_for" in step:
-                    selector = step["wait_for"]
-                    print(f"step {i:02d} wait_for {selector}")
-                    page.wait_for_selector(selector, timeout=30000)
-                elif "click" in step:
-                    selector = step["click"]
-                    optional = step.get("optional", False)
-                    timeout = step.get("timeout", 30000)
-                    print(f"step {i:02d} click {selector}")
-                    try:
-                        page.click(selector, timeout=timeout)
-                    except Exception as exc:  # noqa: BLE001 - re-raised unless optional
-                        if optional:
-                            print(f"  optional click skipped: {selector}")
-                        else:
-                            raise ScreenError(f"step {i}: click {selector} failed: {exc}") from exc
-                elif "fill" in step:
-                    selector, value = step["fill"]
-                    print(f"step {i:02d} fill {selector}")
-                    page.fill(selector, value)
-                elif "press" in step:
-                    key = step["press"]
-                    print(f"step {i:02d} press {key}")
-                    page.keyboard.press(key)
-                elif "scroll" in step:
-                    amount = step["scroll"]
-                    print(f"step {i:02d} scroll {amount}")
-                    page.mouse.wheel(0, amount)
-                elif "shot" in step:
-                    name = step["shot"]
-                    out_path = shot_path(project, name)
-                    out_path.parent.mkdir(parents=True, exist_ok=True)
-                    page.screenshot(path=str(out_path))
-                    shot_count += 1
-                    print(f"shot [{shot_count:02d}] {out_path.name}")
-                    entries.append(
-                        {
-                            "name": name,
-                            "file": out_path.name,
-                            "url_label": step.get("url_label", ""),
-                            "title": step.get("title", ""),
-                            "source": "capture",
-                            "simulated": False,
-                            "captured_at": _now_iso(),
-                        }
-                    )
+            entries, _shot_count = run_steps(page, steps, project, base_url)
         finally:
             context.close()
             if browser is not None:

@@ -35,6 +35,7 @@ DEFAULT_HUE = 120.0
 STRENGTH_STEP = 0.05
 MAX_STRENGTH = 0.95
 JPEG_SIZE_LIMIT = 2 * 1024 * 1024
+MIN_JPG_W, MIN_JPG_H = 1280, 720
 
 
 class ThumbScrimError(Exception):
@@ -61,6 +62,31 @@ def wcag_contrast(rgb1, rgb2):
     l1, l2 = relative_luminance(rgb1), relative_luminance(rgb2)
     lighter, darker = max(l1, l2), min(l1, l2)
     return (lighter + 0.05) / (darker + 0.05)
+
+
+def open_image_or_raise(Image, path):
+    """`Image.open(path)`, wrapping the ways a bad path or a bad file surface so callers get
+    one clear ThumbScrimError instead of a raw traceback from PIL or the filesystem."""
+    try:
+        im = Image.open(path)
+        im.load()
+        return im
+    except FileNotFoundError as exc:
+        raise ThumbScrimError(f"input image not found: {path}") from exc
+    except Image.UnidentifiedImageError as exc:
+        raise ThumbScrimError(f"input image is not a readable image file: {path}") from exc
+    except OSError as exc:
+        raise ThumbScrimError(f"input image unreadable: {path} ({exc})") from exc
+
+
+def require_min_jpg_size(w, h):
+    """YouTube's own stated minimum for an uploaded thumbnail. A smaller source is refused
+    up front rather than silently shipped undersized."""
+    if w < MIN_JPG_W or h < MIN_JPG_H:
+        raise ThumbScrimError(
+            f"--jpg needs at least {MIN_JPG_W}x{MIN_JPG_H} (YouTube's thumbnail minimum), "
+            f"got {w}x{h}"
+        )
 
 
 def parse_box(s, w, h):
@@ -222,8 +248,10 @@ def main(argv=None):
         return 2
 
     try:
-        im = Image.open(args.src)
+        im = open_image_or_raise(Image, args.src)
         w, h = im.size
+        if args.jpg:
+            require_min_jpg_size(w, h)
         if args.target_contrast is not None:
             if not args.text_box:
                 raise ThumbScrimError("--target-contrast needs --text-box L,T,R,B")

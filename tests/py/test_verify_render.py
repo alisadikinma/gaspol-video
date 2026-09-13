@@ -1,9 +1,11 @@
 import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest import mock
 
-from tools import verify_render
+from tools import gen_subs, verify_render
 
 
 def audio_plan_one_layer(text, dur_s=4.0, scene=1, at_s=0.0, kind="narration"):
@@ -224,6 +226,27 @@ class VerifyRenderTest(unittest.TestCase):
         outcome = verify_render.verify(self.project, env={})
         self.assertEqual(outcome["exit_code"], 3)
 
+    def test_fewer_edit_segments_than_scenes_reports_skip_note(self):
+        audio_plan = {"audio_source": "elevenlabs", "scenes": [
+            {"scene": 1, "layers": [{"kind": "narration", "at_s": 0.0, "dur_s": 2.0,
+                                      "text": "Halo dunia", "from": "tts", "out": "x"}]},
+            {"scene": 2, "layers": [{"kind": "narration", "at_s": 0.0, "dur_s": 2.0,
+                                      "text": "Selamat pagi", "from": "tts", "out": "y"}]},
+        ]}
+        edit_plan = edit_plan_segments([{"kind": "clip", "src": "clips/scene-01.mp4",
+                                          "in_s": 0.0, "out_s": 2.0}])
+        self._write_plans(audio_plan, edit_plan)
+        asr_path = self.project / "asr.json"
+        asr_path.write_text(json.dumps({"words": evenly_timed_words("Halo dunia", 2000)}))
+        logged = []
+        outcome = verify_render.verify(self.project, asr_json=str(asr_path), log=logged.append)
+        self.assertTrue(
+            any("drift check skipped: 1 edit segments for 2 scenes" in line for line in logged),
+            logged,
+        )
+        report = Path(outcome["report_path"]).read_text()
+        self.assertIn("drift check skipped: 1 edit segments for 2 scenes", report)
+
     def test_nothing_to_verify_when_no_narration_or_dialogue_layers(self):
         audio_plan = {"audio_source": "elevenlabs", "scenes": [
             {"scene": 1, "audio_source": "platform-native", "layers": [
@@ -392,6 +415,53 @@ class NumberCollapseTest(unittest.TestCase):
         self.assertNotEqual(
             verify_render.collapse_numbers(["empat", "puluh", "tiga"]),
             verify_render.collapse_numbers(["42"]))
+
+
+class MainErrorWrappingTest(unittest.TestCase):
+    """main() must never let a transcription-layer exception escape as a raw traceback —
+    it should print `verify_render: <message>` and exit 1, same as VerifyError already does."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name)
+        (self.project / "work").mkdir()
+        (self.project / "output").mkdir()
+        audio_plan = audio_plan_one_layer("Halo dunia")
+        edit_plan = edit_plan_segments([{"kind": "clip", "src": "clips/scene-01.mp4",
+                                          "in_s": 0.0, "out_s": 2.0}])
+        (self.project / "work" / "audio-plan.json").write_text(json.dumps(audio_plan))
+        (self.project / "work" / "edit-plan.json").write_text(json.dumps(edit_plan))
+        (self.project / "output" / "master.mp4").write_bytes(b"fake")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_subtitle_error_from_transcription_is_caught(self):
+        with mock.patch.object(verify_render, "_load_env",
+                                return_value={"ASSEMBLYAI_API_KEY": "x"}), \
+             mock.patch.object(verify_render, "_extract_audio"), \
+             mock.patch.object(verify_render, "transcribe_assemblyai",
+                                side_effect=gen_subs.SubtitleError("AssemblyAI failed: boom")):
+            rc = verify_render.main([str(self.project)])
+        self.assertEqual(rc, 1)
+
+    def test_url_error_from_transcription_is_caught(self):
+        with mock.patch.object(verify_render, "_load_env",
+                                return_value={"ASSEMBLYAI_API_KEY": "x"}), \
+             mock.patch.object(verify_render, "_extract_audio"), \
+             mock.patch.object(verify_render, "transcribe_assemblyai",
+                                side_effect=urllib.error.URLError("network down")):
+            rc = verify_render.main([str(self.project)])
+        self.assertEqual(rc, 1)
+
+    def test_os_error_from_transcription_is_caught(self):
+        with mock.patch.object(verify_render, "_load_env",
+                                return_value={"ASSEMBLYAI_API_KEY": "x"}), \
+             mock.patch.object(verify_render, "_extract_audio"), \
+             mock.patch.object(verify_render, "transcribe_assemblyai",
+                                side_effect=OSError("disk full")):
+            rc = verify_render.main([str(self.project)])
+        self.assertEqual(rc, 1)
 
 
 if __name__ == "__main__":

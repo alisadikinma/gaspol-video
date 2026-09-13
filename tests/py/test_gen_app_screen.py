@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.gen_app_screen import ScreenError, merge_manifest, shot_path, validate_steps
+from tools.gen_app_screen import ScreenError, merge_manifest, run_steps, shot_path, validate_steps
 
 
 class ValidateStepsTest(unittest.TestCase):
@@ -45,6 +45,131 @@ class ValidateStepsTest(unittest.TestCase):
         self.assertEqual(len(normalised), len(steps))
         self.assertEqual(normalised[0]["goto"], "/")
         self.assertEqual(normalised[-1]["shot"], "anpr-dashboard-initial")
+
+
+class FakePage:
+    """A minimal Playwright-Page-alike so the step loop is testable without a real browser."""
+
+    def __init__(self, fail=None):
+        self.fail = fail or {}
+        self.calls = []
+
+        class _Mouse:
+            def wheel(inner_self, x, y):
+                self._maybe_fail("scroll")
+                self.calls.append(("scroll", y))
+
+        class _Keyboard:
+            def press(inner_self, key):
+                self._maybe_fail("press")
+                self.calls.append(("press", key))
+
+        self.mouse = _Mouse()
+        self.keyboard = _Keyboard()
+
+    def _maybe_fail(self, key):
+        if key in self.fail:
+            raise RuntimeError(self.fail[key])
+
+    def goto(self, url):
+        self._maybe_fail("goto")
+        self.calls.append(("goto", url))
+
+    def wait_for_timeout(self, ms):
+        self._maybe_fail("wait")
+        self.calls.append(("wait", ms))
+
+    def wait_for_selector(self, selector, timeout=30000):
+        self._maybe_fail("wait_for")
+        self.calls.append(("wait_for", selector))
+
+    def click(self, selector, timeout=30000):
+        self._maybe_fail("click")
+        self.calls.append(("click", selector))
+
+    def fill(self, selector, value):
+        self._maybe_fail("fill")
+        self.calls.append(("fill", selector, value))
+
+    def screenshot(self, path):
+        self._maybe_fail("shot")
+        Path(path).write_bytes(b"PNG")
+        self.calls.append(("shot", path))
+
+
+class RunStepsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_goto_failure_is_wrapped_with_step_index_and_key(self):
+        page = FakePage(fail={"goto": "net::ERR_CONNECTION_REFUSED"})
+        with self.assertRaises(ScreenError) as ctx:
+            run_steps(page, [{"goto": "/"}], self.project, "https://example.com")
+        self.assertIn("step 00 goto", str(ctx.exception))
+        self.assertIn("net::ERR_CONNECTION_REFUSED", str(ctx.exception))
+
+    def test_wait_for_failure_is_wrapped(self):
+        page = FakePage(fail={"wait_for": "Timeout 30000ms exceeded"})
+        with self.assertRaises(ScreenError) as ctx:
+            run_steps(page, [{"wait_for": "#app"}], self.project, "")
+        self.assertIn("step 00 wait_for", str(ctx.exception))
+
+    def test_non_optional_click_failure_is_wrapped(self):
+        page = FakePage(fail={"click": "element not found"})
+        with self.assertRaises(ScreenError) as ctx:
+            run_steps(page, [{"click": "#btn"}], self.project, "")
+        self.assertIn("step 00 click", str(ctx.exception))
+        self.assertIn("element not found", str(ctx.exception))
+
+    def test_optional_click_failure_is_swallowed_not_raised(self):
+        page = FakePage(fail={"click": "element not found"})
+        entries, shot_count = run_steps(
+            page, [{"click": "#btn", "optional": True}], self.project, ""
+        )
+        self.assertEqual(entries, [])
+        self.assertEqual(shot_count, 0)
+
+    def test_fill_failure_is_wrapped(self):
+        page = FakePage(fail={"fill": "input not visible"})
+        with self.assertRaises(ScreenError) as ctx:
+            run_steps(page, [{"fill": ["#name", "hi"]}], self.project, "")
+        self.assertIn("step 00 fill", str(ctx.exception))
+
+    def test_press_failure_is_wrapped(self):
+        page = FakePage(fail={"press": "keyboard busy"})
+        with self.assertRaises(ScreenError) as ctx:
+            run_steps(page, [{"press": "Enter"}], self.project, "")
+        self.assertIn("step 00 press", str(ctx.exception))
+
+    def test_scroll_failure_is_wrapped(self):
+        page = FakePage(fail={"scroll": "no viewport"})
+        with self.assertRaises(ScreenError) as ctx:
+            run_steps(page, [{"scroll": 400}], self.project, "")
+        self.assertIn("step 00 scroll", str(ctx.exception))
+
+    def test_shot_failure_is_wrapped(self):
+        page = FakePage(fail={"shot": "disk full"})
+        with self.assertRaises(ScreenError) as ctx:
+            run_steps(page, [{"shot": "home"}], self.project, "")
+        self.assertIn("step 00 shot", str(ctx.exception))
+        self.assertIn("disk full", str(ctx.exception))
+
+    def test_successful_run_returns_entries_and_shot_count(self):
+        page = FakePage()
+        entries, shot_count = run_steps(
+            page,
+            [{"goto": "/"}, {"wait": 100}, {"shot": "home"}],
+            self.project,
+            "https://example.com",
+        )
+        self.assertEqual(shot_count, 1)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["name"], "home")
+        self.assertTrue((Path(self.project) / "ref" / "ui-home.png").exists())
 
 
 class ShotPathTest(unittest.TestCase):
