@@ -252,12 +252,17 @@ After the asset library is approved (option A above), offer to render it through
                    → a ref file that does not exist on disk = MISSING: list the
                      prompt as `skipped`, NEVER render it without the ref
 
-2. SKIP prompts already up to date:
-   → load `{output_folder}/renders.json` via `tools/renders.py` (`renders.load` +
-     `renders.needs_render(ledger, file, prompt)`) — if it returns False the file
-     is already `done` with the same prompt hash. Say so ("sudah up to date,
-     dilewati") and drop it from the render list. If the WHOLE batch is up to
-     date, skip step 3 entirely (no question, no render).
+2. SKIP prompts already up to date, against `{output_folder}/renders.json` (the
+   render ledger — schema documented once in
+   `reference/post-production/10-post-production-pipeline.md`):
+   → for each prompt in the render list, write the prompt body to a temp file,
+     then:
+        python3 tools/renders.py {output_folder} check --file <file> \
+          --prompt-file <temp-file>
+     `up-to-date` means the file is already `done` with the same prompt hash —
+     say so ("sudah up to date, dilewati") and drop it from the render list.
+     `render` means it needs one. If the WHOLE batch prints `up-to-date`, skip
+     step 3 entirely (no question, no render).
 
 3. ASK (only if the render list is non-empty):
    AskUserQuestion:
@@ -278,11 +283,17 @@ After the asset library is approved (option A above), offer to render it through
           aspect=<aspect>, resolution="2K", output_format="png",
           output_dir="{output_folder}/.render-tmp", refs=[<resolved ref paths>])
       - ON success: move the returned local file to the prompt's `**Output →**`
-        path (create parent directories first), then record a `done` ledger
-        entry (phase "4A", the prompt's sha256, the cdn_url, refs, model).
-      - ON failure (an error string, or no local path in the result): record a
-        `failed` ledger entry with the MCP text verbatim; continue with the
-        next prompt — one failure never stops the batch.
+        path (create parent directories first), then:
+           python3 tools/renders.py {output_folder} record --json \
+             '{"file": "<file>", "phase": "4A", "status": "done", \
+               "cdn_url": "<cdn_url>", "refs": [<refs>], "model": "nano-banana-2"}' \
+             --prompt-file <temp-file>
+        (`record` computes and stores the prompt's sha256 from `--prompt-file`
+        and strips any query string off `cdn_url` before writing.)
+      - ON failure (an error string, or no local path in the result): same
+        `record` call with `"status": "failed"` and the MCP text verbatim in
+        an `"error"` field, no `cdn_url`; continue with the next prompt — one
+        failure never stops the batch.
 
 5. AFTER the batch, Read every produced image (multimodal) and report anything
    visibly wrong against the prompt before moving on (wrong identity, wrong
@@ -401,10 +412,12 @@ FOR each batch (ACT or sub-batch):
                    table, resolved to `{output_folder}/ref/<name>`
                    → a ref file that does not exist on disk = MISSING: list the
                      prompt as `skipped`, NEVER render it without the ref
-     b. SKIP prompts already up to date: `renders.needs_render(ledger, file,
-        prompt)` False → already `done` with the same prompt hash, say "sudah
-        up to date, dilewati", drop from the render list. Whole batch up to
-        date → skip to step 6 (no question, no render).
+     b. SKIP prompts already up to date: write the prompt to a temp file, then
+        `python3 tools/renders.py {output_folder} check --file <file>
+        --prompt-file <temp-file>` — `up-to-date` means already `done` with
+        the same prompt hash, say "sudah up to date, dilewati", drop from the
+        render list. Whole batch `up-to-date` → skip to step 6 (no question,
+        no render).
      c. ASK (only if the render list is non-empty):
         AskUserQuestion:
         "Render batch {N} sekarang? ({k} gambar, model nano-banana-2)"
@@ -421,10 +434,13 @@ FOR each batch (ACT or sub-batch):
           resolution="2K", output_format="png",
           output_dir="{output_folder}/.render-tmp", refs=[<resolved ref
           paths>])`. Success → move the returned local file to the
-          `**Output →**` path (create parents first), record a `done` ledger
-          entry (phase "4B", prompt sha256, cdn_url, refs, model). Failure
-          (error string or no local path) → record `failed` with the MCP text
-          verbatim; continue with the next prompt.
+          `**Output →**` path (create parents first), then
+          `python3 tools/renders.py {output_folder} record --json '{...
+          "phase": "4B", "status": "done", "cdn_url": "<cdn_url>", ...}'
+          --prompt-file <temp-file>` (strips the cdn_url query string,
+          computes the prompt sha256). Failure (error string or no local
+          path) → same `record` call with `"status": "failed"`; continue
+          with the next prompt.
      e. AFTER the batch, Read every produced image (multimodal) and report
         anything visibly wrong against the prompt (wrong identity, wrong
         colour, garbled text, broken continuity with the previous scene's

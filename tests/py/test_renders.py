@@ -52,6 +52,9 @@ class NeedsRenderTest(unittest.TestCase):
         b = "line one\nline two\n"
         self.assertEqual(renders.prompt_sha256(a), renders.prompt_sha256(b))
 
+    def test_single_trailing_newline_ignored(self):
+        self.assertEqual(renders.prompt_sha256("a\nb"), renders.prompt_sha256("a\nb\n"))
+
 
 class LoadTest(unittest.TestCase):
     def setUp(self):
@@ -152,6 +155,21 @@ class ParseMcpResultTest(unittest.TestCase):
         self.assertTrue(result["cdn_url"].startswith("https://7a4964de26acd06ff740870066a92ff8"))
         self.assertIsNone(result["error"])
 
+    def test_local_line_path_with_spaces_and_webp_extension(self):
+        # the old regex (`\.(?:png|jpg|jpeg|mp4)`) could not have matched either the
+        # space in the path or the .webp extension — the explicit "local:" line must
+        # be read whole, not re-derived from a pattern.
+        text = "OK\nlocal: /tmp/gv2 probe/clip take 2.webp\ncdn_url: https://cdn.example/x.webp"
+        result = renders.parse_mcp_result(text)
+        self.assertEqual(result["local_path"], "/tmp/gv2 probe/clip take 2.webp")
+        self.assertEqual(result["cdn_url"], "https://cdn.example/x.webp")
+        self.assertIsNone(result["error"])
+
+    def test_local_line_mov_extension(self):
+        text = "OK\nlocal: /tmp/gv2-probe/video/clip.mov\ncdn_url: https://cdn.example/clip.mov"
+        result = renders.parse_mcp_result(text)
+        self.assertEqual(result["local_path"], "/tmp/gv2-probe/video/clip.mov")
+
 
 class VideoRenderEligibilityTest(unittest.TestCase):
     def _scene(self, **overrides):
@@ -215,6 +233,119 @@ class VideoRenderEligibilityTest(unittest.TestCase):
         eligible, reason = renders.video_render_eligibility(self._scene(duration_s=8.0))
         self.assertTrue(eligible)
         self.assertEqual(reason, "")
+
+    def test_duration_as_numeric_string_eligible(self):
+        # a scene built from JSON on the CLI (--json '{"duration_s": "8", ...}') hands
+        # duration_s through as a string — it must coerce, not silently mismatch 8.
+        eligible, reason = renders.video_render_eligibility(self._scene(duration_s="8"))
+        self.assertTrue(eligible)
+        self.assertEqual(reason, "")
+
+    def test_duration_non_numeric_string_is_ineligible_not_a_crash(self):
+        eligible, reason = renders.video_render_eligibility(self._scene(duration_s="soon"))
+        self.assertFalse(eligible)
+        self.assertIn("not a number", reason)
+
+
+class MainCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name)
+        self.prompt_file = self.project / "prompt.txt"
+        self.prompt_file.write_text("A gate at dusk, cinematic lighting.")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _run(self, argv, capsys=None):
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = renders.main(argv)
+        return rc, buf.getvalue()
+
+    def test_hash_subcommand_prints_prompt_sha256(self):
+        rc, out = self._run([str(self.project), "hash", "--prompt-file", str(self.prompt_file)])
+        self.assertEqual(rc, 0)
+        expected = renders.prompt_sha256(self.prompt_file.read_text())
+        self.assertEqual(out.strip(), expected)
+
+    def test_check_subcommand_prints_render_when_unknown(self):
+        rc, out = self._run([str(self.project), "check", "--file", "keyframes/x.png",
+                              "--prompt-file", str(self.prompt_file)])
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "render")
+
+    def test_check_subcommand_prints_up_to_date_when_done_and_unchanged(self):
+        prompt = self.prompt_file.read_text()
+        renders.record(self.project, {
+            "file": "keyframes/x.png", "phase": "4B", "status": "done",
+            "prompt_sha256": renders.prompt_sha256(prompt),
+        })
+        rc, out = self._run([str(self.project), "check", "--file", "keyframes/x.png",
+                              "--prompt-file", str(self.prompt_file)])
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "up-to-date")
+
+    def test_record_subcommand_writes_ledger_and_strips_cdn_query_string(self):
+        entry = {
+            "file": "keyframes/x.png", "phase": "4B", "status": "done",
+            "cdn_url": "https://cdn.example/x.png?X-Amz-Signature=abc&extra=1",
+        }
+        rc, out = self._run([str(self.project), "record", "--json", json.dumps(entry)])
+        self.assertEqual(rc, 0)
+        ledger = renders.load(self.project)
+        self.assertEqual(len(ledger["renders"]), 1)
+        self.assertEqual(ledger["renders"][0]["cdn_url"], "https://cdn.example/x.png")
+
+    def test_record_subcommand_computes_prompt_sha256_from_prompt_file(self):
+        entry = {"file": "keyframes/y.png", "phase": "4A", "status": "done"}
+        rc, out = self._run([str(self.project), "record", "--json", json.dumps(entry),
+                              "--prompt-file", str(self.prompt_file)])
+        self.assertEqual(rc, 0)
+        ledger = renders.load(self.project)
+        self.assertEqual(ledger["renders"][0]["prompt_sha256"],
+                          renders.prompt_sha256(self.prompt_file.read_text()))
+
+    def test_record_subcommand_rejects_missing_required_field(self):
+        entry = {"file": "keyframes/z.png", "status": "done"}  # no phase
+        rc, out = self._run([str(self.project), "record", "--json", json.dumps(entry)])
+        self.assertEqual(rc, 1)
+
+    def test_record_subcommand_rejects_invalid_phase(self):
+        entry = {"file": "keyframes/z.png", "phase": "6", "status": "done"}
+        rc, out = self._run([str(self.project), "record", "--json", json.dumps(entry)])
+        self.assertEqual(rc, 1)
+
+    def test_record_subcommand_rejects_invalid_status(self):
+        entry = {"file": "keyframes/z.png", "phase": "4A", "status": "maybe"}
+        rc, out = self._run([str(self.project), "record", "--json", json.dumps(entry)])
+        self.assertEqual(rc, 1)
+
+    def test_record_subcommand_accepts_json_file(self):
+        entry_path = self.project / "entry.json"
+        entry_path.write_text(json.dumps({
+            "file": "keyframes/w.png", "phase": "5", "status": "failed",
+        }))
+        rc, out = self._run([str(self.project), "record", "--json-file", str(entry_path)])
+        self.assertEqual(rc, 0)
+        ledger = renders.load(self.project)
+        self.assertEqual(ledger["renders"][0]["status"], "failed")
+
+    def test_eligible_subcommand_prints_eligible(self):
+        scene = {"platform": "veo", "mode": "frame", "duration_s": 8, "aspect": "16:9",
+                  "refs": ["a.png"]}
+        rc, out = self._run([str(self.project), "eligible", "--json", json.dumps(scene)])
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "eligible")
+
+    def test_eligible_subcommand_prints_ineligible_with_reason(self):
+        scene = {"platform": "kling", "mode": "i2v", "duration_s": 5, "aspect": "16:9", "refs": []}
+        rc, out = self._run([str(self.project), "eligible", "--json", json.dumps(scene)])
+        self.assertEqual(rc, 0)
+        self.assertTrue(out.strip().startswith("ineligible:"))
+        self.assertIn("prompt-only", out)
 
 
 if __name__ == "__main__":
