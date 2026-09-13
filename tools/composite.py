@@ -3,16 +3,24 @@
 
     python3 tools/composite.py cutaway <master> <shot> --at 12.0 --out-s 17.0 -o out.mp4
     python3 tools/composite.py overlay <master> <shot> --at 12.0 -o out.mp4
+    python3 tools/composite.py split   <master> <shot> --at 12.0 --out-s 17.0 --box x,y,w,h -o out.mp4
+    python3 tools/composite.py insert  <master> <shot> --at 12.0 -o out.mp4
 
-Two modes, and the difference matters:
+Four modes, and the difference matters:
 
   cutaway  the shot REPLACES the picture for its span. Master audio continues underneath,
            which is what keeps a narration line running across the cut.
   overlay  a transparent shot is composited OVER the picture. For a badge, a lower third,
            or a number appearing beside a presenter who stays on screen.
+  split    a transparent shot draws the whole frame and leaves a window; a cropped/scaled
+           PIP of the master shows through that window for the span. Picture-in-picture.
+  insert   the master PAUSES at a point while the shot plays in full, own video AND own
+           audio, then the master resumes. Total duration grows by the shot's length.
 
-Master audio survives in both. A shot that carried its own audio would double whatever the
-narration is already saying.
+Master audio survives cutaway, overlay and split. A shot placed there that carried its own
+audio would double whatever the narration is already saying. `insert` is the one exception:
+its whole point is to let the shot's own audio play, because the master is paused, not
+underneath it.
 """
 
 import argparse
@@ -20,6 +28,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 FFMPEG = shutil.which("ffmpeg")
@@ -43,12 +52,24 @@ def _probe(path, entries, stream="v:0"):
     return json.loads(proc.stdout)
 
 
-def duration_of(path):
-    data = _probe(path, "stream=duration")
+def duration_of(path, stream="v:0"):
+    data = _probe(path, "stream=duration", stream=stream)
     streams = data.get("streams", [])
     if not streams or streams[0].get("duration") in (None, "N/A"):
         return None
     return float(streams[0]["duration"])
+
+
+def _has_stream(path, select_stream):
+    """select_stream is an ffprobe -select_streams value, e.g. "v" or "a"."""
+    if FFPROBE is None:
+        raise CompositeError("ffprobe not found on PATH")
+    proc = subprocess.run(
+        [FFPROBE, "-v", "error", "-select_streams", select_stream,
+         "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    )
+    return bool(proc.stdout.strip())
 
 
 def require_alpha(path):
@@ -176,6 +197,126 @@ def split(master, shot, at_s, out_s, box, out, crop_cx=0.5, crop_cy=0.5, zoom=1.
     return str(out)
 
 
+def insert_plan(at_s, master_duration, shot_duration, fps):
+    """Frame-accurate segment plan for `insert`, from `$YE/tools/bake.py`'s method: exact
+    frame counts from rounded cumulative boundaries, so the concat matches the audio exactly
+    with no cumulative drift. A pre/post segment of zero frames is left out entirely rather
+    than rendered as a no-op clip."""
+    n_pre = round(at_s * fps)
+    n_shot = round(shot_duration * fps)
+    n_post = round(master_duration * fps) - round(at_s * fps)
+    plan = []
+    if n_pre > 0:
+        plan.append({"kind": "pre", "frames": n_pre})
+    plan.append({"kind": "shot", "frames": n_shot})
+    if n_post > 0:
+        plan.append({"kind": "post", "frames": n_post})
+    return plan
+
+
+def insert_audio_filter(at_s, shot_dur_s, end_s, gain_db=0.0, has_shot_audio=True,
+                         master_label="0:a", shot_label="1:a"):
+    """The audio graph for `insert`: master[0:at] + shot audio (or silence of its length) +
+    master[at:end], each normalised to 48kHz stereo before concat. Positive gain gets a
+    limiter so a boosted shot cannot clip; negative gain never needs one."""
+    fmt = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
+    parts = []
+    labels = []
+    if at_s > 1e-6:
+        parts.append(
+            f"[{master_label}]atrim=start=0:end={at_s:.4f},asetpts=PTS-STARTPTS,{fmt}[ains0]"
+        )
+        labels.append("[ains0]")
+
+    gain_clause = ""
+    if abs(gain_db) > 0.01:
+        gain_clause = f",volume={gain_db:.2f}dB"
+        if gain_db > 0:
+            gain_clause += ",alimiter=limit=0.97:level=false"
+    if has_shot_audio:
+        parts.append(
+            f"[{shot_label}]atrim=start=0:end={shot_dur_s:.4f},asetpts=PTS-STARTPTS,"
+            f"{fmt}{gain_clause}[ains1]"
+        )
+    else:
+        parts.append(f"anullsrc=r=48000:cl=stereo:d={shot_dur_s:.4f}[ains1]")
+    labels.append("[ains1]")
+
+    if end_s - at_s > 1e-6:
+        parts.append(
+            f"[{master_label}]atrim=start={at_s:.4f}:end={end_s:.4f},asetpts=PTS-STARTPTS,{fmt}[ains2]"
+        )
+        labels.append("[ains2]")
+
+    return ";".join(parts) + f";{''.join(labels)}concat=n={len(labels)}:v=0:a=1[a]"
+
+
+def insert(master, shot, at_s, out, gain_db=0.0):
+    """Pause the master at `at_s` for the full duration of `shot` — its own video AND audio
+    play, the master (and its narration) freezes, then everything resumes. Total output
+    duration is master duration + shot duration; every later cue time in the output shifts
+    by the shot's length, which `13-ffmpeg-edit.md` documents for callers."""
+    master_duration = duration_of(master)
+    if master_duration is None:
+        raise CompositeError(f"{Path(master).name}: unreadable")
+    if not (0.0 <= at_s <= master_duration + 1e-6):
+        raise CompositeError(
+            f"insert point {at_s}s is outside the master (0..{master_duration:.2f}s)"
+        )
+    if not _has_stream(shot, "v"):
+        raise CompositeError(f"{Path(shot).name} has no video stream")
+
+    shot_duration = duration_of(shot)
+    if shot_duration is None:
+        raise CompositeError(f"{Path(shot).name}: unreadable")
+    has_shot_audio = _has_stream(shot, "a")
+
+    master_w, master_h, fps = _video_info(master)
+    plan = insert_plan(at_s, master_duration, shot_duration, fps)
+    common_vf = f"scale={master_w}:{master_h},fps={fps},format=yuv420p"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        seg_files = []
+        for i, seg in enumerate(plan):
+            seg_path = tmp / f"seg_{i:02d}_{seg['kind']}.mp4"
+            if seg["kind"] == "pre":
+                cmd = [FFMPEG, "-y", "-v", "error", "-i", master]
+            elif seg["kind"] == "shot":
+                cmd = [FFMPEG, "-y", "-v", "error", "-i", shot]
+            else:  # post
+                cmd = [FFMPEG, "-y", "-v", "error", "-ss", at_s, "-i", master]
+            cmd += ["-vf", common_vf, "-frames:v", seg["frames"], "-an",
+                    "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", seg_path]
+            _run(cmd)
+            seg_files.append(seg_path)
+
+        list_path = tmp / "segs.txt"
+        list_path.write_text("".join(f"file '{p.as_posix()}'\n" for p in seg_files))
+        video_concat = tmp / "video_concat.mp4"
+        _run([FFMPEG, "-y", "-v", "error", "-f", "concat", "-safe", "0",
+              "-i", list_path, "-c", "copy", video_concat])
+
+        total = master_duration + shot_duration
+        audio_filt = insert_audio_filter(
+            at_s, shot_duration, master_duration, gain_db=gain_db,
+            has_shot_audio=has_shot_audio, master_label="1:a", shot_label="2:a",
+        )
+        out_path = Path(out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        _run([FFMPEG, "-y", "-v", "error", "-i", video_concat, "-i", master, "-i", shot,
+              "-filter_complex", audio_filt, "-map", "0:v:0", "-map", "[a]",
+              "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-t", total, out_path])
+
+    v_dur = duration_of(out)
+    a_dur = duration_of(out, "a:0")
+    if v_dur is None or a_dur is None or abs(v_dur - a_dur) > 0.04:
+        raise CompositeError(
+            f"insert: A/V mismatch after render (video {v_dur}, audio {a_dur}) exceeds 0.04s"
+        )
+    return str(out)
+
+
 def overlay(master, shot, at_s, out=None, out_s=None):
     master_duration = duration_of(master)
     shot_duration = duration_of(shot) or 0.0
@@ -198,7 +339,7 @@ def _parse_box(text):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("mode", choices=("cutaway", "overlay", "split"))
+    ap.add_argument("mode", choices=("cutaway", "overlay", "split", "insert"))
     ap.add_argument("master")
     ap.add_argument("shot")
     ap.add_argument("--at", type=float, required=True)
@@ -207,6 +348,7 @@ def main(argv=None):
     ap.add_argument("--crop-cx", type=float, default=0.5)
     ap.add_argument("--crop-cy", type=float, default=0.5)
     ap.add_argument("--zoom", type=float, default=1.0)
+    ap.add_argument("--gain-db", type=float, default=0.0, help="insert mode: shot audio gain")
     ap.add_argument("-o", "--out", required=True)
     args = ap.parse_args(argv)
     try:
@@ -217,7 +359,7 @@ def main(argv=None):
         elif args.mode == "overlay":
             require_alpha(args.shot)
             overlay(args.master, args.shot, args.at, out=args.out, out_s=args.out_s)
-        else:
+        elif args.mode == "split":
             if args.out_s is None:
                 raise CompositeError("split needs --out-s")
             if not args.box:
@@ -225,6 +367,8 @@ def main(argv=None):
             box = _parse_box(args.box)
             split(args.master, args.shot, args.at, args.out_s, box, args.out,
                   crop_cx=args.crop_cx, crop_cy=args.crop_cy, zoom=args.zoom)
+        else:
+            insert(args.master, args.shot, args.at, args.out, gain_db=args.gain_db)
         print(f"wrote {args.out}")
         return 0
     except CompositeError as exc:

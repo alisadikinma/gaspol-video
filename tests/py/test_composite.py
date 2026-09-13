@@ -190,5 +190,87 @@ class CompositeSplitTest(unittest.TestCase):
         )
 
 
+class CompositeInsertTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @requires_ffmpeg
+    def test_insert_pauses_master_for_the_full_shot(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = make_clip(self.dir / "shot.mp4", seconds=1.0, size="320x240")
+        out = composite.insert(master, shot, at_s=2.0, out=self.dir / "out.mp4")
+        self.assertAlmostEqual(duration_of(out, "v:0"), 5.0, delta=0.1)
+        self.assertAlmostEqual(duration_of(out, "a:0"), 5.0, delta=0.1)
+
+    @requires_ffmpeg
+    def test_insert_at_zero_has_no_pre_segment(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = make_clip(self.dir / "shot.mp4", seconds=1.0, size="320x240")
+        out = composite.insert(master, shot, at_s=0.0, out=self.dir / "out.mp4")
+        self.assertAlmostEqual(duration_of(out, "v:0"), 5.0, delta=0.1)
+        self.assertAlmostEqual(duration_of(out, "a:0"), 5.0, delta=0.1)
+
+    @requires_ffmpeg
+    def test_insert_at_end_has_no_post_segment(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = make_clip(self.dir / "shot.mp4", seconds=1.0, size="320x240")
+        out = composite.insert(master, shot, at_s=4.0, out=self.dir / "out.mp4")
+        self.assertAlmostEqual(duration_of(out, "v:0"), 5.0, delta=0.1)
+        self.assertAlmostEqual(duration_of(out, "a:0"), 5.0, delta=0.1)
+
+    @requires_ffmpeg
+    def test_insert_beyond_master_is_rejected(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = make_clip(self.dir / "shot.mp4", seconds=1.0, size="320x240")
+        with self.assertRaises(composite.CompositeError):
+            composite.insert(master, shot, at_s=9.0, out=self.dir / "out.mp4")
+
+    @requires_ffmpeg
+    def test_silent_shot_gets_silence_and_passes_the_av_gate(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = make_silent_clip(self.dir / "shot.mp4", seconds=1.0, size="320x240")
+        out = composite.insert(master, shot, at_s=2.0, out=self.dir / "out.mp4")
+        v_dur = duration_of(out, "v:0")
+        a_dur = duration_of(out, "a:0")
+        self.assertAlmostEqual(v_dur, 5.0, delta=0.1)
+        self.assertAlmostEqual(a_dur, 5.0, delta=0.1)
+        self.assertLessEqual(abs(v_dur - a_dur), 0.04)
+
+    def test_insert_plan_skips_zero_length_segments(self):
+        plan_mid = composite.insert_plan(at_s=2.0, master_duration=4.0, shot_duration=1.0, fps=30.0)
+        self.assertEqual([p["kind"] for p in plan_mid], ["pre", "shot", "post"])
+
+        plan_start = composite.insert_plan(at_s=0.0, master_duration=4.0, shot_duration=1.0, fps=30.0)
+        self.assertEqual([p["kind"] for p in plan_start], ["shot", "post"])
+
+        plan_end = composite.insert_plan(at_s=4.0, master_duration=4.0, shot_duration=1.0, fps=30.0)
+        self.assertEqual([p["kind"] for p in plan_end], ["pre", "shot"])
+
+    def test_insert_audio_filter_no_gain_has_no_limiter(self):
+        filt = composite.insert_audio_filter(at_s=2.0, shot_dur_s=1.0, end_s=4.0, gain_db=0.0)
+        self.assertNotIn("alimiter", filt)
+        self.assertIn("concat=n=3:v=0:a=1[a]", filt)
+
+    def test_insert_audio_filter_positive_gain_adds_a_limiter(self):
+        filt = composite.insert_audio_filter(at_s=2.0, shot_dur_s=1.0, end_s=4.0, gain_db=6.0)
+        self.assertIn("volume=6.00dB", filt)
+        self.assertIn("alimiter=limit=0.97:level=false", filt)
+
+    def test_insert_audio_filter_negative_gain_has_no_limiter(self):
+        filt = composite.insert_audio_filter(at_s=2.0, shot_dur_s=1.0, end_s=4.0, gain_db=-6.0)
+        self.assertIn("volume=-6.00dB", filt)
+        self.assertNotIn("alimiter", filt)
+
+    def test_insert_audio_filter_silent_shot_uses_anullsrc(self):
+        filt = composite.insert_audio_filter(
+            at_s=2.0, shot_dur_s=1.0, end_s=4.0, gain_db=0.0, has_shot_audio=False,
+        )
+        self.assertIn("anullsrc=r=48000:cl=stereo:d=1.0000", filt)
+
+
 if __name__ == "__main__":
     unittest.main()
