@@ -160,6 +160,16 @@ FAIL lists the scene numbers that have both. Mirrors reviewer check C6.
 **How:** Compare environment in images with cultural research from strategic-brief.md
 **Expected:** Architecture, signage, vegetation match location context
 
+### Check I18: Simulated Screen Honesty (v3.1.1)
+
+Read `screens/manifest.json`. For every scene whose screen entry has `simulated: true`, scan its
+prompt text, caption, and on-screen copy for wording that presents the mock as a shipped or real
+product — "live", "real footage", "actual dashboard", "sudah tersedia", "langsung dari sistem", and
+similar claims. Any such wording attached to a simulated screen is a FAIL. A `simulated: false`
+(real capture) screen is not held to this check.
+
+FAIL lists the scene, the offending text, and the file it came from. Mirrors reviewer check C11.
+
 ---
 
 ## Video Validation (`--video`)

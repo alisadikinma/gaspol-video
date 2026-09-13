@@ -29,4 +29,8 @@ need skills/video-image/SKILL.md   "Rule 34"       "video-image does not define 
 need agents/video-prompt-reviewer.md "C11."        "validator check C11 not defined in the prompt reviewer"
 need skills/video-package/SKILL.md "simulated"     "video-package Step 7.5 does not read the simulated flag"
 
+# C11 honesty extension: a mocked/simulated screen must never be presented as shipped/real.
+need agents/video-prompt-reviewer.md "simulated"      "C11 in the prompt reviewer does not mention simulated screens"
+need skills/video-validate/SKILL.md  "simulated"      "video-validate does not check simulated-screen honesty"
+
 exit $fail

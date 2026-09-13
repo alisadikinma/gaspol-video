@@ -211,6 +211,12 @@ Cross-check `scene-plan.md`'s `Screen Source` column against what Phase 4A and 4
   describing the UI from text instead, or omitting the reference entirely, is a FAIL.
 - A scene with `Screen Source` `none` is not held to this check.
 
+**Simulated-screen honesty.** Read `screens/manifest.json`. For every scene whose screen entry has
+`simulated: true`, no prompt text, caption, or on-screen copy for that scene may present the mock as
+a shipped or real product — words like "live", "real footage", "actual dashboard", or Indonesian
+equivalents like "sudah tersedia" / "langsung dari sistem" are a FAIL when attached to a simulated
+screen. A `simulated: false` (real capture) screen is not held to this wording check.
+
 FAIL output names the scene, the declared Screen Source, and which artefact violated the rule.
 
 ## Output Format
