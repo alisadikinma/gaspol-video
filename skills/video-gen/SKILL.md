@@ -370,14 +370,13 @@ FOR each batch (ACT or sub-batch):
         MCP call.
      b. Face >30% frame keeps the existing safety rule: start frame only
         (`refs` = one keyframe, `mode` = "i2v" for eligibility purposes).
-     c. BEFORE calling the MCP, check the prompt text for the two known vault
-        traps (`docs/evals/` finding, 2026-09-04):
-        - the phrase `security camera` → Veo draws a `REC` text overlay.
-          Replace it with `fixed overhead view` in the prompt and tell the
-          user what was changed.
-        - a negated audio list such as `no music, no voices` →
-          `Audio generation failed`. Replace it with a positive ambience
-          description (what IS heard, not what is absent) and tell the user.
+     c. BEFORE calling the MCP, check the prompt text for the known vault trap
+        (finding 2026-09-04): the phrase `security camera` makes Veo draw a
+        `REC` text overlay. Replace it with `fixed overhead view` and tell the
+        user what was changed.
+        Do NOT pre-emptively rewrite the audio negatives. The verbatim
+        `no speech, no voiceover, no dialogue` rule for `audio_source:
+        elevenlabs` scenes stays; step f handles the case where Veo rejects it.
      d. SKIP scenes already up to date via `renders.needs_render(ledger, file,
         prompt)` against `{output_folder}/renders.json`, same as Phase 4.
      e. ASK (only if any eligible scene remains in the render list):
@@ -399,10 +398,20 @@ FOR each batch (ACT or sub-batch):
           `{output_folder}/clips/scene-{NN}.mp4` (create parents first),
           record a `done` ledger entry (phase "5", prompt sha256, cdn_url,
           refs, model).
-        - Failure whose text contains `Audio generation failed` → record
-          `failed` with note "negated audio list or silent prompt; rewrite
-          ambience positively". Any other failure → record `failed` with the
-          MCP text verbatim. Continue with the next scene either way.
+        - Failure whose text contains `Audio generation failed` (not billed):
+          retry ONCE with a fallback prompt in which the negated audio list
+          (e.g. `no speech, no voiceover, no dialogue`, `no music, no voices`)
+          is replaced by a positive ambience line describing what IS heard in
+          the scene (e.g. `gentle steady hum of the gate machinery and distant
+          truck engines`). This is safe because a scene with `audio_source:
+          elevenlabs` has its clip audio discarded in the Phase 6 edit. Tell
+          the user the prompt was changed for the render only; the approved
+          copy-paste prompt in `video-prompts.md` is not edited. Record the
+          ledger entry with the fallback prompt's sha256 and a note
+          `audio fallback: negated list replaced by positive ambience`. If the
+          retry also fails, record `failed` with both MCP texts.
+        - Any other failure → record `failed` with the MCP text verbatim.
+          Continue with the next scene either way.
      g. AFTER the batch, run `python3 tools/probe_clips.py {output_folder}`
         and report its `problems` list to the user.
 
