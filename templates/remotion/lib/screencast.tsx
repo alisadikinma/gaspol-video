@@ -13,7 +13,7 @@ import React from 'react';
 import {
   AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig,
 } from 'remotion';
-import { COLORS, EASINGS, FONT_BODY } from './brand';
+import { COLORS, EASINGS, FONT_BODY, CHROME_COLORS } from './brand';
 import { WebBrowserFrame } from './browser';
 import { BrandBg, CLAMP } from './kit';
 
@@ -63,7 +63,7 @@ export const CursorPointer: React.FC<{ size?: number; press?: number }> = ({ siz
   }}>
     <path
       d="M4.2 2.6 L4.2 18.9 L8.7 14.7 L11.9 21.6 L14.6 20.3 L11.4 13.6 L17.6 13.6 Z"
-      fill="#111318" stroke="#ffffff" strokeWidth={1.4} strokeLinejoin="round"
+      fill={CHROME_COLORS.cursorFill} stroke={CHROME_COLORS.cursorStroke} strokeWidth={1.4} strokeLinejoin="round"
     />
   </svg>
 );
@@ -141,7 +141,7 @@ export const Screencast: React.FC<{
           return (
             // explicit region dims: WebBrowserFrame's translateY wrapper is a
             // transformed (zero-height) containing block, so inset:0 would collapse
-            <div key={p.img ?? `node-${i}`} style={{ position: 'absolute', top: 0, left: 0, width: region.w, height: region.h, opacity: op, overflow: 'hidden', background: '#ffffff' }}>
+            <div key={p.img ?? `node-${i}`} style={{ position: 'absolute', top: 0, left: 0, width: region.w, height: region.h, opacity: op, overflow: 'hidden', background: CHROME_COLORS.page }}>
               <div style={{ width: '100%', height: '100%', transform: `translateY(${-scrollY}px) scale(${scale})`, transformOrigin: origin }}>
                 {p.node ?? (p.img
                   ? <Img src={staticFile(p.img)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />

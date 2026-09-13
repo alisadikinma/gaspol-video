@@ -57,7 +57,7 @@ export const ImageRevealShot: React.FC<{
         {/* eyebrow tag */}
         <div style={{ ...rise(2, 14), display: 'flex', alignItems: 'center', gap: 12, background: `${color}16`, border: `1px solid ${color}44`, borderRadius: RADIUS.pill, padding: '10px 22px' }}>
           <div style={{ width: 24, height: 24, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckIcon size={15} color="#fff" strokeWidth={3.4} />
+            <CheckIcon size={15} color={COLORS.onAccent} strokeWidth={3.4} />
           </div>
           <span style={{ fontFamily: FONT_MONO, fontSize: 22, letterSpacing: 1.5, color, fontWeight: 500 }}>{tag}</span>
         </div>

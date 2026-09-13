@@ -3,13 +3,10 @@
 // service pages / real results shown in a browser. Frame-based only.
 import React from 'react';
 import { interpolate, useCurrentFrame } from 'remotion';
-import { COLORS, EASINGS, FONT_BODY, FONT_MONO, SHADOW } from './brand';
+import { CHROME_COLORS, COLORS, EASINGS, FONT_BODY, FONT_MONO, SHADOW } from './brand';
 import { CLAMP } from './kit';
 
-const BR = {
-  chrome: '#dee1e6', chromeDark: '#202124', tabActive: '#f7f8fa', urlBar: '#eff1f4',
-  text: '#3c4043', dim: '#5f6368',
-} as const;
+const BR = CHROME_COLORS;
 
 // ---- inline icon set (24x24 viewBox, stroke-based) — no icon package needed --
 type IconProps = { size?: number; color?: string; strokeWidth?: number; style?: React.CSSProperties };
@@ -51,7 +48,7 @@ export const WebBrowserFrame: React.FC<{
   // 1080-wide short needs ~1.9 for the URL to be legible on a phone.
   uiScale?: number;
   children?: React.ReactNode;
-}> = ({ url, tabTitle, favicon, box = { x: 80, y: 44, w: 1760, h: 992 }, appearAt = 0, scrollY = 0, pageBg = '#ffffff', uiScale = 1, children }) => {
+}> = ({ url, tabTitle, favicon, box = { x: 80, y: 44, w: 1760, h: 992 }, appearAt = 0, scrollY = 0, pageBg = CHROME_COLORS.page, uiScale = 1, children }) => {
   const frame = useCurrentFrame();
   const op = interpolate(frame, [appearAt, appearAt + 14], [0, 1], { ...CLAMP, easing: EASINGS.easeOut });
   const y = interpolate(frame, [appearAt, appearAt + 16], [28, 0], { ...CLAMP, easing: EASINGS.easeOut });
@@ -68,9 +65,9 @@ export const WebBrowserFrame: React.FC<{
           annotation that hangs below the bar isn't painted over by the page. */}
       <div style={{ position: 'relative', zIndex: 2, height: TAB_H, background: BR.chrome, display: 'flex', alignItems: 'flex-end', paddingLeft: s(14) }}>
         <div style={{ display: 'flex', gap: s(9), alignItems: 'center', paddingBottom: s(15), paddingRight: s(16) }}>
-          <span style={{ width: s(13), height: s(13), borderRadius: '50%', background: '#ff5f57' }} />
-          <span style={{ width: s(13), height: s(13), borderRadius: '50%', background: '#febc2e' }} />
-          <span style={{ width: s(13), height: s(13), borderRadius: '50%', background: '#28c840' }} />
+          <span style={{ width: s(13), height: s(13), borderRadius: '50%', background: BR.close }} />
+          <span style={{ width: s(13), height: s(13), borderRadius: '50%', background: BR.minimize }} />
+          <span style={{ width: s(13), height: s(13), borderRadius: '50%', background: BR.zoom }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: s(10), background: BR.tabActive, borderRadius: `${s(10)}px ${s(10)}px 0 0`, padding: `${s(9)}px ${s(16)}px`, minWidth: s(260), maxWidth: s(420) }}>
           {favicon ?? <span style={{ width: s(17), height: s(17), borderRadius: s(4), background: COLORS.accent }} />}
@@ -82,7 +79,7 @@ export const WebBrowserFrame: React.FC<{
       {/* nav / URL bar */}
       <div style={{ position: 'relative', zIndex: 2, height: NAV_H, background: BR.tabActive, display: 'flex', alignItems: 'center', gap: s(14), padding: `0 ${s(18)}px`, borderBottom: `1px solid ${BR.chrome}` }}>
         <ArrowLeft size={s(20)} color={BR.text} strokeWidth={2.2} />
-        <ArrowRight size={s(20)} color="#b9bdc4" strokeWidth={2.2} />
+        <ArrowRight size={s(20)} color={BR.disabled} strokeWidth={2.2} />
         <RotateCw size={s(18)} color={BR.text} strokeWidth={2.2} />
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: s(10), background: BR.urlBar, borderRadius: 999, padding: `${s(8)}px ${s(18)}px` }}>
           <Lock size={s(15)} color={BR.dim} />

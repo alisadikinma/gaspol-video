@@ -96,6 +96,18 @@ ripple position both call — use it directly if a shot needs to know where the 
 frame for something else on screen. `CursorPointer` is the SVG pointer itself, exported in case a shot
 needs to draw it somewhere `Screencast` does not (a picture-in-picture inset, for example).
 
+**Browser chrome colours are tokens, not brand.** The window around the page (tab strip, URL bar,
+traffic lights, empty page, cursor) uses `CHROME_COLORS` from `lib/brand.ts`: neutral greys so the
+frame reads as a real browser. Override any key with an optional block in `src/shots/brand.json`,
+for example a dark browser around a dark product:
+
+```json
+"browserChrome": { "chrome": "#202124", "tabActive": "#35363a", "urlBar": "#202124", "text": "#e8eaed", "dim": "#9aa0a6" }
+```
+
+Keys: `chrome tabActive urlBar text dim disabled close minimize zoom page cursorFill cursorStroke`.
+A mark drawn on the accent colour uses `COLORS.onAccent` (white unless brand.json sets `onAccent`).
+
 ---
 
 ## 4. Timing: cue times come from the narration, not from guessing
