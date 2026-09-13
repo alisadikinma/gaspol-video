@@ -120,7 +120,7 @@ next to Render Path, before NB2 credits are spent.
 **`capture --spec screens.json`.** Playwright Chromium. Spec: `viewport`, `base_url`, optional
 `browser_profile` (persistent login, never a password in the spec), and `steps` of `goto | click | fill
 | wait | scroll | shot`. Each `shot` writes `ref/ui-{name}-{state}.png`; the run writes
-`screens/manifest.json` with `{file, url, state, simulated: false}`.
+`screens/manifest.json` with `{name, file, url_label, title, source: "capture", simulated: false, captured_at}` (mock entries add `component`, `state`, `data_key`; entries are keyed by `(name, state)`).
 
 **`mock --screens screens.json`.** Claude authors `shots/screens/<Name>Screen.tsx` from:
 - `src/shots/brand.json` tokens. The scaffolder only places a placeholder and prints "write brand.json
