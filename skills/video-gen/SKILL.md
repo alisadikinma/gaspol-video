@@ -365,9 +365,9 @@ FOR each batch (ACT or sub-batch):
   5.5. RENDER OFFER (only after option A above):
      a. FOR each approved scene, build `{platform, mode, duration_s, aspect, refs}`
         from `scene-plan.md` and the prompt just approved, and run
-        `tools/renders.py::video_render_eligibility(scene)`. An ineligible scene
-        is listed with its reason and stays copy-paste only — it never gets an
-        MCP call.
+        `python3 tools/renders.py {output_folder} eligible --json '<scene json>'`.
+        `ineligible: <reason>` is listed with its reason and stays copy-paste
+        only — it never gets an MCP call. `eligible` continues to the render list.
      b. Face >30% frame keeps the existing safety rule: start frame only
         (`refs` = one keyframe, `mode` = "i2v" for eligibility purposes).
      c. BEFORE calling the MCP, check the prompt text for the known vault trap
@@ -377,8 +377,12 @@ FOR each batch (ACT or sub-batch):
         Do NOT pre-emptively rewrite the audio negatives. The verbatim
         `no speech, no voiceover, no dialogue` rule for `audio_source:
         elevenlabs` scenes stays; step f handles the case where Veo rejects it.
-     d. SKIP scenes already up to date via `renders.needs_render(ledger, file,
-        prompt)` against `{output_folder}/renders.json`, same as Phase 4.
+     d. SKIP scenes already up to date against `{output_folder}/renders.json`
+        (schema documented once in
+        `reference/post-production/10-post-production-pipeline.md`): write the
+        prompt to a temp file, then `python3 tools/renders.py {output_folder}
+        check --file <file> --prompt-file <temp-file>` — `up-to-date` drops
+        the scene from the render list, same as Phase 4.
      e. ASK (only if any eligible scene remains in the render list):
         AskUserQuestion:
         "Render batch {N} sekarang? ({k} clip VEO 3.1 fast, {s} detik total)"
@@ -395,23 +399,30 @@ FOR each batch (ACT or sub-batch):
           output_dir="{output_folder}/.render-tmp", refs=[<absolute keyframe
           paths>])`.
         - Success → move the returned local file to
-          `{output_folder}/clips/scene-{NN}.mp4` (create parents first),
-          record a `done` ledger entry (phase "5", prompt sha256, cdn_url,
-          refs, model).
-        - Failure whose text contains `Audio generation failed` (not billed):
-          retry ONCE with a fallback prompt in which the negated audio list
-          (e.g. `no speech, no voiceover, no dialogue`, `no music, no voices`)
-          is replaced by a positive ambience line describing what IS heard in
-          the scene (e.g. `gentle steady hum of the gate machinery and distant
-          truck engines`). This is safe because a scene with `audio_source:
-          elevenlabs` has its clip audio discarded in the Phase 6 edit. Tell
-          the user the prompt was changed for the render only; the approved
-          copy-paste prompt in `video-prompts.md` is not edited. Record the
-          ledger entry with the fallback prompt's sha256 and a note
-          `audio fallback: negated list replaced by positive ambience`. If the
-          retry also fails, record `failed` with both MCP texts.
-        - Any other failure → record `failed` with the MCP text verbatim.
-          Continue with the next scene either way.
+          `{output_folder}/clips/scene-{NN}.mp4` (create parents first), then
+          `python3 tools/renders.py {output_folder} record --json '{...
+          "phase": "5", "status": "done", "cdn_url": "<cdn_url>", ...}'
+          --prompt-file <temp-file>`.
+        - Failure whose text contains `Audio generation failed` (not billed)
+          AND the scene's `audio_source` is `elevenlabs`: retry ONCE with a
+          fallback prompt in which the negated audio list (e.g. `no speech,
+          no voiceover, no dialogue`, `no music, no voices`) is replaced by a
+          positive ambience line describing what IS heard in the scene (e.g.
+          `gentle steady hum of the gate machinery and distant truck
+          engines`). This is safe ONLY because an `elevenlabs` scene has its
+          clip audio discarded in the Phase 6 edit — a `platform-native`
+          scene's clip audio ships as-is, so for those scenes do NOT retry:
+          record `failed` via the CLI above and ask the user how to proceed
+          (regenerate the prompt, or render by hand in the platform's UI).
+          For the `elevenlabs` retry: tell the user the prompt was changed
+          for the render only; the approved copy-paste prompt in
+          `video-prompts.md` is not edited. Record via the CLI with the
+          fallback prompt's sha256 (`--prompt-file` pointed at the fallback
+          text) and an `"error"` note `audio fallback: negated list replaced
+          by positive ambience`. If the retry also fails, record `failed`
+          with both MCP texts.
+        - Any other failure → record `failed` via the CLI with the MCP text
+          verbatim. Continue with the next scene either way.
      g. AFTER the batch, run `python3 tools/probe_clips.py {output_folder}`
         and report its `problems` list to the user.
 
