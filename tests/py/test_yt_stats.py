@@ -1,9 +1,82 @@
 import os
+import stat
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
 from tools import yt_stats
+
+
+def _install_fake_google_modules(raise_refresh_error=False):
+    """Register minimal fake `google.*` / `google_auth_oauthlib.*` modules in sys.modules
+    so `tools._venv.require(name)` finds them via plain `importlib.import_module` — no real
+    google-api-python-client / google-auth install needed to exercise get_creds()'s wiring.
+    Returns a teardown() that removes exactly what this installed.
+    """
+    class FakeGoogleAuthError(Exception):
+        pass
+
+    class FakeRefreshError(FakeGoogleAuthError):
+        pass
+
+    class FakeCreds:
+        def __init__(self, valid=False, expired=True, refresh_token="rt"):
+            self.valid = valid
+            self.expired = expired
+            self.refresh_token = refresh_token
+
+        def refresh(self, request):
+            if raise_refresh_error:
+                raise FakeRefreshError("revoked")
+            self.valid = True
+
+        def to_json(self):
+            return '{"token": "fake"}'
+
+    fake_creds_holder = {"instance": FakeCreds()}
+
+    class FakeCredentials:
+        @staticmethod
+        def from_authorized_user_file(path, scopes):
+            return fake_creds_holder["instance"]
+
+    requests_mod = types.ModuleType("google.auth.transport.requests")
+    requests_mod.Request = lambda: None
+
+    exceptions_mod = types.ModuleType("google.auth.exceptions")
+    exceptions_mod.GoogleAuthError = FakeGoogleAuthError
+    exceptions_mod.RefreshError = FakeRefreshError
+
+    credentials_mod = types.ModuleType("google.oauth2.credentials")
+    credentials_mod.Credentials = FakeCredentials
+
+    flow_mod = types.ModuleType("google_auth_oauthlib.flow")
+    flow_mod.InstalledAppFlow = None  # not exercised in these tests
+
+    names = {
+        "google": types.ModuleType("google"),
+        "google.auth": types.ModuleType("google.auth"),
+        "google.auth.transport": types.ModuleType("google.auth.transport"),
+        "google.auth.transport.requests": requests_mod,
+        "google.auth.exceptions": exceptions_mod,
+        "google.oauth2": types.ModuleType("google.oauth2"),
+        "google.oauth2.credentials": credentials_mod,
+        "google_auth_oauthlib": types.ModuleType("google_auth_oauthlib"),
+        "google_auth_oauthlib.flow": flow_mod,
+    }
+    previous = {name: sys.modules.get(name) for name in names}
+    sys.modules.update(names)
+
+    def teardown():
+        for name, mod in previous.items():
+            if mod is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = mod
+
+    return teardown, fake_creds_holder
 
 
 def _with_gaspol_video_home(value):
@@ -94,6 +167,46 @@ class AnalyticsRowToFieldsTest(unittest.TestCase):
         fields = yt_stats.analytics_row_to_fields(headers, row)
         self.assertIsNone(fields["avgViewPct"])
         self.assertIsNone(fields["watchTimeH"])
+
+
+class WriteTokenTest(unittest.TestCase):
+    def test_token_file_written_0600_inside_a_0700_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            teardown = _with_gaspol_video_home(tmp)
+            try:
+                class FakeCreds:
+                    def to_json(self):
+                        return '{"token": "x"}'
+
+                yt_stats._write_token(FakeCreds())
+
+                token = yt_stats.token_path()
+                self.assertTrue(token.exists())
+                self.assertEqual(stat.S_IMODE(token.stat().st_mode), 0o600)
+
+                ydir = yt_stats.yt_dir()
+                self.assertEqual(stat.S_IMODE(ydir.stat().st_mode), 0o700)
+            finally:
+                teardown()
+
+
+class GetCredsErrorWrappingTest(unittest.TestCase):
+    def test_refresh_error_is_wrapped_with_an_actionable_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            teardown_home = _with_gaspol_video_home(tmp)
+            teardown_google, _holder = _install_fake_google_modules(raise_refresh_error=True)
+            try:
+                token = yt_stats.token_path()
+                token.parent.mkdir(parents=True, exist_ok=True)
+                token.write_text("{}", encoding="utf-8")
+
+                with self.assertRaises(yt_stats.StatsError) as ctx:
+                    yt_stats.get_creds()
+                self.assertIn("token revoked or expired", str(ctx.exception))
+                self.assertIn("tools/yt_stats.py auth", str(ctx.exception))
+            finally:
+                teardown_google()
+                teardown_home()
 
 
 class ClientSecretCheckTest(unittest.TestCase):

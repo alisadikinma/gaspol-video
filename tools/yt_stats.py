@@ -125,21 +125,58 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _ensure_yt_dir() -> Path:
+    """The youtube dir holds an OAuth refresh token — 0o700 keeps it unreadable by other
+    accounts on a shared machine. `mkdir(exist_ok=True)` alone would not fix the mode on a
+    directory that already existed with looser permissions, so `chmod` runs unconditionally."""
+    d = yt_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    os.chmod(d, 0o700)
+    return d
+
+
+def _write_token(creds) -> None:
+    """Write the token atomically: build the file at 0o600 from the first byte (never a
+    window where it is world/group readable), write to a sibling temp file, then rename
+    into place — a crash mid-write leaves the old token intact, never a half-written one."""
+    d = _ensure_yt_dir()
+    token = token_path()
+    tmp = token.with_name(token.name + ".tmp")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(creds.to_json())
+    except OSError:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    os.replace(tmp, token)
+
+
 def get_creds():
     """Load, refresh, or newly obtain OAuth credentials for the read-only scopes."""
     request_mod = _venv.require("google.auth.transport.requests")
     creds_mod = _venv.require("google.oauth2.credentials")
     flow_mod = _venv.require("google_auth_oauthlib.flow")
+    auth_exceptions = _venv.require("google.auth.exceptions")
     Request = request_mod.Request
     Credentials = creds_mod.Credentials
     InstalledAppFlow = flow_mod.InstalledAppFlow
+    GoogleAuthError = auth_exceptions.GoogleAuthError
+    RefreshError = auth_exceptions.RefreshError
 
     token = token_path()
     creds = Credentials.from_authorized_user_file(str(token), SCOPES) if token.exists() else None
     if creds and creds.valid:
         return creds
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except RefreshError as exc:
+            raise StatsError(
+                "token revoked or expired; run `python3 tools/yt_stats.py auth`"
+            ) from exc
+        except GoogleAuthError as exc:
+            raise StatsError(f"authentication failed: {exc}") from exc
     else:
         message = check_client_secret()
         if message:
@@ -148,8 +185,10 @@ def get_creds():
             str(client_secret_path()), SCOPES
         ).run_local_server(port=0)
 
-    yt_dir().mkdir(parents=True, exist_ok=True)
-    token.write_text(creds.to_json(), encoding="utf-8")
+    try:
+        _write_token(creds)
+    except OSError as exc:
+        raise StatsError(f"could not save token to {token_path()}: {exc}") from exc
     return creds
 
 
@@ -162,12 +201,15 @@ def fetch(video_id: str) -> dict:
 
     creds = get_creds()
     youtube = build("youtube", "v3", credentials=creds)
-    items = (
-        youtube.videos()
-        .list(part="snippet,statistics,contentDetails", id=video_id)
-        .execute()
-        .get("items", [])
-    )
+    try:
+        items = (
+            youtube.videos()
+            .list(part="snippet,statistics,contentDetails", id=video_id)
+            .execute()
+            .get("items", [])
+        )
+    except HttpError as exc:
+        raise StatsError(f"YouTube Data API request failed: {exc}") from exc
     if not items:
         raise StatsError(f"video {video_id} not found (or not visible to this account)")
 
@@ -229,8 +271,13 @@ def _write_calibration(project, entry) -> Path:
         except json.JSONDecodeError as exc:
             raise StatsError(f"{calibration_path}: invalid JSON ({exc})") from exc
     merged = merge_calibration(existing, entry)
-    calibration_path.parent.mkdir(parents=True, exist_ok=True)
-    calibration_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        calibration_path.parent.mkdir(parents=True, exist_ok=True)
+        calibration_path.write_text(
+            json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        raise StatsError(f"could not write {calibration_path}: {exc}") from exc
     return calibration_path
 
 
