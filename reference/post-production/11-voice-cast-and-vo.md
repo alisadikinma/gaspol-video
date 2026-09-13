@@ -97,10 +97,36 @@ Order matters: generate in **script order**, not in whatever order the scenes we
 For a character whose `source` is `native+changer`:
 
 ```
-clip audio  →  ffmpeg extract  →  ElevenLabs speech-to-speech  →  vo/scene-{NN}-c{N}.mp3
+clip audio  →  [clean_voice.py, when clean != none]  →  ffmpeg extract  →
+    ElevenLabs speech-to-speech  →  vo/scene-{NN}-c{N}.mp3
                                           ↓
                               duration must be preserved
 ```
+
+### Clean before converting
+
+Speech-to-speech converts whatever it is handed — including the noise. A platform clip shot
+outdoors carries wind, water or crowd noise underneath the dialogue, and that noise comes back
+INSIDE the converted voice, not removed by it (§"the conversion eats the scene, not just the
+voice" below). When the scene's clip has audible background noise, set `clean` on that scene in
+`audio-plan.json` (`10-post-production-pipeline.md` §3.2) and run `tools/clean_voice.py` on the
+clip's audio BEFORE `voice_changer.mjs` sees it:
+
+```bash
+python3 tools/clean_voice.py {output_folder}/clips/scene-03.mp4 \
+    --method isolate -o {output_folder}/clips/scene-03-clean.mp4
+node tools/voice_changer.mjs {output_folder}/clips/scene-03-clean.mp4 \
+    --voice-env ELEVENLABS_VOICE_C2 --spans 0-3.88 --out vo/scene-03-c2.mp3
+```
+
+`--method isolate` (ElevenLabs Voice Isolator) removes dynamic broadband noise near-completely
+and costs credits; `--method rnnoise` (local ffmpeg `arnndn`) is free and offline but only
+partially removes non-stationary noise like water. Either way the source clip is never
+modified, the video stream is copied rather than re-encoded, and the tool refuses (deleting its
+own output) if cleaning changed the duration by more than 0.05s — the same drift budget as the
+Voice Changer itself, because a clip that drifts here would drift the lip-sync just the same.
+Do not clean a scene that is already quiet; cleaning a clean take buys nothing and risks
+thinning the voice.
 
 **The 0.05s rule.** Speech-to-speech keeps timing and rhythm, which is exactly why lip-sync survives
 the swap. That is a property to VERIFY, not to assume: if the converted audio differs from the source

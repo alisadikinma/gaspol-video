@@ -107,6 +107,11 @@ a resolution that disagrees with the project's aspect ratio each add a line.
 - `kind` ∈ `dialogue | narration | ambient | sfx`
 - `from` ∈ `clip | tts`
 - `audio_source` ∈ `platform-native | elevenlabs | mixed`, at video level and again per scene
+- `clean` (optional, scene level) ∈ `none | isolate | rnnoise`, default `none`. Set after
+  listening to the platform clip: `isolate` (ElevenLabs Voice Isolator) or `rnnoise` (local
+  ffmpeg `arnndn`) run `tools/clean_voice.py` on a `dialogue` layer's clip audio BEFORE it goes
+  through the Voice Changer, when the clip has background noise the changer would otherwise
+  carry into the converted voice. See `11-voice-cast-and-vo.md` §5.
 - Two speech layers in one scene MUST NOT overlap. A platform lip-syncs one speaker at a time, and a
   narration line that starts before the dialogue ends renders as garble.
 
