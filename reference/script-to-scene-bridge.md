@@ -271,6 +271,11 @@ Scene 6: Clip 6a (8s, 720p) → Extend → Clip 6b (+7s) = 15s total
 
 ### For First+Last Frame Mode
 
+Every `ui-{name}.png` reference below (start frame, end frame, and the Required Reference
+Images table) applies only when the scene's Screen Source is `prompt` (an NB2-generated
+screen). Skip it when Screen Source is `capture` or `mock` — that file comes from
+`tools/gen_app_screen.py` as `ui-<name>[-<state>].png` instead.
+
 Generate TWO NB2 images per scene:
 
 **Start Frame Template:**
@@ -315,7 +320,7 @@ OUTPUT: 16:9 LANDSCAPE aspect ratio. Width > Height. Do NOT crop or change ratio
 | 7 | `brand-{asset}.png` | Brand asset | ⬜ (if brand visible) |
 | 8 | `vehicle-{type}-{name}.png` | Vehicle | ⬜ (if vehicle in scene) |
 | 9 | `object-{name}.png` | Object/equipment | ⬜ (if object in scene) |
-| 10 | `ui-{name}.png` | UI/screen | ⬜ (if screen visible) |
+| 10 | `ui-{name}.png` | UI/screen | ⬜ (if screen visible AND Screen Source is `prompt`; skip when `capture`\|`mock` — see `tools/gen_app_screen.py`) |
 | 11 | `scene-{NN-1}-end.png` | Previous scene end frame — grading & continuity anchor | ⬜ (CONDITIONAL — v2.2.0: include ONLY IF env(N-1) == env(N). Hard cut between scenes = DROP this row. See global-promo-config.md §27.) |
 ```
 
@@ -1315,6 +1320,10 @@ OUTPUT: 16:9 LANDSCAPE aspect ratio. Width > Height. Do NOT crop or change ratio
 **Dependency:** None.
 
 ### UI/Screen Composite Template — TIER N (depends on sub-elements)
+
+Skip this template when the scene's Screen Source is `capture` or `mock` — the file comes
+from `tools/gen_app_screen.py` as `ui-<name>[-<state>].png` instead of an NB2 prompt (see
+`Screen Source` above and `reference/post-production/18-screencast.md`).
 
 For UI screens, dashboards, CCTV displays, etc. that contain other visual elements.
 

@@ -117,12 +117,16 @@ reachable only from the Claude session.
 **Routing.** `scene-plan.md` gains a `Screen Source` column: `capture | mock | none`, decided at Phase 3
 next to Render Path, before NB2 credits are spent.
 
-**`capture --spec screens.json`.** Playwright Chromium. Spec: `viewport`, `base_url`, optional
-`browser_profile` (persistent login, never a password in the spec), and `steps` of `goto | click | fill
-| wait | scroll | shot`. Each `shot` writes `ref/ui-{name}-{state}.png`; the run writes
-`screens/manifest.json` with `{name, file, url_label, title, source: "capture", simulated: false, captured_at}` (mock entries add `component`, `state`, `data_key`; entries are keyed by `(name, state)`).
+**`capture <project> [--headed]`.** Reads `{project}/screens/screens.json` (no separate `--spec`
+flag). Playwright Chromium. Spec: `viewport`, `base_url`, optional `browser_profile` (persistent
+login, never a password in the spec), and `steps` of `goto | click | fill | wait | scroll | shot`.
+Each `shot` writes `ref/ui-{name}.png` — the shot's own name carries any state distinction (e.g.
+`plate-detected`); a capture entry has no separate `state` field. The run writes
+`screens/manifest.json` with `{name, file, url_label, title, source: "capture", simulated: false, captured_at}` (mock entries add `component`, `state`, `data_key`; entries are keyed by `(name, state)`,
+so a capture entry's key is `(name, None)`).
 
-**`mock --screens screens.json`.** Claude authors `shots/screens/<Name>Screen.tsx` from:
+**`mock <project> [--only name]`.** Reads `{project}/screens/screens.json` (no separate `--screens`
+flag). Claude authors `shots/screens/<Name>Screen.tsx` from:
 - `src/shots/brand.json` tokens. The scaffolder only places a placeholder and prints "write brand.json
   from strategic-brief.md"; `mock` requires that step done and refuses while the placeholder values
   remain;

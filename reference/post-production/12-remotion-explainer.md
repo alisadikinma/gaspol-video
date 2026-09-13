@@ -40,9 +40,10 @@ nondeterminism, not a style preference:
 
 ## 3. Brand comes from the project
 
-`brand.json` is written per project from `strategic-brief.md`. **This plugin ships no palette.** The
-placeholder values in the template exist only so a scaffolded workspace renders before a brand is
-read; replace every one.
+`brand.json` is written per project from `strategic-brief.md`. **This plugin ships no brand
+palette; only neutral browser-chrome defaults and a white on-accent mark, overridable** (see
+`18-screencast.md`). The placeholder values in the template exist only so a scaffolded workspace
+renders before a brand is read; replace every one.
 
 What is fixed are the legibility floors, and they are not style choices:
 

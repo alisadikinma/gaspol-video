@@ -1,5 +1,5 @@
 {
-  "_comment": "Written per project from strategic-brief.md. These placeholder values exist so the template renders before a brand is read; replace every one of them. This plugin ships no palette.",
+  "_comment": "Written per project from strategic-brief.md. These placeholder values exist so the template renders before a brand is read; replace every one of them. This plugin ships no brand palette; only neutral browser-chrome defaults and a white on-accent mark, overridable (see 18-screencast.md).",
   "background": "#0b1f2a",
   "ink": "#f2f6f7",
   "inkSoft": "#9fb4bd",

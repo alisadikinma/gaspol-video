@@ -1,6 +1,6 @@
 ---
 name: video-prompt-reviewer
-description: Independent validator for gaspol-video batches. Reviews NB2 image prompts, VEO/Seedance/Kling video prompts, and post-production plans against cast-profile.md and scene-plan.md (checks C1-C11, I, V, P). Returns PASS/FAIL with line-level feedback. Use after each Phase 4B/5 batch.
+description: Independent validator for gaspol-video batches. Reviews NB2 image prompts, VEO/Seedance/Kling video prompts, and post-production plans against cast-profile.md and scene-plan.md (checks A-J, C1-C11 — C7-C10 cover Phase 6 outputs). Returns PASS/FAIL with line-level feedback. Use after each Phase 4B/5 batch.
 model: opus
 ---
 
