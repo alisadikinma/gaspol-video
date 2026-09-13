@@ -79,6 +79,19 @@ rather than silently missing:
 Batch {N}: {X} keyframes generated, {Y} scenes skipped (explainer): {list}
 ```
 
+### Rule 34: Screen Source scenes never get an NB2 UI prompt (v3.1.0)
+
+A scene with `Screen Source` `capture` or `mock` never gets an NB2 prompt that draws the UI. The app
+screen image is produced by `python3 tools/gen_app_screen.py capture|mock`, not by Phase 4A or 4B.
+
+**Phase 4A** lists the resulting `ui-<name>-<state>.png` files as UNIQUE assets produced by
+`gen_app_screen.py` — they appear in the asset table for tracking, but no NB2 prompt is written for
+them.
+
+**Phase 4B** references them inline, exactly like any other Phase 4A asset:
+`"...the monitor shows EXACTLY matching ui-<name>-<state>.png"`. Describing the UI from text instead
+of referencing the file is the same Asset-First violation as Rule 10, applied to screens.
+
 ## Hard Rules (NON-NEGOTIABLE)
 
 1. **Ingredients ≠ First+Last Frame** — mutually exclusive VEO modes, NEVER combine

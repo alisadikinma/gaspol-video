@@ -200,6 +200,19 @@ Check `subtitle-plan.json` against `av-script.md`.
   a shipped voice-only master plus a recorded warning. Reporting that as a blocking failure is itself
   a FAIL of this check — the asymmetry against the A/V gate is deliberate.
 
+### C11. Screen Source Honoured (Phase 4A + Phase 4B — v3.1.0)
+
+Cross-check `scene-plan.md`'s `Screen Source` column against what Phase 4A and 4B actually produced.
+
+- For every scene with `Screen Source` `capture` or `mock`, no Phase 4A prompt generates its
+  `ui-<name>-<state>.png` — that file comes from `tools/gen_app_screen.py`, never from an NB2 prompt.
+  A Phase 4A prompt that draws it is a FAIL.
+- The Phase 4B prompt for that scene references `ui-<name>-<state>.png` inline exactly once —
+  describing the UI from text instead, or omitting the reference entirely, is a FAIL.
+- A scene with `Screen Source` `none` is not held to this check.
+
+FAIL output names the scene, the declared Screen Source, and which artefact violated the rule.
+
 ## Output Format
 
 Return a structured report:
@@ -227,6 +240,7 @@ Return a structured report:
 - C8: Phase 5 + Phase 6 — needs cast-profile.md and audio-plan.json
 - C9: Phase 6 (subtitles) only — needs subtitle-plan.json and av-script.md
 - C10: Phase 6 (music) only — needs music-plan.json and the mixed master
+- C11: Phase 4A + Phase 4B — checks the Screen Source column is honoured
 
 ### Issues Found (FAIL items only)
 

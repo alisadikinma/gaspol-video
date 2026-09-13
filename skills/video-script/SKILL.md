@@ -182,6 +182,19 @@ Render path: {N} live-action, {M} explainer
 Explainer scenes skip NB2 keyframes and platform generation entirely.
 ```
 
+### Screen Source per Scene (v3.1.0 — MANDATORY)
+
+Every scene row in `scene-plan.md` also carries a `Screen Source`, placed right after `Render Path`:
+`capture`, `mock`, or `none`. Apply the assignment rule in `reference/script-to-scene-bridge.md` >
+"Screen Source — where an app screen comes from". In short: a scene whose frame shows a monitor,
+phone, tablet, dashboard or browser with readable product UI gets `capture` (the real app is
+reachable by URL) or `mock` (the app does not exist yet or cannot be reached); every other scene gets
+`none`.
+
+This decision happens here, before Phase 4A, so the app screen is produced once by
+`tools/gen_app_screen.py` and referenced everywhere it appears — never redrawn by NB2, which cannot
+render legible UI text.
+
 #### Step 3.1: Auto-Calculate Scene Decomposition
 
 Follow `script-to-scene-bridge.md` Section 1:

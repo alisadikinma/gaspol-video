@@ -100,6 +100,9 @@ For each bet, name the frame in `av-script.md` that delivers its promise. A bet 
 rewritten or dropped. Present this check to the user — it is the step most likely to be waved
 through, and the one that costs the client's credibility when it is.
 
+Read `screens/manifest.json`. A screen with `simulated: true` may illustrate a flow; the title,
+thumbnail and description must not claim it as a shipped feature.
+
 ### Step 7.6: Description
 
 Value forward. What the viewer gets, in the first two lines, before any link.
