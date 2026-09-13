@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -80,6 +81,64 @@ class GainForTest(unittest.TestCase):
 
     def test_silent_track_uses_ceiling_minus_peak(self):
         self.assertAlmostEqual(gen_music.gain_for(None, -8, -20, -1.5), 6.5, places=2)
+
+
+class MissingPaletteTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.library = Path(self.tmp.name)  # no palette.json written
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_load_palette_raises_when_missing(self):
+        with self.assertRaises(gen_music.MusicLibraryError) as ctx:
+            gen_music.load_palette(self.library)
+        self.assertIn("palette not found", str(ctx.exception))
+        self.assertIn(str(self.library), str(ctx.exception))
+
+    def test_generate_raises_named_error_when_palette_missing(self):
+        with self.assertRaises(gen_music.MusicLibraryError) as ctx:
+            gen_music.generate(self.library, env={"ELEVENLABS_API_KEY": "x"})
+        self.assertIn("palette not found", str(ctx.exception))
+
+    def test_main_exits_1_when_palette_missing(self):
+        rc = gen_music.main(["--library", str(self.library), "--dry-run"])
+        self.assertEqual(rc, 1)
+
+
+class RequestFailureWrappingTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.library = Path(self.tmp.name)
+        (self.library / "tracks").mkdir(parents=True)
+        (self.library / "palette.json").write_text(json.dumps(PALETTE))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_certificate_verify_failed_mentions_the_fix(self):
+        with patch("tools.gen_music.urllib.request.urlopen",
+                   side_effect=urllib.error.URLError(
+                       "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")):
+            with self.assertRaises(gen_music.MusicLibraryError) as ctx:
+                gen_music.generate(self.library, env={"ELEVENLABS_API_KEY": "fake-key"})
+        self.assertIn("CERTIFICATE_VERIFY_FAILED", str(ctx.exception))
+        self.assertIn("Install Certificates", str(ctx.exception))
+
+    def test_plain_url_error_is_wrapped_without_certificate_hint(self):
+        with patch("tools.gen_music.urllib.request.urlopen",
+                   side_effect=urllib.error.URLError("network down")):
+            with self.assertRaises(gen_music.MusicLibraryError) as ctx:
+                gen_music.generate(self.library, env={"ELEVENLABS_API_KEY": "fake-key"})
+        self.assertIn("network down", str(ctx.exception))
+        self.assertNotIn("Install Certificates", str(ctx.exception))
+
+    def test_os_error_is_wrapped(self):
+        with patch("tools.gen_music.urllib.request.urlopen", side_effect=OSError("disk full")):
+            with self.assertRaises(gen_music.MusicLibraryError) as ctx:
+                gen_music.generate(self.library, env={"ELEVENLABS_API_KEY": "fake-key"})
+        self.assertIn("disk full", str(ctx.exception))
 
 
 class DryRunTest(unittest.TestCase):

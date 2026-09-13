@@ -71,5 +71,30 @@ class GenSfxTest(unittest.TestCase):
         self.assertEqual(sorted(result["pending"]), ["amb-factory-floor", "pop-reveal"])
 
 
+class MissingPaletteTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.lib = Path(self.tmp.name)  # no palette.json written
+        (self.lib / "clips").mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_load_palette_raises_when_missing(self):
+        with self.assertRaises(gen_sfx.LibraryError) as ctx:
+            gen_sfx.load_palette(self.lib)
+        self.assertIn("palette not found", str(ctx.exception))
+        self.assertIn(str(self.lib), str(ctx.exception))
+
+    def test_generate_raises_named_error_when_palette_missing(self):
+        with self.assertRaises(gen_sfx.LibraryError) as ctx:
+            gen_sfx.generate(self.lib, env={"ELEVENLABS_API_KEY": "x"}, log=lambda *_: None)
+        self.assertIn("palette not found", str(ctx.exception))
+
+    def test_main_exits_1_when_palette_missing(self):
+        rc = gen_sfx.main(["--library", str(self.lib), "--dry-run"])
+        self.assertEqual(rc, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

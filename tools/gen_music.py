@@ -55,7 +55,12 @@ def _read_json(path, default):
 
 
 def load_palette(library):
-    return _read_json(Path(library) / "palette.json", {"moods": []})
+    path = Path(library) / "palette.json"
+    if not path.exists():
+        raise MusicLibraryError(
+            f"palette not found: {path} — run from the plugin root or pass --library"
+        )
+    return _read_json(path, {"moods": []})
 
 
 def load_defaults(palette):
@@ -263,6 +268,17 @@ def generate(library, env=None, only=None, force=False, dry_run=False, length_s=
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", "ignore")[:400]
                 raise MusicLibraryError(f"ElevenLabs HTTP {exc.code}: {detail}") from exc
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                reason = str(exc)
+                hint = ""
+                if "CERTIFICATE_VERIFY_FAILED" in reason:
+                    hint = (
+                        " This looks like the python.org 3.14 installer not registering "
+                        "system CA certificates. Run "
+                        "`/Applications/Python 3.14/Install Certificates.command` once, "
+                        "then retry."
+                    )
+                raise MusicLibraryError(f"ElevenLabs request failed: {reason}.{hint}") from exc
             if len(audio) < 1000:
                 raise MusicLibraryError(
                     f"{mood['id']}: response too small ({len(audio)} bytes) — treating as an error"
