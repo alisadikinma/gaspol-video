@@ -72,6 +72,13 @@ B) Sudah, 10+ video dengan data CTR — datamu yang menang atas aturan bawaan
 Under A, every output carries the line: *"these are uncalibrated defaults; your own CTR data will
 beat them."*
 
+Under B, pull the fetchable fields (views, watch time, avg view %, subs gained) for a published
+video with `python3 tools/yt_stats.py fetch <video_id> {output_folder}` — it writes/merges
+`{output_folder}/packaging/calibration.json` (`python3 tools/yt_stats.py auth` once first if no
+token exists yet). CTR itself is never fetched (YouTube Analytics has no impressions/CTR
+endpoint) — the user still reads that number by hand from YouTube Studio and supplies it
+alongside the fetched fields.
+
 ### Step 7.2: Establish the platform shape
 
 Read the platform from `strategic-brief.md`. Where the platform has no cover — Instagram Reels,

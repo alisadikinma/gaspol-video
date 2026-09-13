@@ -48,6 +48,16 @@ not a fact.**
 
 **Never quote a target CTR the user has not measured.**
 
+**Data source (v3.1.0):** `python3 tools/yt_stats.py fetch <video_id> {output_folder}` pulls a
+published video's public stats (Data API v3) and, when the account owns it, owner analytics
+(Analytics API v2 — avg view %, avg view duration, watch time, subs gained) into
+`{output_folder}/packaging/calibration.json`, keyed by `videoId`. `python3 tools/yt_stats.py auth`
+runs the one-time OAuth consent first; both read-only scopes, token kept outside the repo under
+`${GASPOL_VIDEO_HOME:-~/.gaspol-video}/youtube/`. **CTR itself is never pulled** — the YouTube
+Analytics API does not expose impressions or impression CTR, so every entry carries `"ctr": null`
+and `"ctr_source": "manual -- YouTube Studio only"`. Read CTR by hand from YouTube Studio and
+record it alongside the fetched fields before treating a channel as calibrated.
+
 ---
 
 ## 4. Three bets, one title
