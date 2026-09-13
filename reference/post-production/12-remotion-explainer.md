@@ -112,3 +112,79 @@ than composited.
 No Node: the `.tsx` files are still written, and the skill prints the exact scaffold, install and
 render commands to run elsewhere. The shots do not exist, the skill says so, and the scenes that
 needed them are listed rather than silently dropped from the edit.
+
+---
+
+## Style presets
+
+`brand.json` fixes the project's own palette (`background`, `ink`, `inkSoft`, `accent`, fonts) — see
+§3. What varies shot to shot within that fixed palette is the *treatment*: how much whitespace, how
+hard the edges are, whether there is a glow. When the user names a style, apply its characteristics
+using the project's `brand.json` tokens (via `lib/brand.ts`'s `COLORS`), never a hardcoded hex value.
+If no style is named, use **minimalist**.
+
+---
+
+### Minimalist (default)
+
+Use `COLORS.paper` as the background, `COLORS.ink` for primary text, `COLORS.muted` for secondary
+text, `COLORS.accent` sparingly.
+
+**Characteristics:** maximum whitespace, subtle animations, thin fonts, no decorative elements. Let
+the content breathe — restraint is the point.
+
+---
+
+### Memphis
+
+Use `COLORS.accent` and `COLORS.signal` for the geometric shapes, `COLORS.paper` for the background,
+`COLORS.ink` for outlines.
+
+**Characteristics:** geometric shapes (triangles, circles, squiggles), bold outlines in `COLORS.ink`,
+scattered elements, confetti particles. Playful and busy — lean into the chaos, but stay inside the
+project's own palette rather than importing a stock Memphis rainbow.
+
+---
+
+### Neo-brutalism
+
+Use `COLORS.ink` for harsh borders, `COLORS.accent` for solid color blocks, `COLORS.paper` for the
+background.
+
+**Characteristics:** harsh borders (3-4px) in `COLORS.ink`, solid color blocks in `COLORS.accent`,
+offset box shadows (`4px 4px 0px` in `COLORS.ink`), raw aesthetic. No gradients, no softness —
+everything is hard-edged.
+
+---
+
+### Glassmorphism
+
+Use `COLORS.paper` for frosted panels over a gradient built from `COLORS.accent` and `COLORS.signal`,
+`COLORS.ink` (or its lightest tint) for text on the gradient.
+
+**Characteristics:** frosted glass panels (`backdrop-filter: blur(...)`), transparency, subtle 1px
+borders, a gradient background. Layer translucent cards over the gradient rather than a flat fill.
+
+> `background` here is a gradient string built from the project's own accent tokens. Apply it via
+> `background` (not `backgroundColor`) on the `AbsoluteFill`.
+
+---
+
+### Neon / signal glow
+
+Use `COLORS.ink` as a near-black background, `COLORS.signal` and `COLORS.accent` for glowing
+elements.
+
+**Characteristics:** dark backgrounds, glowing effects (`box-shadow` / `text-shadow` in
+`COLORS.signal`), scanlines, tech-inspired elements. The glow is what sells it — apply colored shadows
+generously, but only in colors that already exist in `brand.json`.
+
+---
+
+### Corporate
+
+Use `COLORS.paper` as the background, `COLORS.accent` for structure, `COLORS.ink`/`COLORS.muted` for
+text.
+
+**Characteristics:** professional, clean, structured layouts, subtle gradients built from the existing
+tokens. Conservative motion — nothing flashy.

@@ -85,6 +85,7 @@ You generate production-ready output for:
 | Pass order, folder contract, all six plan schemas | `reference/post-production/10-post-production-pipeline.md` |
 | Voice cast, VOICE: block, speech-to-speech spans | `reference/post-production/11-voice-cast-and-vo.md` |
 | Remotion explainer shots | `reference/post-production/12-remotion-explainer.md` |
+| Screencast shots for app screens | `reference/post-production/18-screencast.md` |
 | ffmpeg assembly and the A/V duration gate | `reference/post-production/13-ffmpeg-edit.md` |
 | Domain-aware SFX, levels, audibility gate | `reference/post-production/14-sfx-design.md` |
 | Title, thumbnail bets, description | `reference/post-production/15-packaging.md` |
