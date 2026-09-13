@@ -362,6 +362,50 @@ FOR each batch (ACT or sub-batch):
      B) Revise specific scenes — list scene numbers
      C) Regenerate entire batch — start fresh
 
+  5.5. RENDER OFFER (only after option A above):
+     a. FOR each approved scene, build `{platform, mode, duration_s, aspect, refs}`
+        from `scene-plan.md` and the prompt just approved, and run
+        `tools/renders.py::video_render_eligibility(scene)`. An ineligible scene
+        is listed with its reason and stays copy-paste only — it never gets an
+        MCP call.
+     b. Face >30% frame keeps the existing safety rule: start frame only
+        (`refs` = one keyframe, `mode` = "i2v" for eligibility purposes).
+     c. BEFORE calling the MCP, check the prompt text for the two known vault
+        traps (`docs/evals/` finding, 2026-09-04):
+        - the phrase `security camera` → Veo draws a `REC` text overlay.
+          Replace it with `fixed overhead view` in the prompt and tell the
+          user what was changed.
+        - a negated audio list such as `no music, no voices` →
+          `Audio generation failed`. Replace it with a positive ambience
+          description (what IS heard, not what is absent) and tell the user.
+     d. SKIP scenes already up to date via `renders.needs_render(ledger, file,
+        prompt)` against `{output_folder}/renders.json`, same as Phase 4.
+     e. ASK (only if any eligible scene remains in the render list):
+        AskUserQuestion:
+        "Render batch {N} sekarang? ({k} clip VEO 3.1 fast, {s} detik total)"
+        Options:
+        A) Render sekarang
+        B) Nanti
+        C) Pilih scene
+     f. ON "Render sekarang" (or the chosen subset), FOR each eligible scene:
+        - map `mode` to the MCP's `mode_image`: `frame` and `i2v` →
+          `mode_image="frame"`; `ingredients` → `mode_image="ingredient"`.
+        - call `mcp__indusia-video-gen__generate_video(prompt=<full VEO
+          prompt>, model="veo-3.1-fast", resolution=<scene resolution>,
+          duration=<duration_s>, aspect=<aspect>, mode_image=<mapped>,
+          output_dir="{output_folder}/.render-tmp", refs=[<absolute keyframe
+          paths>])`.
+        - Success → move the returned local file to
+          `{output_folder}/clips/scene-{NN}.mp4` (create parents first),
+          record a `done` ledger entry (phase "5", prompt sha256, cdn_url,
+          refs, model).
+        - Failure whose text contains `Audio generation failed` → record
+          `failed` with note "negated audio list or silent prompt; rewrite
+          ambience positively". Any other failure → record `failed` with the
+          MCP text verbatim. Continue with the next scene either way.
+     g. AFTER the batch, run `python3 tools/probe_clips.py {output_folder}`
+        and report its `problems` list to the user.
+
   6. APPEND to {output_folder}/video-prompts.md
 
 END FOR

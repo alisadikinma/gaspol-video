@@ -103,6 +103,35 @@ def parse_mcp_result(text: str) -> dict:
     }
 
 
+def video_render_eligibility(scene: dict) -> tuple[bool, str]:
+    """Whether a Phase 5 scene can be rendered through indusia-video-gen (veo-3.1-fast).
+
+    Input keys: `platform` (veo|seedance|kling), `mode` (frame|ingredients|i2v|extend),
+    `duration_s` (number), `aspect` (16:9|9:16|...), `refs` (list). Rules are checked in
+    order; the first failing rule's reason is returned. `(True, "")` when every rule
+    passes.
+    """
+    platform = scene.get("platform")
+    mode = scene.get("mode")
+    duration_s = scene.get("duration_s")
+    aspect = scene.get("aspect")
+    refs = scene.get("refs") or []
+
+    if platform != "veo":
+        return False, f"platform {platform} is prompt-only; render it in its own UI"
+    if mode == "extend":
+        return False, "Scene Extension is not available in indusia-video-gen"
+    if duration_s not in (4, 6, 8):
+        return False, f"duration {duration_s}s not in 4/6/8"
+    if aspect not in ("16:9", "9:16"):
+        return False, f"aspect {aspect} not supported"
+    if mode in ("frame", "i2v") and len(refs) > 2:
+        return False, f"too many refs for {mode}"
+    if mode == "ingredients" and len(refs) > 3:
+        return False, f"too many refs for {mode}"
+    return True, ""
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("project")

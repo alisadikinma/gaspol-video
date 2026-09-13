@@ -153,5 +153,69 @@ class ParseMcpResultTest(unittest.TestCase):
         self.assertIsNone(result["error"])
 
 
+class VideoRenderEligibilityTest(unittest.TestCase):
+    def _scene(self, **overrides):
+        base = {
+            "platform": "veo",
+            "mode": "frame",
+            "duration_s": 8,
+            "aspect": "16:9",
+            "refs": ["ref/scene-01-start.png"],
+        }
+        base.update(overrides)
+        return base
+
+    def test_non_veo_platform_is_prompt_only(self):
+        eligible, reason = renders.video_render_eligibility(
+            self._scene(platform="kling", mode="i2v", duration_s=5, refs=[])
+        )
+        self.assertFalse(eligible)
+        self.assertIn("prompt-only", reason)
+
+    def test_seedance_platform_is_prompt_only(self):
+        eligible, reason = renders.video_render_eligibility(self._scene(platform="seedance"))
+        self.assertFalse(eligible)
+        self.assertIn("prompt-only", reason)
+
+    def test_extend_mode_ineligible(self):
+        eligible, reason = renders.video_render_eligibility(self._scene(mode="extend"))
+        self.assertFalse(eligible)
+        self.assertIn("Scene Extension", reason)
+
+    def test_duration_5_ineligible(self):
+        eligible, reason = renders.video_render_eligibility(self._scene(duration_s=5))
+        self.assertFalse(eligible)
+        self.assertIn("duration", reason)
+
+    def test_aspect_1_1_ineligible(self):
+        eligible, reason = renders.video_render_eligibility(self._scene(aspect="1:1"))
+        self.assertFalse(eligible)
+        self.assertIn("aspect", reason)
+
+    def test_frame_mode_with_3_refs_ineligible(self):
+        eligible, reason = renders.video_render_eligibility(
+            self._scene(mode="frame", refs=["a.png", "b.png", "c.png"])
+        )
+        self.assertFalse(eligible)
+        self.assertIn("too many refs", reason)
+
+    def test_ingredients_mode_with_3_refs_eligible(self):
+        eligible, reason = renders.video_render_eligibility(
+            self._scene(mode="ingredients", refs=["a.png", "b.png", "c.png"])
+        )
+        self.assertTrue(eligible)
+        self.assertEqual(reason, "")
+
+    def test_veo_frame_8s_16_9_one_ref_eligible(self):
+        eligible, reason = renders.video_render_eligibility(self._scene())
+        self.assertTrue(eligible)
+        self.assertEqual(reason, "")
+
+    def test_duration_as_float_eligible(self):
+        eligible, reason = renders.video_render_eligibility(self._scene(duration_s=8.0))
+        self.assertTrue(eligible)
+        self.assertEqual(reason, "")
+
+
 if __name__ == "__main__":
     unittest.main()
