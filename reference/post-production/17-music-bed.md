@@ -32,6 +32,28 @@ between what was written and what was made.
 **Audio files are never committed.** `palette.json` holds the mood recipes; the tracks are yours,
 licensed by you, in `tracks/`.
 
+**Tracks can be generated (v3.1.0).** A mood with no track yet is not a dead end:
+
+```bash
+python3 tools/gen_music.py --only sparse-ambient --length-s 20   # one mood, master's length
+python3 tools/gen_music.py                                       # every missing mood, default length
+python3 tools/gen_music.py --force                                # regenerate, re-bills ElevenLabs
+python3 tools/gen_music.py --dry-run                               # show the plan, no API call
+python3 tools/gen_music.py --renorm                                 # re-balance existing tracks, no API call
+```
+
+Library-first, same shape as `tools/gen_sfx.py`: a mood whose `tracks/<id>.mp3` already exists is
+skipped and never re-billed unless `--force`. `--length-s` overrides every mood's `duration_s` with
+the master's actual length, since a bed generated for the wrong length is a bed generated twice.
+Each track is loudness-normalised toward `palette.json`'s `defaults.target_lufs`, clamped so the peak
+never crosses `defaults.ceiling_dbfs` — the resulting `catalog.json` (`{output_folder}` independent,
+lives in the library) records `loudness_lufs` and `peak_dbfs` per track so `mix_music.py`'s own
+`gain_to_sit_under()` measurement starts from a known level. `catalog.json` is gitignored, same as the
+tracks — it is regenerated data, not a reviewable artefact.
+
+Missing `ELEVENLABS_API_KEY` degrades loudly: the tool exits 1 naming which moods it could not make
+and says to supply a licensed track by hand instead.
+
 ---
 
 ## 2. Under the voice, measured

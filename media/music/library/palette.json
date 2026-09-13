@@ -1,5 +1,6 @@
 {
   "_comment": "Mood recipes for the music bed, keyed to the six tones in global-promo-config.md §13. Audio files are never committed; supply your own licensed tracks in tracks/, or generate them.",
+  "defaults": { "model": "music_v2", "force_instrumental": true, "target_lufs": -20.0, "ceiling_dbfs": -1.5, "output_format": "mp3_44100_128" },
   "moods": [
     { "id": "tense-low-pulse", "tones": ["Serious"], "prompt": "low pulsing bed, restrained, no melody, no drums, industrial documentary", "duration_s": 60 },
     { "id": "warm-uplift", "tones": ["Inspirational", "Humorous"], "prompt": "warm rising bed, soft piano and strings, hopeful, no vocals", "duration_s": 60 },
