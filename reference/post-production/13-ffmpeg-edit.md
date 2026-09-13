@@ -51,6 +51,25 @@ An **overlay** shot is different — it composites on top of a clip rather than 
 is `tools/composite.py`, not this tool. A scene recorded as `live-action + overlay:<shot-id>` is
 composited first, and the composited file is what the edit plan points at.
 
+### `split` — picture-in-picture
+
+A third `tools/composite.py` mode, for when the master needs to keep playing INSIDE a box while a
+graphic (a lower third, a stat card, a captioned frame) owns the rest of the picture — the TSX shot
+draws the whole frame and leaves a transparent window at the box's screen position; the master, cropped
+and scaled to fit, shows through that window for the span:
+
+```bash
+python3 tools/composite.py split master.mp4 shot.mov \
+    --at 12.0 --out-s 17.0 --box 1180,120,640,480 -o out.mp4
+```
+
+`--box x,y,w,h` is in the master's own pixel space (not the shot's). `--crop-cx`/`--crop-cy`
+(0..1, default 0.5) choose where in the master frame the crop is centred — matters when the box's
+aspect ratio differs from the master's and a face has to stay in frame rather than a strip of it
+being cut off. `--zoom` (>=1, default 1) tightens the crop for a close-up pip (a circle-hole face pip
+usually wants the face, not the whole frame). The shot's file still needs an alpha channel
+(`require_alpha`, same rule as `overlay`), and outside the span the master passes through untouched.
+
 ---
 
 ## 4. Normalising before concat

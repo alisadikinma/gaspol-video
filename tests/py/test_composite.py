@@ -54,5 +54,141 @@ class CompositeTest(unittest.TestCase):
         self.assertIn("alpha", str(ctx.exception).lower())
 
 
+def _make_alpha_mov(path, seconds=1.5, size="320x240"):
+    """A transparent .mov shot, the fixture the plan specifies for split/insert tests."""
+    import subprocess
+    FFMPEG_BIN = shutil_which()
+    subprocess.run(
+        [FFMPEG_BIN, "-y", "-v", "error", "-f", "lavfi",
+         "-i", f"color=c=black@0.0:s={size}:d={seconds},format=yuva420p",
+         "-c:v", "qtrle", str(path)],
+        check=True,
+    )
+    return str(path)
+
+
+def shutil_which():
+    import shutil
+    return shutil.which("ffmpeg")
+
+
+class CompositeSplitTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @requires_ffmpeg
+    def test_split_produces_full_length_master_with_audio(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = _make_alpha_mov(self.dir / "shot.mov", seconds=1.5, size="320x240")
+        out = composite.split(
+            master, shot, at_s=1.0, out_s=2.5, box=(20, 20, 120, 90), out=self.dir / "out.mp4",
+        )
+        self.assertAlmostEqual(duration_of(out, "v:0"), 4.0, delta=0.2)
+        self.assertIsNotNone(duration_of(out, "a:0"), "master audio must survive a split")
+
+    @requires_ffmpeg
+    def test_box_outside_the_master_frame_is_rejected(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = _make_alpha_mov(self.dir / "shot.mov", seconds=1.0, size="320x240")
+        with self.assertRaises(composite.CompositeError) as ctx:
+            composite.split(
+                master, shot, at_s=1.0, out_s=2.0, box=(300, 200, 100, 100),
+                out=self.dir / "out.mp4",
+            )
+        self.assertIn("outside", str(ctx.exception).lower())
+
+    def test_odd_box_dimensions_become_even_in_the_filter(self):
+        filt = composite.split_filter(
+            box=(0, 0, 101, 99), master_w=320, master_h=240, fps=30.0,
+            at_s=1.0, out_s=2.0,
+        )
+        self.assertIn("scale=100:98", filt)
+
+    @requires_ffmpeg
+    def test_zoom_below_one_is_rejected(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = _make_alpha_mov(self.dir / "shot.mov", seconds=1.0, size="320x240")
+        with self.assertRaises(composite.CompositeError):
+            composite.split(
+                master, shot, at_s=1.0, out_s=2.0, box=(0, 0, 100, 100),
+                out=self.dir / "out.mp4", zoom=0.5,
+            )
+
+    @requires_ffmpeg
+    def test_crop_centre_out_of_range_is_rejected(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = _make_alpha_mov(self.dir / "shot.mov", seconds=1.0, size="320x240")
+        with self.assertRaises(composite.CompositeError):
+            composite.split(
+                master, shot, at_s=1.0, out_s=2.0, box=(0, 0, 100, 100),
+                out=self.dir / "out.mp4", crop_cx=1.5,
+            )
+
+    @requires_ffmpeg
+    def test_opaque_shot_is_rejected_for_split_too(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        opaque = make_silent_clip(self.dir / "opaque.mov", seconds=1.0, size="320x240")
+        with self.assertRaises(composite.CompositeError) as ctx:
+            composite.split(
+                master, opaque, at_s=1.0, out_s=2.0, box=(0, 0, 100, 100),
+                out=self.dir / "out.mp4",
+            )
+        self.assertIn("alpha", str(ctx.exception).lower())
+
+    @requires_ffmpeg
+    def test_pixel_inside_box_differs_from_master_during_span(self):
+        """A pixel inside the box, and a pixel outside it, must both differ from what the
+        plain master shows at the same coordinate during the span — proof the PIP crop and
+        the shot graphic actually composited, not a no-op filter."""
+        import subprocess
+
+        def pixel_at(path, x, y, t=1.5):
+            # crop needs an even width/height here — the source is yuv420p (chroma
+            # subsampled 2x2), and cropping to an odd size fails to reinitialise the filter.
+            # A 2x2 crop still isolates one visual point; only its first pixel is read.
+            raw = subprocess.run(
+                [shutil_which(), "-v", "error", "-ss", str(t), "-i", str(path),
+                 "-vf", f"crop=2:2:{x}:{y}", "-frames:v", "1",
+                 "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                capture_output=True, check=True,
+            ).stdout
+            return raw[:3]
+
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        # Opaque green everywhere EXCEPT a transparent "hole" exactly over the box — the
+        # transparent hole lets the PIP crop of the master show through there; everywhere
+        # else the shot's own green covers the master entirely.
+        shot = self.dir / "shot.mov"
+        subprocess.run(
+            [shutil_which(), "-y", "-v", "error", "-f", "lavfi", "-i",
+             "color=c=green@1.0:s=320x240:d=1.5,format=yuva420p,"
+             "geq=r='0':g='255':b='0':a='if(between(X,20,120)*between(Y,20,100),0,255)'",
+             "-c:v", "qtrle", str(shot)],
+            check=True,
+        )
+        out = composite.split(
+            master, str(shot), at_s=1.0, out_s=2.5, box=(20, 20, 100, 80),
+            out=self.dir / "out.mp4",
+        )
+
+        inside_out = pixel_at(out, 60, 60)
+        inside_master = pixel_at(master, 60, 60)
+        self.assertNotEqual(
+            inside_out, inside_master,
+            "inside the box the output must show the cropped PIP, not the raw master pixel",
+        )
+
+        outside_out = pixel_at(out, 200, 200)
+        outside_master = pixel_at(master, 200, 200)
+        self.assertNotEqual(
+            outside_out, outside_master,
+            "outside the box the output must show the shot's own graphic (green), not the master",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
