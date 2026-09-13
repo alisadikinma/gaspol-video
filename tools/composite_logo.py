@@ -66,6 +66,12 @@ def load_logo_layer(path, size):
     ImageChops = _venv.require("PIL.ImageChops")
 
     src = open_image_or_raise(Image, path)
+    # A palette-mode PNG (P/PA) with a tRNS chunk carries real transparency that only
+    # becomes an alpha channel after conversion — left as "P", it falls through to the
+    # white-background colour-distance keying below and its actual transparent pixels
+    # get keyed as if they were opaque ink.
+    if src.mode in ("P", "PA") or "transparency" in src.info:
+        src = src.convert("RGBA")
     has_alpha = src.mode in ("RGBA", "LA") and src.getchannel("A").getextrema() != (255, 255)
     rgb = src.convert("RGB")
     warn = False
@@ -87,8 +93,18 @@ def load_logo_layer(path, size):
     if box:
         rgb = rgb.crop(box)
         alpha = alpha.crop(box)
-    rgb = rgb.resize((size, size), Image.LANCZOS)
-    alpha = alpha.resize((size, size), Image.LANCZOS)
+
+    # Keep aspect ratio: scale by the longest side to `size` rather than forcing a
+    # square, which stretched every non-square logo (a wordmark, a wide lockup) out of
+    # shape. Offsets in composite_logo() are computed from this returned size, so a
+    # non-square result still lands centred correctly.
+    w, h = rgb.size
+    if w >= h:
+        new_w, new_h = size, max(1, round(size * h / w))
+    else:
+        new_w, new_h = max(1, round(size * w / h)), size
+    rgb = rgb.resize((new_w, new_h), Image.LANCZOS)
+    alpha = alpha.resize((new_w, new_h), Image.LANCZOS)
     return rgb, alpha, warn
 
 

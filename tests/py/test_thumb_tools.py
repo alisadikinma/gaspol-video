@@ -190,6 +190,51 @@ class CompositeLogoTest(unittest.TestCase):
         self.assertTrue(jpg_path.exists())
         self.assertLessEqual(jpg_path.stat().st_size, 2 * 1024 * 1024)
 
+    def test_wide_logo_keeps_its_aspect_ratio(self):
+        from PIL import Image
+        from tools import composite_logo
+
+        wide = Image.new("RGBA", (400, 100), (0, 0, 0, 0))
+        for y in range(100):
+            for x in range(400):
+                wide.putpixel((x, y), (200, 60, 30, 255))
+        wide_path = self.dir / "wide-logo.png"
+        wide.save(wide_path)
+
+        rgb, alpha, warn = composite_logo.load_logo_layer(str(wide_path), 400)
+        self.assertEqual(rgb.size, alpha.size)
+        w, h = rgb.size
+        self.assertAlmostEqual(w / h, 4.0, delta=0.05)
+        self.assertEqual(w, 400, "the longest side must land exactly on the requested size")
+
+    def test_palette_png_with_transparency_keeps_transparent_background_transparent(self):
+        from PIL import Image
+        from tools import composite_logo
+
+        # A "P" mode image with a tRNS entry — a real logo exported as an indexed PNG.
+        # Index 0 is fully transparent (and palette-mapped to black, the exact colour a
+        # white-background colour-distance keying would misread as "solid ink"); index 1
+        # is the opaque mark colour. The mark is a RING (10..90 opaque, a 40..60 hole back
+        # to index 0) so the transparent hole survives the alpha bbox crop and still sits
+        # inside the returned layer — a corner-only fixture would just get cropped away.
+        pal = Image.new("P", (100, 100), 0)
+        pal.putpalette([0, 0, 0] + [200, 60, 30] + [0, 0, 0] * 254)
+        pal.info["transparency"] = 0
+        for y in range(100):
+            for x in range(100):
+                in_outer = 10 <= x < 90 and 10 <= y < 90
+                in_hole = 40 <= x < 60 and 40 <= y < 60
+                pal.putpixel((x, y), 1 if (in_outer and not in_hole) else 0)
+        pal_path = self.dir / "palette-logo.png"
+        pal.save(pal_path)
+
+        rgb, alpha, warn = composite_logo.load_logo_layer(str(pal_path), 100)
+        # The bbox-cropped layer is 80x80 (10..90); its centre (40,40) is the hole and
+        # must read transparent — proof the real alpha channel was used (P converted to
+        # RGBA), not white-background colour-distance keying (which would see the hole's
+        # black palette colour as solid ink and report it opaque).
+        self.assertEqual(alpha.getpixel((alpha.width // 2, alpha.height // 2)), 0)
+
     def test_no_claude_default_colours_survive(self):
         from tools import composite_logo
 
