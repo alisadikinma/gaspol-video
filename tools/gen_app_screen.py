@@ -17,10 +17,12 @@ real app once with `--headed` against a persistent `browser_profile` instead.
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,7 +39,10 @@ ALLOWED_ACTION_KEYS = {"goto", "wait", "wait_for", "click", "fill", "press", "sc
 ALLOWED_META_KEYS = {"optional", "timeout", "url_label", "title"}
 ALL_ALLOWED_KEYS = ALLOWED_ACTION_KEYS | ALLOWED_META_KEYS
 
-CREDENTIAL_KEYWORDS = ("password", "passwd", "token", "secret")
+CREDENTIAL_KEYWORDS = (
+    "password", "passwd", "pwd", "pass", "token", "secret", "pin", "otp",
+    "api_key", "apikey", "auth",
+)
 SHOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
@@ -70,6 +75,14 @@ def validate_steps(steps):
             raise ScreenError(f"unknown step {i}: {sorted(keys)}")
 
         action = next(iter(action_keys))
+
+        if action == "goto":
+            query = urllib.parse.urlsplit(step["goto"]).query
+            if query and _looks_like_credential("", query):
+                raise ScreenError(
+                    "do not put credentials in a goto URL's query string; log in once "
+                    "with --headed and a browser_profile"
+                )
 
         if action == "fill":
             value = step["fill"]
@@ -124,6 +137,15 @@ def merge_manifest(existing, new_entries):
     return merged
 
 
+def _load_json_or_raise(path: Path):
+    """json.loads(path), naming the file in the error instead of leaking a bare
+    JSONDecodeError with no indication of which of several files went bad."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ScreenError(f"{path}: invalid JSON ({exc})") from exc
+
+
 def load_screens_json(project) -> dict:
     path = Path(project) / SCREENS_JSON_REL
     if not path.exists():
@@ -156,7 +178,12 @@ def mock_jobs(spec, data, project, only=None):
     when its component .tsx file is missing, or when a state name is invalid.
     """
     jobs = []
-    for entry in spec:
+    for i, entry in enumerate(spec):
+        missing = [k for k in ("name", "component", "states") if k not in entry]
+        if missing:
+            raise ScreenError(
+                f"screens.json mock[{i}]: missing required key(s) {', '.join(missing)}"
+            )
         name = entry["name"]
         if only is not None and name != only:
             continue
@@ -166,7 +193,7 @@ def mock_jobs(spec, data, project, only=None):
         component_file = Path(project) / "shots" / "src" / "shots" / "screens" / f"{component}.tsx"
         if not component_file.exists():
             raise ScreenError(f"missing component file: {component_file}")
-        for state in entry.get("states", []):
+        for state in entry["states"]:
             if not isinstance(state, str) or not SHOT_NAME_RE.match(state):
                 raise ScreenError(f"bad state name for {name!r}: {state!r}")
             jobs.append(
@@ -194,8 +221,8 @@ def run_mock(project, only=None):
     if not brand_path.exists():
         raise ScreenError(f"{brand_path} not found; scaffold the shots workspace first")
 
-    brand = json.loads(brand_path.read_text(encoding="utf-8"))
-    template = json.loads(TEMPLATE_BRAND_PATH.read_text(encoding="utf-8"))
+    brand = _load_json_or_raise(brand_path)
+    template = _load_json_or_raise(TEMPLATE_BRAND_PATH)
     if is_placeholder_brand(brand, template):
         raise ScreenError("brand.json still holds template placeholders; write it from strategic-brief.md first")
 
@@ -207,7 +234,7 @@ def run_mock(project, only=None):
     data_path = Path(project) / DATA_JSON_REL
     if not data_path.exists():
         raise ScreenError(f"{data_path} not found")
-    data = json.loads(data_path.read_text(encoding="utf-8"))
+    data = _load_json_or_raise(data_path)
 
     jobs = mock_jobs(mock_spec, data, project, only=only)
     if not jobs:
@@ -257,17 +284,30 @@ def run_mock(project, only=None):
     return entries
 
 
+def _read_manifest(path: Path) -> list:
+    """The existing manifest's `screens` list, or [] when there is no manifest yet. A
+    manifest that exists but is corrupt or the wrong shape is never silently replaced —
+    that would erase every entry a previous run wrote — so both raise ScreenError naming
+    the file."""
+    if not path.exists():
+        return []
+    data = _load_json_or_raise(path)
+    if not isinstance(data, dict) or not isinstance(data.get("screens", []), list):
+        raise ScreenError(f"{path}: expected an object with a 'screens' list")
+    return data.get("screens", [])
+
+
 def write_manifest(project, new_entries) -> None:
     path = Path(project) / MANIFEST_REL
-    existing = []
-    if path.exists():
-        try:
-            existing = json.loads(path.read_text(encoding="utf-8")).get("screens", [])
-        except json.JSONDecodeError:
-            existing = []
+    existing = _read_manifest(path)
     merged = merge_manifest(existing, new_entries)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"screens": merged}, indent=2) + "\n", encoding="utf-8")
+    # Atomic write: build the full content in a sibling temp file, then rename into place,
+    # so a crash mid-write leaves the previous manifest intact rather than a half-written
+    # (or 0-byte) one that the next run's _read_manifest would then reject as corrupt.
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps({"screens": merged}, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _now_iso() -> str:
@@ -292,7 +332,11 @@ def run_steps(page, steps, project, base_url):
             if key == "goto":
                 url = step["goto"]
                 full_url = url if url.startswith("http") else base_url.rstrip("/") + "/" + url.lstrip("/")
-                print(f"step {i:02d} goto {full_url}")
+                # Strip the query string from what gets printed/logged — it can carry a
+                # session token or other secret even when it passed validate_steps's own
+                # credential-keyword check (e.g. an opaque value under an innocuous key).
+                printable_url = full_url.split("?", 1)[0]
+                print(f"step {i:02d} goto {printable_url}")
                 page.goto(full_url)
             elif key == "wait":
                 ms = step["wait"]
@@ -368,30 +412,42 @@ def run_capture(project, headed=False):
     base_url = capture.get("base_url", "")
     browser_profile = capture.get("browser_profile")
 
-    with sync_playwright() as p:
-        viewport_size = {"width": viewport[0], "height": viewport[1]}
-        if browser_profile:
-            profile_dir = Path(browser_profile).expanduser()
-            profile_dir.mkdir(parents=True, exist_ok=True)
-            context = p.chromium.launch_persistent_context(
-                str(profile_dir),
-                headless=not headed,
-                viewport=viewport_size,
-                device_scale_factor=device_scale,
-            )
-            browser = None
-            page = context.pages[0] if context.pages else context.new_page()
-        else:
-            browser = p.chromium.launch(headless=not headed)
-            context = browser.new_context(viewport=viewport_size, device_scale_factor=device_scale)
-            page = context.new_page()
+    try:
+        with sync_playwright() as p:
+            viewport_size = {"width": viewport[0], "height": viewport[1]}
+            if browser_profile:
+                profile_dir = Path(browser_profile).expanduser()
+                profile_dir.mkdir(parents=True, exist_ok=True)
+                context = p.chromium.launch_persistent_context(
+                    str(profile_dir),
+                    headless=not headed,
+                    viewport=viewport_size,
+                    device_scale_factor=device_scale,
+                )
+                browser = None
+                page = context.pages[0] if context.pages else context.new_page()
+            else:
+                browser = p.chromium.launch(headless=not headed)
+                context = browser.new_context(viewport=viewport_size, device_scale_factor=device_scale)
+                page = context.new_page()
 
-        try:
-            entries, _shot_count = run_steps(page, steps, project, base_url)
-        finally:
-            context.close()
-            if browser is not None:
-                browser.close()
+            try:
+                entries, _shot_count = run_steps(page, steps, project, base_url)
+            finally:
+                context.close()
+                if browser is not None:
+                    browser.close()
+    except ScreenError:
+        raise
+    except Exception as exc:
+        # The browser launch itself sits outside run_steps's own per-step error wrapper,
+        # so a Playwright launch failure (most commonly: browsers never installed) would
+        # otherwise surface as a raw traceback naming an internal Playwright type.
+        if "executable doesn't exist" in str(exc).lower():
+            raise ScreenError(
+                "Chromium not installed for Playwright; run tools/setup.sh"
+            ) from exc
+        raise ScreenError(f"browser launch failed: {exc}") from exc
 
     return entries
 

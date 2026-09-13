@@ -1,5 +1,9 @@
+import contextlib
+import io
 import json
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -21,6 +25,19 @@ class ValidateStepsTest(unittest.TestCase):
         with self.assertRaises(ScreenError) as ctx:
             validate_steps([{"fill": ["#api-token", "abc123"]}])
         self.assertIn("credentials", str(ctx.exception))
+
+    def test_new_credential_keywords_are_rejected(self):
+        for selector in ("#pwd", "#pass", "#pin", "#otp", "#api_key", "#apikey", "#auth"):
+            with self.assertRaises(ScreenError, msg=selector):
+                validate_steps([{"fill": [selector, "x"]}])
+
+    def test_goto_query_string_with_a_credential_keyword_is_rejected(self):
+        with self.assertRaises(ScreenError) as ctx:
+            validate_steps([{"goto": "/login?token=abc123"}])
+        self.assertIn("credentials", str(ctx.exception))
+
+    def test_goto_without_a_credential_looking_query_is_allowed(self):
+        validate_steps([{"goto": "/dashboard?tab=overview"}])
 
     def test_bad_shot_name_rejected(self):
         with self.assertRaises(ScreenError):
@@ -158,6 +175,18 @@ class RunStepsTest(unittest.TestCase):
         self.assertIn("step 00 shot", str(ctx.exception))
         self.assertIn("disk full", str(ctx.exception))
 
+    def test_printed_goto_line_strips_the_query_string(self):
+        page = FakePage()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            run_steps(page, [{"goto": "https://example.com/page?tab=overview"}],
+                     self.project, "https://example.com")
+        printed = buf.getvalue()
+        self.assertIn("step 00 goto https://example.com/page\n", printed)
+        self.assertNotIn("tab=overview", printed)
+        # the real navigation still receives the full URL, query string included
+        self.assertEqual(page.calls[0], ("goto", "https://example.com/page?tab=overview"))
+
     def test_successful_run_returns_entries_and_shot_count(self):
         page = FakePage()
         entries, shot_count = run_steps(
@@ -213,6 +242,41 @@ class MergeManifestTest(unittest.TestCase):
     def test_appends_brand_new_entries(self):
         merged = merge_manifest([], [{"name": "a"}, {"name": "b"}])
         self.assertEqual([e["name"] for e in merged], ["a", "b"])
+
+
+class WriteManifestTest(unittest.TestCase):
+    def test_corrupt_existing_manifest_raises_naming_the_file(self):
+        from tools.gen_app_screen import write_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "screens" / "manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text("{not valid json", encoding="utf-8")
+            with self.assertRaises(ScreenError) as ctx:
+                write_manifest(tmp, [{"name": "a"}])
+            self.assertIn(str(manifest_path), str(ctx.exception))
+
+    def test_wrong_shaped_existing_manifest_raises_naming_the_file(self):
+        from tools.gen_app_screen import write_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "screens" / "manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(json.dumps(["not", "the", "right", "shape"]), encoding="utf-8")
+            with self.assertRaises(ScreenError) as ctx:
+                write_manifest(tmp, [{"name": "a"}])
+            self.assertIn(str(manifest_path), str(ctx.exception))
+
+    def test_write_is_atomic_and_leaves_no_tmp_file(self):
+        from tools.gen_app_screen import write_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            write_manifest(tmp, [{"name": "a"}])
+            manifest_path = Path(tmp) / "screens" / "manifest.json"
+            self.assertTrue(manifest_path.exists())
+            leftover_tmp = list(manifest_path.parent.glob("*.tmp"))
+            self.assertEqual(leftover_tmp, [])
+            self.assertEqual(json.loads(manifest_path.read_text())["screens"][0]["name"], "a")
 
 
 class ScreensJsonTest(unittest.TestCase):
@@ -319,6 +383,34 @@ class MockJobsTest(unittest.TestCase):
             with self.assertRaises(ScreenError):
                 mock_jobs(spec, data, tmp)
 
+    def test_missing_name_key_raises_naming_the_key(self):
+        from tools.gen_app_screen import mock_jobs
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = [{"component": "AnprDashboardScreen", "states": ["initial"]}]
+            with self.assertRaises(ScreenError) as ctx:
+                mock_jobs(spec, {}, tmp)
+            self.assertIn("name", str(ctx.exception))
+
+    def test_missing_component_key_raises_naming_the_key(self):
+        from tools.gen_app_screen import mock_jobs
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = [{"name": "anpr-dashboard", "states": ["initial"]}]
+            with self.assertRaises(ScreenError) as ctx:
+                mock_jobs(spec, {"anpr-dashboard": {}}, tmp)
+            self.assertIn("component", str(ctx.exception))
+
+    def test_missing_states_key_raises_naming_the_key(self):
+        from tools.gen_app_screen import mock_jobs
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._project_with_component(tmp)
+            spec = [{"name": "anpr-dashboard", "component": "AnprDashboardScreen"}]
+            with self.assertRaises(ScreenError) as ctx:
+                mock_jobs(spec, {"anpr-dashboard": {}}, tmp)
+            self.assertIn("states", str(ctx.exception))
+
     def test_only_filters_to_one_screen(self):
         from tools.gen_app_screen import mock_jobs
 
@@ -333,6 +425,94 @@ class MockJobsTest(unittest.TestCase):
             jobs = mock_jobs(spec, data, tmp, only="anpr-dashboard")
             self.assertEqual(len(jobs), 1)
             self.assertEqual(jobs[0]["name"], "anpr-dashboard")
+
+
+class RunMockJsonErrorsTest(unittest.TestCase):
+    def test_invalid_brand_json_raises_naming_the_file(self):
+        from tools.gen_app_screen import run_mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            brand_path = Path(tmp) / "shots" / "src" / "shots" / "brand.json"
+            brand_path.parent.mkdir(parents=True)
+            brand_path.write_text("{not valid", encoding="utf-8")
+            with self.assertRaises(ScreenError) as ctx:
+                run_mock(tmp)
+            self.assertIn(str(brand_path), str(ctx.exception))
+
+    def test_invalid_data_json_raises_naming_the_file(self):
+        from tools.gen_app_screen import TEMPLATE_BRAND_PATH, run_mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            brand_path = Path(tmp) / "shots" / "src" / "shots" / "brand.json"
+            brand_path.parent.mkdir(parents=True)
+            template = json.loads(TEMPLATE_BRAND_PATH.read_text(encoding="utf-8"))
+            template["accent"] = "#ff0000"  # non-placeholder so that gate passes
+            brand_path.write_text(json.dumps(template), encoding="utf-8")
+
+            screens_json = Path(tmp) / "screens" / "screens.json"
+            screens_json.parent.mkdir(parents=True)
+            screens_json.write_text(
+                json.dumps({"mock": [{"name": "a", "component": "X", "states": ["initial"]}]}),
+                encoding="utf-8",
+            )
+
+            data_path = Path(tmp) / "screens" / "data.json"
+            data_path.write_text("{not valid", encoding="utf-8")
+
+            with self.assertRaises(ScreenError) as ctx:
+                run_mock(tmp)
+            self.assertIn(str(data_path), str(ctx.exception))
+
+
+class RunCaptureBrowserLaunchTest(unittest.TestCase):
+    def test_missing_chromium_executable_is_a_clear_screen_error(self):
+        from tools import gen_app_screen
+
+        class FakePlaywrightError(Exception):
+            pass
+
+        class FakeChromium:
+            def launch(self, headless=True):
+                raise FakePlaywrightError(
+                    "Executable doesn't exist at /fake/path/chromium\n"
+                    "Looks like Playwright was just installed or updated."
+                )
+
+        class FakeP:
+            chromium = FakeChromium()
+
+        class FakeSyncPlaywrightCM:
+            def __enter__(self):
+                return FakeP()
+
+            def __exit__(self, *a):
+                return False
+
+        fake_module = types.ModuleType("playwright.sync_api")
+        fake_module.sync_playwright = lambda: FakeSyncPlaywrightCM()
+
+        previous = sys.modules.get("playwright.sync_api")
+        previous_pkg = sys.modules.get("playwright")
+        sys.modules["playwright"] = types.ModuleType("playwright")
+        sys.modules["playwright.sync_api"] = fake_module
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                screens_json = Path(tmp) / "screens" / "screens.json"
+                screens_json.parent.mkdir(parents=True)
+                screens_json.write_text(json.dumps({"capture": {"steps": []}}), encoding="utf-8")
+                with self.assertRaises(ScreenError) as ctx:
+                    gen_app_screen.run_capture(tmp)
+                self.assertIn("Chromium not installed", str(ctx.exception))
+                self.assertIn("tools/setup.sh", str(ctx.exception))
+        finally:
+            if previous is None:
+                sys.modules.pop("playwright.sync_api", None)
+            else:
+                sys.modules["playwright.sync_api"] = previous
+            if previous_pkg is None:
+                sys.modules.pop("playwright", None)
+            else:
+                sys.modules["playwright"] = previous_pkg
 
 
 if __name__ == "__main__":
