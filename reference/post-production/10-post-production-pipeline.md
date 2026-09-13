@@ -200,6 +200,32 @@ that came from a clip; those cues fall back to AssemblyAI.
 
 **A manifest never records a key.** It records the env var NAME (`voice_env`), never its value.
 
+### 3.8 `renders.json` — in-session render ledger
+
+Written and read by `tools/renders.py`, shared by the Phase 4/5 render offers so an unchanged
+prompt is never re-billed. This is the single place this schema is documented — Phase 4
+(`skills/video-image/SKILL.md`) and Phase 5 (`skills/video-gen/SKILL.md`) both point back here
+instead of restating it.
+
+```jsonc
+{ "renders": [
+  { "file": "keyframes/scene-03-start.png", "phase": "4B", "scene": 3,
+    "model": "nano-banana-2", "prompt_sha256": "<hex>", "refs": ["cast-c1-face.png"],
+    "status": "done", "error": null, "cdn_url": "https://...", "rendered_at": "2026-09-13T08:00:00Z" } ] }
+```
+
+- `status` ∈ `done | failed | skipped`.
+- `phase` ∈ `4A | 4B | 5`.
+- `prompt_sha256` — sha256 of the prompt with trailing whitespace stripped per line and CRLF
+  normalised to LF, so a whitespace-only re-save of the same prompt does not trigger a re-render.
+- An entry is keyed by `file`: `record()` replaces the existing entry for that file rather than
+  appending a second one. `needs_render()` is False only when the existing entry for that `file`
+  has `status == "done"` AND the same `prompt_sha256` — any other combination (different prompt,
+  or a prior `failed`/`skipped` status) means render again.
+- `rendered_at` is stamped in UTC ISO-8601 `Z` when the caller does not supply one.
+- `python3 tools/renders.py <project> --print` prints one line per entry (`status  phase  file
+  model`) and a count per status — the quick way to see what still needs a render offer.
+
 ---
 
 ## 4. The A/V duration gate
