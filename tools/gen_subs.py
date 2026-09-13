@@ -242,7 +242,8 @@ def transcribe_assemblyai(audio_path, api_key, keyterms=(), poll_s=3.0, log=prin
             payload = json.loads(resp.read())
         status = payload.get("status")
         if status == "completed":
-            return {"words": [{"text": w["text"], "start_ms": w["start"], "end_ms": w["end"]}
+            return {"words": [{"text": w["text"], "start_ms": w["start"], "end_ms": w["end"],
+                               "confidence": w.get("confidence")}
                               for w in payload.get("words", [])]}
         if status == "error":
             raise SubtitleError(f"AssemblyAI failed: {payload.get('error')}")

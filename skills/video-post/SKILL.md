@@ -86,10 +86,19 @@ One entry per scene, layers ordered by `at_s`, per the schema in `10-post-produc
 
 ```bash
 node tools/gen_vo.mjs {output_folder}
-node tools/voice_changer.mjs {output_folder}/clips/scene-NN.mp4 \
+python3 tools/clean_voice.py {output_folder}/clips/scene-NN.mp4 \
+     --method isolate -o {output_folder}/clips/scene-NN-clean.mp4
+node tools/voice_changer.mjs {output_folder}/clips/scene-NN-clean.mp4 \
      --voice-env ELEVENLABS_VOICE_C2 --spans 0-3.88 \
      --out {output_folder}/vo/scene-NN-c2.mp3
 ```
+
+**Clean before converting, when the clip needs it.** `clean` is set per SCENE (not per layer) in
+`audio-plan.json` — `10-post-production-pipeline.md` §3.2. A scene with `clean` set to `isolate`
+or `rnnoise` runs `tools/clean_voice.py` on that scene's clip FIRST — before `voice_changer.mjs`
+ever sees the audio. Speech-to-speech converts noise right along with the voice, so removing it
+after conversion is too late. Skip this step when `clean` is `none` (the default): the clip is
+already quiet, and cleaning a clean take buys nothing. See `11-voice-cast-and-vo.md` §5.
 
 `gen_vo.mjs` stitches consecutive requests so prosody carries across scenes, and writes
 `vo-manifest.json` with measured durations and word timings — the input for pass 2 and pass 4.
@@ -301,6 +310,43 @@ is dropped:
 ffmpeg -r <src_fps> -i master-mixed.mp4 -c:v libx264 -crf 19 -pix_fmt yuv420p -c:a aac master-h264.mp4
 ```
 
+### 5.1 Verify the render says what the script says (P6, v3.1.0)
+
+```bash
+python3 tools/verify_render.py {output_folder}
+```
+
+A second ASR pass over the finished master, diffed against the narration/dialogue already in
+`work/audio-plan.json`. This runs AFTER the A/V gate, on the file that is about to ship — the gate
+proves the two tracks are the same length, this proves the audio track still says what the script
+said.
+
+Exit 0: clean, or only advisory findings (heard-differently, an interior gap, low confidence, A/V
+drift) — all listed with a timestamp in `work/verify-report.md`, not blocking. Exit 1: a word is
+missing or extra — read the report, fix the edit or regenerate the VO, do not ship past a FAIL.
+Exit 2: the tool could not complete the check at all (missing/invalid plan, missing master, an
+ffmpeg failure, or any other tool error) — report this as **ERROR**, never as PASS or FAIL, and fix
+the printed `verify_render: <message>` before re-running. Exit 3: no `ASSEMBLYAI_API_KEY` and no
+`--asr-json` — report this as **skipped**, never as passed.
+
+If the report opens with `drift checked for <k> of <m> scenes (edit plan has <n> segments)`, only
+`k` scenes had a master-clock position to check drift against — the rest were word-diffed but not
+drift-checked. Note also: a `composite insert` shifts the master clock (it freezes the master and
+plays a shot in full before resuming), so drift after an insert must be read against OUTPUT time,
+not the original edit-plan timeline.
+
+### 5.2 Optional: export stems for a human editor (v3.1.0)
+
+```bash
+python3 tools/make_stems.py {output_folder} --all
+```
+
+Not part of the mix — a hand-off. Writes `output/stems/voice.wav`, `sfx.wav`, `music.wav`: three
+full-length WAVs, none ducked, each starting at master 0.000 and running the exact duration of
+`output/master.mp4`, so a human editor can drag all three onto a timeline at zero with no
+nudging. Offer this when the client wants a single layer revised outside this pipeline, or hands
+the project to an editor. Skip it otherwise — it renders nothing the final mix needs.
+
 ### Final summary
 
 Report what exists and what did not run:
@@ -309,6 +355,7 @@ Report what exists and what did not run:
 output/master.mp4         assembled, A/V gate passed
 output/master-mixed.mp4   {N} SFX cues, music {yes/no}, captions {burned/sidecar/none}
 output/master.srt         {M} cues, {K} scenes untimed
+work/verify-report.md     P6 {PASS/FAIL/ERROR/SKIPPED} — {a} extra, {b} missing, {c} advisory findings
 Not run: {anything that degraded, and why}
 ```
 

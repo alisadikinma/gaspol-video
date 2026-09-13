@@ -19,7 +19,7 @@ Unified validation skill for the AI Video Promo Engine. Covers 5 validation targ
 | `--script` | Script output quality | av-script.md + strategic-brief.md |
 | `--image` | NB2 prompt rules + actual keyframe image review | image-prompts.md + keyframes/*.png |
 | `--video` | VEO prompt rules | video-prompts.md + scene-plan.md |
-| `--post` | Post-production: rendered master and plan files (P1-P3) |
+| `--post` | Post-production: rendered master and plan files (P1-P6) |
 | `--refs` | Cross-file reference consistency (24 checks) | All reference + skill + agent files |
 | `--all` | Everything above | All files |
 
@@ -159,6 +159,16 @@ FAIL lists the scene numbers that have both. Mirrors reviewer check C6.
 ### Check I16: Environment Match
 **How:** Compare environment in images with cultural research from strategic-brief.md
 **Expected:** Architecture, signage, vegetation match location context
+
+### Check I18: Simulated Screen Honesty (v3.1.1)
+
+Read `screens/manifest.json`. For every scene whose screen entry has `simulated: true`, scan its
+prompt text, caption, and on-screen copy for wording that presents the mock as a shipped or real
+product — "live", "real footage", "actual dashboard", "sudah tersedia", "langsung dari sistem", and
+similar claims. Any such wording attached to a simulated screen is a FAIL. A `simulated: false`
+(real capture) screen is not held to this check.
+
+FAIL lists the scene, the offending text, and the file it came from. Mirrors reviewer check C11.
 
 ---
 
@@ -492,6 +502,33 @@ An em dash in a caption is correct — the ban is on spoken text. Mirrors review
 The bed measures at least 12 dB below the voice, segments do not overlap, and the track traces back
 to the script's music direction. A music failure that left a voice-only master plus a warning is a
 PASS, not a finding. Mirrors reviewer check C10.
+
+### Check P6: The Render Says What The Script Says (v3.1.0)
+
+```bash
+python3 tools/verify_render.py {output_folder}
+```
+
+A second ASR pass over the rendered master (`output/master-mixed.mp4`, falling back to
+`output/master.mp4`), diffed against the intended narration/dialogue in `work/audio-plan.json`.
+
+- **FAIL** (exit 1) on any missing or inserted word — content the script asked for that never made
+  it into the render, or content that rode along uninvited.
+- **WARN** on a word heard differently, an interior gap, a low-confidence word, or an A/V drift
+  flag — all advisory, all named with a timestamp in `work/verify-report.md` so the fix is a matter
+  of listening at that second, not guessing.
+- **ERROR**, never PASS or FAIL, on exit code 2 — the check itself could not complete: a missing or
+  invalid `audio-plan.json`/`edit-plan.json`, a missing master, an ffmpeg failure, or any other tool
+  error. Report the printed `verify_render: <message>` and fix that condition before re-running; a
+  render that was never actually checked must not read as either a pass or a fail.
+- **SKIPPED**, never PASS, on exit code 3 (`ASSEMBLYAI_API_KEY` not set and no `--asr-json` was
+  given). A skipped check is reported as skipped in the summary — it must never read as a pass.
+- When the report's first line is `drift checked for <k> of <m> scenes (edit plan has <n>
+  segments)` — fewer edit segments than scenes — only the first `k` scenes had a known master-clock
+  position to check drift against; the rest ran the word diff but skipped their drift row. A
+  `composite insert` (see `tools/composite.py insert`) freezes the master at a timestamp and plays a
+  shot in full, which shifts every later scene's position on the master clock — read drift after an
+  insert against OUTPUT time, not the original edit-plan timeline.
 
 ## Output Format
 

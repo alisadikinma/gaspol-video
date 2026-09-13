@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 media/sfx/library/clips/
 media/music/library/tracks/
+media/music/library/catalog.json

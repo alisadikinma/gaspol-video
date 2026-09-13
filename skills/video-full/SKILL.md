@@ -66,6 +66,9 @@ Invoke the video-script skill for:
 - Cultural location research
 - Batch NB2 prompts for missing references
 
+Phase 3 also assigns **Screen Source** (`capture | mock | none`) per scene, next to Render Path —
+before any NB2 credit is spent, so an app screen never gets drawn twice.
+
 **Wait for Phase 2, 3, and 3.5 approval gates.**
 
 **Verify output exists:**
@@ -81,6 +84,8 @@ Invoke the video-image skill for:
 - Asset Library generation (Phase 4A) — standalone reusable assets with dependency graph
 - Scene Keyframe generation (Phase 4B) — start/end frames composed from assets
 - Batch-by-ACT with prompt-reviewer agent validation
+- After each approved batch, a **render offer** — `Render sekarang?` through
+  `mcp__indusia-image-gen__generate_image` (`nano-banana-2`), tracked in `renders.json`
 
 **Wait for Phase 4A and 4B approval gates.**
 
@@ -88,7 +93,8 @@ Invoke the video-image skill for:
 - `{output_folder}/nb2-reference-prompts.md`
 - `{output_folder}/image-prompts.md`
 
-**User generates keyframe images from NB2 prompts and saves to `{output_folder}/keyframes/`.**
+**Keyframe images come either from a render offer accepted in this step, or from the user
+generating them by hand from the NB2 prompts and saving to `{output_folder}/keyframes/`.**
 
 ---
 
@@ -120,6 +126,9 @@ Invoke the video-gen skill for:
 - Image Review (Step 0) — per-scene collaborative review of actual keyframe images
 - VEO 3.1 video prompt generation with camera movement, 3-layer audio, lip sync
 - Batch-by-ACT with prompt-reviewer agent validation
+- After each approved batch, a **render offer** — `Render sekarang?` through
+  `mcp__indusia-video-gen__generate_video` (`veo-3.1-fast`), for VEO scenes only; Seedance, Kling,
+  Scene Extension, and unsupported durations/aspects stay copy-paste
 
 **Wait for Image Review and Phase 5 approval gates.**
 
@@ -134,11 +143,16 @@ This step runs on GENERATED CLIPS, not on prompts. Stop here until the user has 
 the platform clips from `video-prompts.md` and put them in `{output_folder}/clips/`.
 
 Invoke the video-post skill for its five passes, in order:
-1. Voice-over — ElevenLabs TTS, plus speech-to-speech for platform-spoken dialogue
+1. Voice-over — ElevenLabs TTS, plus speech-to-speech for platform-spoken dialogue (optionally
+   cleaned first with `tools/clean_voice.py` for noisy platform-native clips)
 2. Edit — ffmpeg assembly under the A/V duration gate
 3. SFX — domain-aware cue sheet, user-audited before anything is mixed
 4. Subtitles and music — captions built from the script, music bed under the voice
 5. Final mix
+
+After the final mix, **Check P6** (`tools/verify_render.py`) transcribes the master a second time
+and diffs it against `av-script.md` — FAIL on any missing/inserted word, WARN on the rest, SKIPPED
+(never PASS) without `ASSEMBLYAI_API_KEY`.
 
 **Wait for the SFX cue-sheet audit gate and the Phase 6 approval gate.**
 

@@ -50,7 +50,12 @@ def _read_json(path, default):
 
 
 def load_palette(library):
-    data = _read_json(Path(library) / "palette.json", {"recipes": []})
+    path = Path(library) / "palette.json"
+    if not path.exists():
+        raise LibraryError(
+            f"palette not found: {path} — run from the plugin root or pass --library"
+        )
+    data = _read_json(path, {"recipes": []})
     return data.get("recipes", [])
 
 

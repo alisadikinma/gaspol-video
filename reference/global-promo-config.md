@@ -1601,6 +1601,56 @@ user's `.env`. This is the same client-agnostic rule that forbids hardcoding cli
 | `title_safe_margin_pct` | 5 |
 | palette / fonts | from the project's `strategic-brief.md`. **No palette ships in this plugin.** |
 
+### 29.6 Rendering (v3.1.0 — in-session render offers)
+
+| Key | Value |
+|---|---|
+| `render_offer` | `per_batch` |
+| `render_image_model` | `nano-banana-2` |
+| `render_image_resolution` | `2K` |
+| `render_video_model` | `veo-3.1-fast` |
+| `render_video_durations` | `4, 6, 8` |
+| `render_video_aspects` | `16:9, 9:16` |
+| `render_ledger` | `{output_folder}/renders.json` |
+| `render_not_offered` | Seedance scenes, Kling scenes, Scene Extension, duration outside 4/6/8, aspect outside 16:9/9:16 |
+
+Rendering is always an offer, never automatic — the user picks `Render sekarang` per batch in
+Phase 4B (`skills/video-image/SKILL.md`) and Phase 5.1 (`skills/video-gen/SKILL.md`). See
+`docs/evals/indusia-render-probe.md` for the filename-preservation finding that this rendering
+scheme relies on.
+
+### 29.7 Screens (v3.1.0 — app screens and screencasts)
+
+| Key | Value |
+|---|---|
+| `screen_source` | `capture` \| `mock` \| `none`, decided at Phase 3 next to `render_path` |
+| `screens_folder` | `{output_folder}/screens/` (`screens.json`, `data.json`, `manifest.json`) |
+| `screen_manifest_flag` | `simulated: true` for `mock`, `false` for `capture` |
+| `screen_ref_pattern` | `ref/ui-<name>-<state>.png` |
+
+A `capture|mock` scene never gets an NB2 prompt that draws the UI (Rule 34, validator check C11).
+`video-package` reads `manifest.json`'s `simulated` flag: a mock screen may illustrate a flow, but
+packaging copy may not present it as a shipped feature.
+
+### 29.8 Verify (v3.1.0 — P6, the second ASR pass)
+
+| Key | Value |
+|---|---|
+| `verify_gap_s` | 0.40 — intra-layer silence at or above this is flagged |
+| `verify_low_confidence` | 0.70 — rendered words below this ASR confidence are flagged |
+| `verify_drift_s` | 0.25 — per-scene delta between planned and heard start beyond this is flagged |
+| `verify_exit_codes` | `0` clean, `1` FAIL (any missing or inserted word), `2` ERROR (the check itself could not complete — missing/invalid plan, missing master, ffmpeg failure, or any other tool error), `3` SKIPPED (no `ASSEMBLYAI_API_KEY` and no `--asr-json`) |
+
+Exit `2` is always reported as `ERROR` and exit `3` as `SKIPPED` in `video-validate --post` — neither
+is ever `PASS`, and `2` is never conflated with the `1` FAIL that means the render itself said the
+wrong thing. See `tools/verify_render.py` and Check P6.
+
+When `work/verify-report.md` opens with `drift checked for <k> of <m> scenes (edit plan has <n>
+segments)`, only `k` scenes had a known master-clock position to check drift against. A `composite
+insert` (`tools/composite.py insert`) freezes the master at a timestamp and plays a shot in full
+before resuming, which shifts every later scene's position — drift after an insert must be read
+against OUTPUT time, not the original edit-plan timeline.
+
 ---
 
 ## Section 30 — Subtitle Style (v3.0.0)

@@ -1,8 +1,17 @@
 # gaspol-video
 
-**v3.0.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0), Remotion shots for anything that must be readable, then post-production and packaging.
+**v3.1.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production and packaging.
 
 Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
+
+> **v3.1.0 — the plugin can render, not just prompt.** Phase 4 and Phase 5 now offer to render the
+> approved batch in-session through the `indusia-image-gen` (`nano-banana-2`) and
+> `indusia-video-gen` (`veo-3.1-fast`) MCP servers, tracked in `renders.json` so an unchanged prompt
+> never re-renders. `tools/gen_app_screen.py` captures a real app with Playwright or mocks one in
+> Remotion, and a new screencast shot type animates it in Phase 4.5. `tools/verify_render.py` (Check
+> P6) transcribes the finished master a second time and diffs it against the script. Plus
+> `gen_music.py`, `clean_voice.py`, `composite.py split/insert`, `make_stems.py`,
+> `composite_logo.py`, `thumb_scrim.py` and `yt_stats.py`. See [v3.1.0 Changelog](#v310-changelog).
 
 > **v3.0.0 — the plugin now finishes the video.** Phases 4.5, 6 and 7 are new: `/video-explainer`
 > renders scenes that must be READABLE as coded Remotion shots (no video platform renders legible
@@ -43,10 +52,12 @@ Each phase has a user approval gate before proceeding. Phase 3.5 (Reference Coll
 | Claude Code | everything | — |
 | `ffmpeg` / `ffprobe` on PATH | Phase 6 assembly, SFX, captions, music, mix | Plans are still written and printed; nothing is rendered, and the skill says so |
 | `node` 20+ | voice-over and voice changing | Those passes are skipped, named, not silently dropped |
-| `python3` | every other tool (stdlib only, no pip install) | — |
-| `ELEVENLABS_API_KEY` in `.env` | voice-over, voice changing, SFX generation | Dialogue stays in the platform's own voice; every recipe that could not be made is listed with its prompt |
-| `ASSEMBLYAI_API_KEY` in `.env` | caption timing for platform-spoken dialogue | Those scenes are listed as untimed. Timings are never guessed |
-| Node + `npx` | Remotion explainer shots | Shot source is still written; rendering is left to you |
+| `python3` | most tools (stdlib only, no pip install) | — |
+| `bash tools/setup.sh` (builds `~/.gaspol-video/venv`) | app-screen capture/mock, thumbnail post-process, YouTube stats (Pillow, Playwright, google-api-python-client) | The tool exits 2 naming the script; every stdlib-only tool keeps working |
+| `ELEVENLABS_API_KEY` in `.env` | voice-over, voice changing, SFX generation, music bed generation, voice cleanup (isolate method) | Dialogue stays in the platform's own voice; every recipe that could not be made is listed with its prompt |
+| `ASSEMBLYAI_API_KEY` in `.env` | caption timing for platform-spoken dialogue, and Check P6 (render verification) | Those scenes are listed as untimed; P6 reports SKIPPED, never PASS |
+| Node + `npx` | Remotion explainer shots, screencasts, mock app screens | Shot source is still written; rendering is left to you |
+| YouTube OAuth client under `~/.gaspol-video/youtube/` | `yt_stats.py` packaging calibration | Calibration has no real view/watch-time data; CTR is always manual regardless |
 
 Copy `.env.example` to `.env` and fill in the values. **`.env` is gitignored and the repo only ever
 names variables, never their values** — a voice id identifies one person's cloned voice on one
@@ -165,6 +176,41 @@ Run any phase independently:
 
 The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
 
+## v3.1.0 Changelog
+
+- **In-session rendering.** Phase 4 and Phase 5 now offer to render the approved batch instead of
+  only writing copy-paste prompts — NB2 stills via `mcp__indusia-image-gen__generate_image`
+  (`nano-banana-2`), VEO clips via `mcp__indusia-video-gen__generate_video` (`veo-3.1-fast`).
+  Rendering is always an offer per batch, never automatic, and every output is tracked in
+  `renders.json` so an unchanged prompt is never re-billed. Seedance, Kling, Scene Extension, and
+  durations/aspects the MCP does not accept stay copy-paste.
+- **App screens and screencasts.** `tools/gen_app_screen.py capture` drives Playwright against a
+  real URL; `mock` renders a Remotion TSX component to a still for software that does not exist yet.
+  A new `Screen Source` column on the Scene Breakdown table routes these scenes away from NB2
+  entirely, and a screencast shot type animates the result in Phase 4.5, timed to the narration.
+  Simulated screens are flagged in `screens/manifest.json` so packaging never claims a mock as a
+  shipped feature.
+- **`gen_music.py`** fills the empty `media/music/library/tracks/` from the mood palette via
+  ElevenLabs Music, library-first, so the music pass ships something instead of voice-only by
+  default.
+- **`verify_render.py` and validator check P6** — a second ASR pass over the finished master, diffed
+  against `av-script.md`, catching ghost speech and clipped words that P4 (caption text) cannot see.
+  Collapses spoken and written numbers (Indonesian and English) before the diff.
+- **`clean_voice.py`** — ElevenLabs Voice Isolator or ffmpeg RNNoise, cleaning platform-native
+  dialogue before the Voice Changer, with the same duration-preservation refusal the Voice Changer
+  already enforces.
+- **`composite.py` gains `split`** (picture-in-picture) **and `insert`** (pauses the master for a
+  full shot with its own audio).
+- **`make_stems.py`** writes full-length voice/SFX/music stems for a human editor.
+- **`composite_logo.py`, `thumb_scrim.py`** — deterministic thumbnail post-process (real logo paste,
+  headline scrim to a measured contrast target) on top of what the image plugin renders.
+- **`yt_stats.py`** pulls YouTube view/watch-time/retention stats into packaging calibration data
+  over a read-only OAuth scope.
+- **One shared venv**, opt-in: `tools/setup.sh` builds `~/.gaspol-video/venv` for the four tools that
+  need Pillow, Playwright, or the Google API client. Every other tool stays stdlib-only.
+- Full detail, including everything deliberately excluded and why, in [CLAUDE.md](CLAUDE.md)'s
+  v3.1.0 changelog.
+
 ## v3.0.0 Changelog
 
 - **Renamed** to `gaspol-video`, published through the `gaspol-one` marketplace.
@@ -180,7 +226,7 @@ The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand n
 - **Speech-to-speech converts spans, not tracks.** Handing the API a whole clip converts every voice
   on it: a supporting character came back in the target's voice on a real clip. `--spans` now
   converts only the target's turns and splices them into the original audio.
-- **Ten CLI tools**, zero dependencies: python3 stdlib, node builtins, ffmpeg.
+- **Ten CLI tools** in v3.0.0 (19 as of v3.1.0), most still dependency-free: python3 stdlib, node builtins, ffmpeg. Four newer tools use a self-contained venv — see [v3.1.0 Changelog](#v310-changelog).
 - **Attribution** — ElevenLabs VO, voice changing, AssemblyAI timing, ffmpeg assembly and the
   packaging decisions are adopted from [hassancs91/claude-youtube-editor]; burned subtitles and the
   music bed from [harry0703/MoneyPrinterTurbo]. What was deliberately NOT taken from either is
@@ -333,9 +379,15 @@ reference/
   script-to-scene-bridge.md         # Script → scene → prompts bridge
   storytelling_script_gen/           # 12 storytelling & script reference files
   image-video-gen/                  # 9 image & video production reference files
-  post-production/                  # 8 post-production & packaging reference files
-tools/                              # 10 zero-dependency CLI tools (python3 / node / ffmpeg)
-templates/remotion/                 # Shot template, brand tokens, workspace scaffolder
+  post-production/                  # 9 post-production & packaging reference files (incl. 18-screencast.md)
+tools/                              # 19 CLI tools: 17 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
+  _venv.py, setup.sh                # Dependency guard + venv builder for the 4 tools below that need libs
+  gen_app_screen.py                 # capture (Playwright) / mock (Remotion renderStill) app screens
+  composite_logo.py, thumb_scrim.py # Deterministic thumbnail post-process (needs Pillow)
+  yt_stats.py                       # YouTube stats into packaging calibration (needs the venv + OAuth)
+  renders.py                        # Render ledger shared by the Phase 4/5 render offers
+  gen_music.py, verify_render.py, clean_voice.py, make_stems.py  # stdlib + ffmpeg + one HTTPS call each
+templates/remotion/                 # Shot/screen templates, brand tokens, workspace scaffolder, QA scripts
 media/sfx/library/palette.json      # SFX recipes. Clips generated per install, never committed
 media/music/library/palette.json    # Music moods mapped to the six tones
 docs/evals/                         # Routing fixtures and the Voice Changer probe measurements

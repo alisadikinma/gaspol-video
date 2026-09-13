@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0), Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 10 CLI tools + 33 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 19 CLI tools (17 Python + 2 Node, 4 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 36 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -30,10 +30,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `/video-explainer` | Phase 4.5: coded Remotion shots for scenes that must be readable |
 | `/video-post` | Phase 6: voice-over, assembly, SFX, subtitles, music, final mix |
 | `/video-package` | Phase 7: locked title, three thumbnail bets, description |
-| `/video-validate` | Unified validator: `--script` / `--image` / `--video` / `--refs` / `--all` |
-| `/video-explainer` | Phase 4.5: Remotion shots for scenes that must be readable |
-| `/video-post` | Phase 6: voice-over, edit, SFX, subtitles, music, final mix |
-| `/video-package` | Phase 7: title, thumbnail bets, description |
+| `/video-validate` | Unified validator: `--script` / `--image` / `--video` / `--refs` / `--all` / `--post` |
 | `/video-add-platform` | Scaffold new AI video platform support |
 
 ## Architecture
@@ -47,24 +44,34 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `skills/video-script/SKILL.md` | Phase 2-3.5 — script, scene breakdown, reference collection |
 | `skills/video-image/SKILL.md` | Phase 4 — NB2 asset library + scene keyframes |
 | `skills/video-gen/SKILL.md` | Phase 5 — image review + VEO video prompts |
-| `skills/video-full/SKILL.md` | Orchestrator — runs all 4 production skills in sequence |
-| `skills/video-explainer/SKILL.md` | Phase 4.5 — Remotion shots for explainer scenes |
-| `skills/video-post/SKILL.md` | Phase 6 — five post-production passes, clips to a finished file |
-| `skills/video-package/SKILL.md` | Phase 7 — title, thumbnail bets, description; rendering routed to the image plugin |
-| `skills/video-validate/SKILL.md` | Unified validator (--script / --image / --video / --refs / --all) |
-| `skills/video-explainer/SKILL.md` | Phase 4.5 — Remotion explainer shots (scenes with legible text) |
-| `skills/video-post/SKILL.md` | Phase 6 — five passes: VO, edit, SFX, subtitles+music, mix |
-| `skills/video-package/SKILL.md` | Phase 7 — title, thumbnail bets, description |
+| `skills/video-full/SKILL.md` | Orchestrator — runs all 7 production skills in sequence |
+| `skills/video-explainer/SKILL.md` | Phase 4.5 — Remotion explainer shots (scenes with legible text) + screencast shots for app screens |
+| `skills/video-post/SKILL.md` | Phase 6 — five passes: VO, edit, SFX, subtitles+music, mix; optional stems and P6 verify |
+| `skills/video-package/SKILL.md` | Phase 7 — title, thumbnail bets, description; rendering routed to the image plugin; optional logo/scrim post-process |
+| `skills/video-validate/SKILL.md` | Unified validator (--script / --image / --video / --refs / --post / --all) |
 | `skills/video-add-platform/SKILL.md` | Scaffold new video platform support |
-| `tools/` | 10 zero-dependency CLI tools for phases 4.5-7 (python3 stdlib + node builtins + ffmpeg) |
+| `tools/_venv.py` | Dependency guard — re-execs into `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv` for the tools below that need it, else exits 2 naming `tools/setup.sh` |
+| `tools/setup.sh`, `requirements.txt` | Build the shared venv (Pillow, playwright, google-api-python-client, google-auth-oauthlib) |
+| `tools/renders.py` | Render ledger (`{output_folder}/renders.json`) shared by the Phase 4/5 render offers |
+| `tools/gen_app_screen.py` | `capture` (Playwright, real URL) and `mock` (Remotion `renderStill`) app screens into `ref/ui-*.png` |
+| `tools/gen_music.py` | Generates missing `media/music/library/tracks/*.mp3` from the mood palette via ElevenLabs Music |
+| `tools/verify_render.py` | P6 — second ASR pass diffs the rendered master against `av-script.md` |
+| `tools/clean_voice.py`, `tools/models/rnnoise/*.rnnn` | Cleans platform-native dialogue (ElevenLabs Isolator or ffmpeg RNNoise) before the Voice Changer |
+| `tools/composite.py` | `cutaway` / `overlay` / `split` (picture-in-picture) / `insert` (pauses the master for a full shot) |
+| `tools/make_stems.py` | Full-length voice/SFX/music stems in `output/stems/` for a human editor |
+| `tools/composite_logo.py`, `tools/thumb_scrim.py` | Deterministic thumbnail post-process — real logo paste, headline scrim (needs Pillow via `_venv.py`) |
+| `tools/yt_stats.py` | Pulls YouTube Data/Analytics stats into `packaging/calibration.json` (needs the venv + an OAuth client) |
+| `tools/burn_subs.py`, `tools/edit_render.py`, `tools/gen_sfx.py`, `tools/gen_subs.py`, `tools/mix_music.py`, `tools/mix_sfx.py`, `tools/probe_clips.py` | Existing stdlib-only Phase 6 tools (assembly, SFX, subtitles, music mix, clip QA) |
+| `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
+| `templates/remotion/lib/{brand.ts,kit.tsx,browser.tsx,screencast.tsx}` | Generic Remotion components ported from `claude-youtube-editor`, brand tokens only from the project's `brand.json` |
+| `templates/remotion/scripts/{gen-registry,render-all,qa-frames,render-stills}.mjs` | Registry generation, render, QA-still and mock-screen-still scripts copied into every scaffolded workspace |
 | `templates/remotion/` | Remotion shot template, brand token placeholder, workspace scaffolder |
 | `media/sfx/library/` | SFX recipes (`palette.json`); clips are generated per install, never committed |
-| `media/music/library/` | Music mood palette mapped to the six tones; tracks never committed |
+| `media/music/library/` | Music mood palette (`palette.json`, `defaults` block); tracks and `catalog.json` generated per install, never committed |
 | `.env.example` | Names of the environment variables the tools read. Never their values |
-| `agents/video-engine-agent.md` | Subagent for batch/complex video production (6-phase pipeline) |
-| `agents/video-prompt-reviewer.md` | Independent validator — reviews NB2/VEO prompt batches for quality |
+| `agents/video-engine-agent.md` | Subagent for batch/complex video production (full pipeline incl. render offers, screens, P6 verify) |
+| `agents/video-prompt-reviewer.md` | Independent validator — reviews NB2/VEO prompt batches for quality (checks C1-C11) |
 | `reference/` | reference docs read on-demand by skill/agent |
-| `tools/` | Executable helpers for Phase 6 (stdlib Python + ESM Node, no installs) |
 | `tests/` | `bash tests/run.sh` — consistency checks, python unittest, node --test |
 | `README.md` | Repo README |
 | `LICENSE` | MIT license |
@@ -112,6 +119,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `post-production/10-post-production-pipeline.md` | ALWAYS for Phase 6 — pass order, `{output_folder}` contract, every plan schema, A/V duration gate, degradation policy |
 | `post-production/15-packaging.md` | Phase 7 — Views = Reach x CTR, three bets on three levers, honesty guardrail, calibration honesty, hand-off to the image plugin |
 | `post-production/12-remotion-explainer.md` | Phase 4.5 — scaffolding the workspace, the rules that stop a render crashing, brand from the project, timing from the narration, verify-by-looking, cutaway vs overlay |
+| `post-production/18-screencast.md` | Phase 4.5 — screencast shots for scenes whose Screen Source is capture/mock: page/cursor/click API, navigation-vs-filter motion rules, cue timing from vo-manifest.json, qa-frames verification, mock-screen honesty |
 | `post-production/17-music-bed.md` | Phase 6 pass 4 — deriving the track from the script's music direction and tone, sitting 12 dB under the voice by measurement, segment fades and short-track handling, why the music pass fails soft while the A/V gate blocks |
 | `post-production/16-subtitles-and-captions.md` | Phase 6 pass 4 — caption text from the script (recognizer times only), derived keyterms, wrap-or-split rule, font and contrast guards, why this does not conflict with the `no subtitles` prompt negative |
 | `post-production/14-sfx-design.md` | Phase 6 pass 3 — deriving cues from DOMAIN CONTEXT and cultural research, library-first sourcing, gain calibration incl. the transient correction, the four ways an audibility measurement lies, density ceiling, hard audit gate |
@@ -279,7 +287,7 @@ Each phase loads ONLY the reference files it needs — NOT all 23. This prevents
 | Phase 3.5 | global-promo-config, creator-profile-system | 2 |
 | Phase 4A | global-promo-config, 01-nb2, script-to-scene-bridge (7B only) | 3 |
 | Phase 4B | global-promo-config, 01-nb2, script-to-scene-bridge, 04-cinematography | 4 per batch |
-| Phase 4.5 (explainer) | global-promo-config §29.5, 12-remotion-explainer | 2 per shot |
+| Phase 4.5 (explainer) | global-promo-config §29.5, 12-remotion-explainer, 18-screencast (screen scenes only) | 3 per shot |
 | Phase 5 (VEO) | global-promo-config, 02-veo, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
 | Phase 5 (Seedance) | global-promo-config, 07-seedance, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
 | Phase 5 (Kling) | global-promo-config, 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
@@ -583,11 +591,98 @@ All configurable values live in `reference/global-promo-config.md` — single so
 | **(v3.0.0) Music makes the voice hard to follow** | Bed is too loud under speech, or the duck is not engaging. Check the headroom measurement the music pass prints; the bed fails soft (no music) rather than shipping a mix that buries the narration |
 | **(v3.0.0) Thumbnail promises more than the video delivers** | Packaging honesty guardrail. The frame's promise must sit inside what the video actually shows. Pick a different lever, not a bigger claim |
 | **(v2.3.0) Kling duration mismatch (padding or rushing)** | Picked 8s default when scene needed 5s (awkward pause) OR picked 5s when needed 9s (rushed). Use Kling's per-second selector — pick exact duration matching natural dialogue/beat pace. Eliminates re-pacing in post-edit. |
+| **(v3.1.0) Tool exits 2 with `missing <module>: run tools/setup.sh`** | A dependency-bearing tool (`gen_app_screen.py`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py`) could not find Pillow/Playwright/Google client libs on `python3` or the venv. Run `bash tools/setup.sh` once; it builds `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv` and installs `requirements.txt`. |
+| **(v3.1.0) Render offer skips a scene, reason `prompt-only`** | Seedance, Kling, Scene Extension, a duration outside 4/6/8s, or an aspect outside 16:9/9:16 are not rendered by the pipeline (`indusia-video-gen` has no extend endpoint and this plugin only wires VEO 3.1 fast). Render that scene by hand in the platform's own UI. |
+| **(v3.1.0) VEO render fails `Audio generation failed`** | The prompt's audio line is a negated list (`no music, no voices`). For a scene with `audio_source: elevenlabs` the render offer retries once automatically with a positive ambience line (clip audio is discarded in the edit). For a `platform-native` scene it records `failed` and asks you, because that ambience would reach the master. |
+| **(v3.1.0) Veo draws `REC` text on screen** | The prompt contains `security camera`. Replace with `fixed overhead view` — same framing, no on-screen recording indicator. |
+| **(v3.1.0) `gen_app_screen.py mock` refuses: brand.json still holds template placeholders** | The scaffolded `shots/src/shots/brand.json` was never edited. Write it from `strategic-brief.md` (colors, fonts) before running `mock`. |
+| **(v3.1.0) NB2 draws a garbled dashboard / UI screen** | The scene needs Screen Source `capture` or `mock`, not a text-only NB2 prompt — no image model renders legible on-screen text reliably. Run `python3 tools/gen_app_screen.py capture` (or `mock`) against `{output_folder}` and reference the resulting `ui-<name>-<state>.png` inline in the Phase 4B prompt instead. |
+| **(v3.1.0) P6 (`verify_render.py`) reports missing or inserted words** | The rendered master says something different from `av-script.md`. Listen at the timestamps printed in `work/verify-report.md`; fix the edit-plan segment or regenerate the VO for that layer — never edit the report to make it pass. Exit codes: 0 PASS, 1 FAIL (words differ), 2 ERROR (the tool could not run: missing plan, ffmpeg, network), 3 SKIPPED (no AssemblyAI key). Only 0 is a pass. |
+| **(v3.1.0) `clean_voice.py` refuses with `duration changed by ...s`** | The cleaning method (`isolate` or `rnnoise`) shifted the clip's length past the 0.05s lip-sync tolerance. Do not stretch the audio to compensate; try the other method, or skip cleaning and accept the platform-native noise for that scene. |
+| **(v3.1.0) Python `SSL: CERTIFICATE_VERIFY_FAILED` calling ElevenLabs/AssemblyAI** | The python.org 3.14 installer does not register system CA certificates the way Homebrew's build does. Run `/Applications/Python 3.14/Install Certificates.command` once. Affects any tool that makes an HTTPS call on that interpreter: `gen_music.py`, `clean_voice.py --method isolate`, `verify_render.py`, `gen_subs.py`. |
 
 ---
 
-**Version:** 3.0.0
-**Last Updated:** 2026-09-03
+**Version:** 3.1.0
+**Last Updated:** 2026-09-13
+
+### v3.1.0 Changelog
+
+- **In-session rendering.** Phase 4 and Phase 5 now offer to render the approved batch instead of
+  only writing copy-paste prompts: `mcp__indusia-image-gen__generate_image` (`nano-banana-2`) for
+  NB2 stills, `mcp__indusia-video-gen__generate_video` (`veo-3.1-fast`) for VEO clips. Rendering is
+  always an offer per batch (max 5 scenes), never automatic, and every output is tracked in
+  `{output_folder}/renders.json` so an unchanged prompt is not re-billed. Seedance, Kling, Scene
+  Extension, and durations/aspects the MCP does not accept stay copy-paste — reported as
+  `prompt-only`, not silently dropped. A `security camera` phrase in a VEO prompt is rewritten to
+  `fixed overhead view` before rendering (it makes Veo draw `REC` text). When a render fails with
+  `Audio generation failed` — usually a negated audio list like `no music, no voices` — the render
+  is retried once with a positive ambience description for that render only; the approved prompt
+  text on file is never rewritten. See `docs/evals/indusia-render-probe.md` for the filename
+  preservation finding this scheme relies on.
+- **App screens and screencasts.** `tools/gen_app_screen.py capture` drives Playwright against a real
+  URL; `tools/gen_app_screen.py mock` renders a Remotion TSX component to a still for software that
+  does not exist yet or cannot be reached, sharing pinned data (`screens/data.json`) across every
+  scene that shows the same screen. A new `Screen Source` column (`capture | mock | none`) on the
+  Scene Breakdown table routes these scenes away from NB2 entirely (Rule 34, validator check C11).
+  A screencast shot type (`reference/post-production/18-screencast.md`, `templates/remotion/lib/
+  screencast.tsx` + `browser.tsx`) animates the captured or mocked screen in Phase 4.5, timed to the
+  narration. `screens/manifest.json` marks mock screens `simulated: true`; `video-package` reads that
+  flag so packaging copy never claims a mocked flow as a shipped feature.
+- **`gen_music.py`** fills `media/music/library/tracks/` from the mood palette via ElevenLabs Music
+  (library-first — an existing track is never re-billed without `--force`), so the music pass has
+  something to play instead of shipping voice-only by default. Real run recorded in
+  `docs/evals/gen-music-run.md`.
+- **`verify_render.py` and validator check P6** — a second ASR pass (AssemblyAI) transcribes the
+  rendered master and diffs it against the narration/dialogue text in `av-script.md`: inserted
+  words (ghost speech), missing words (clipped), replaced words, intra-sentence gaps ≥ 0.40s,
+  low-confidence tokens (< 0.70), and per-scene drift (> 0.25s). Before the diff, the tool collapses
+  spoken and written numbers on both sides — Indonesian and English number words, thousands
+  separators, and `%` → `persen` — so `"empat puluh dua"` and `"42"` match instead of showing up as
+  a false P6 failure. Exit 3 (no `ASSEMBLYAI_API_KEY` and no `--asr-json`) is reported as `SKIPPED`
+  in `video-validate --post`, never as `PASS`. Real run recorded in `docs/evals/verify-render-run.md`.
+- **`clean_voice.py`** cleans `platform-native` dialogue (ElevenLabs Voice Isolator or ffmpeg
+  `arnndn` with the RNNoise models in `tools/models/rnnoise/`) before the Voice Changer runs, with
+  the same duration-preservation refusal the Voice Changer already enforces. Two real runs on a
+  Moni project clip recorded in `docs/evals/clean-voice-run.md`.
+- **`composite.py` gains `split`** (picture-in-picture — the master is cropped into a box, an alpha
+  shot composited over it) **and `insert`** (the master freezes at a timestamp, the shot plays in
+  full with its own audio, the master resumes; output duration = master + shot). Both run through
+  the existing A/V duration gate.
+- **`make_stems.py`** writes full-length voice/SFX/music WAV stems to `output/stems/` for a human
+  editor, gains baked in, no ducking.
+- **Remotion QA and generic kit.** `templates/remotion/scripts/{gen-registry,render-all,qa-frames,
+  render-stills}.mjs` are copied into every scaffolded workspace; `templates/remotion/lib/{brand.ts,
+  kit.tsx,browser.tsx,screencast.tsx}` are generic pieces ported from `claude-youtube-editor` with
+  every Claude-Code-specific component and `lucide-react` dependency removed. Style presets joined
+  `12-remotion-explainer.md` as a new section.
+- **Packaging tools.** `composite_logo.py` and `thumb_scrim.py` post-process a thumbnail already
+  rendered by the image plugin (real logo paste, headline scrim to a target contrast) — they render
+  nothing new, so the GV-1 split between this plugin and the image plugin stands. `yt_stats.py auth
+  | fetch` pulls views/watch-time/retention into `packaging/calibration.json` over a read-only OAuth
+  scope; a real run needs a Google Cloud OAuth Desktop client the user has not created yet, so it is
+  recorded as open debt (`yt_stats real run pending — no OAuth client`) rather than faked.
+- **Dependencies, finally allowed, but opt-in.** `tools/setup.sh` builds one venv at
+  `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv` (Pillow, Playwright, google-api-python-client,
+  google-auth-oauthlib) outside the plugin's own cache so an update never wipes it. `tools/_venv.py`
+  re-execs into it on demand; every other tool stays stdlib-only and keeps running on bare
+  `python3`.
+- **Tool count:** 19 CLI tools (17 Python + 2 Node), up from ten; most stay dependency-free, four
+  (`gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py`) need the venv.
+- **Excluded on purpose** (see the spec's Scope table and Out-of-scope list): rendering Seedance,
+  Kling, GROK, or VEO Scene Extensions (the MCP servers connected here only expose `nano-banana-2`
+  stills and `veo-3.1-fast` clips with no extend endpoint — those platforms stay copy-paste);
+  `gen_video.py` (fal) and `gen_avatar.mjs` (this plugin's proven lip-sync path is VEO native
+  lip-sync + the ElevenLabs Voice Changer, not a separate avatar generator); the clean-cut family
+  (`render_cuts`, `cutlib`, `analyze_cut`, `make_proxy`, `make_review`, `format_transcript`,
+  `editor/` — built for editing a long-form recording, not a short assembled promo);
+  `brand-setup`, `yt_upload.py`, `notion_sync.py` (this plugin's brand values already come from
+  `strategic-brief.md`, and upload/sync are outside what a video-production plugin should own);
+  `lib/vscode.tsx` (Claude-Code-specific, no use in a generic promo); `gen_thumbnail.py` (thumbnail
+  rendering is the image plugin's job — this ticket only adds the deterministic post-process on top
+  of it); implementing `from-file`/`from-manifest` in `geminigen-api-client` (a stub in another
+  repo, not fixed here); changing `voice_changer.mjs` (its claim already stands for the platforms
+  this plugin renders).
 
 ### v3.0.0 Changelog
 
@@ -661,4 +756,4 @@ All configurable values live in `reference/global-promo-config.md` — single so
 ## gaspol Ticket Counter
 
 Prefix: GV
-Last ticket: GV-1
+Last ticket: GV-2

@@ -72,6 +72,13 @@ B) Sudah, 10+ video dengan data CTR — datamu yang menang atas aturan bawaan
 Under A, every output carries the line: *"these are uncalibrated defaults; your own CTR data will
 beat them."*
 
+Under B, pull the fetchable fields (views, watch time, avg view %, subs gained) for a published
+video with `python3 tools/yt_stats.py fetch <video_id> {output_folder}` — it writes/merges
+`{output_folder}/packaging/calibration.json` (`python3 tools/yt_stats.py auth` once first if no
+token exists yet). CTR itself is never fetched (YouTube Analytics has no impressions/CTR
+endpoint) — the user still reads that number by hand from YouTube Studio and supplies it
+alongside the fetched fields.
+
 ### Step 7.2: Establish the platform shape
 
 Read the platform from `strategic-brief.md`. Where the platform has no cover — Instagram Reels,
@@ -100,6 +107,9 @@ For each bet, name the frame in `av-script.md` that delivers its promise. A bet 
 rewritten or dropped. Present this check to the user — it is the step most likely to be waved
 through, and the one that costs the client's credibility when it is.
 
+Read `screens/manifest.json`. A screen with `simulated: true` may illustrate a flow; the title,
+thumbnail and description must not claim it as a shipped feature.
+
 ### Step 7.6: Description
 
 Value forward. What the viewer gets, in the first two lines, before any link.
@@ -112,6 +122,23 @@ Pass the three concept briefs to `ai-image-carousel-prompt-gen`. If it is not in
 > three concept briefs below are complete and can be taken there, or to any image tool."
 
 Then print them.
+
+### Step 7.8: Optional deterministic post-process (v3.1.0)
+
+Once the image plugin returns thumbnail plates, these two tools render nothing new — they finish
+what came back, exactly the same way every time:
+
+```bash
+python3 tools/composite_logo.py --base plate.png --logo logo.png --out out.png \
+  --clear-box L,T,R,B --center X,Y --size 940 --glow R,G,B --jpg
+python3 tools/thumb_scrim.py --in plate.png --out out.png \
+  --target-contrast 4.0 --text-box L,T,R,B --jpg
+```
+
+`composite_logo.py` pastes the real logo file, pixel-exact, in the logo's own colours — a model
+redraws a brand mark from scratch every time, drifting its colour and shape. `thumb_scrim.py`
+deepens the headline's background scrim to a measured WCAG contrast when the rendered plate's
+scrim falls short. Both are optional; skip them when the plate already reads clearly.
 
 ---
 

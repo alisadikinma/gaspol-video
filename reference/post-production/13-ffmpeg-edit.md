@@ -51,6 +51,61 @@ An **overlay** shot is different — it composites on top of a clip rather than 
 is `tools/composite.py`, not this tool. A scene recorded as `live-action + overlay:<shot-id>` is
 composited first, and the composited file is what the edit plan points at.
 
+### `split` — picture-in-picture
+
+A third `tools/composite.py` mode, for when the master needs to keep playing INSIDE a box while a
+graphic (a lower third, a stat card, a captioned frame) owns the rest of the picture — the TSX shot
+draws the whole frame and leaves a transparent window at the box's screen position; the master, cropped
+and scaled to fit, shows through that window for the span. `--out-s` cannot land past the master's
+own end — the picture-in-picture only makes sense while the master is still playing, so `split`
+refuses rather than freezing on the master's last frame. When the master carries an audio stream,
+the usual A/V duration gate (`abs(video - audio) <= 0.04s`, §5 below) applies to the result exactly
+as it does for `insert`; a master with no audio produces a silent output and the gate is skipped
+because there is nothing to compare:
+
+```bash
+python3 tools/composite.py split master.mp4 shot.mov \
+    --at 12.0 --out-s 17.0 --box 1180,120,640,480 -o out.mp4
+```
+
+`--box x,y,w,h` is in the master's own pixel space (not the shot's). `--crop-cx`/`--crop-cy`
+(0..1, default 0.5) choose where in the master frame the crop is centred — matters when the box's
+aspect ratio differs from the master's and a face has to stay in frame rather than a strip of it
+being cut off. `--zoom` (>=1, default 1) tightens the crop for a close-up pip (a circle-hole face pip
+usually wants the face, not the whole frame). The shot's file still needs an alpha channel
+(`require_alpha`, same rule as `overlay`), and outside the span the master passes through untouched.
+
+### `insert` — the master pauses for a full shot
+
+The one mode where the shot's own audio is meant to play, because the master itself pauses rather
+than continuing underneath:
+
+```bash
+python3 tools/composite.py insert master.mp4 shot.mp4 --at 12.0 --gain-db 3 -o out.mp4
+```
+
+Output = master[0..at] + shot (its own video AND audio, in full) + master[at..end]. Total duration
+grows: **output length = master length + shot length.** A shot with no audio stream gets silence of
+its own length rather than being rejected; a master with no audio stream at all gets the same
+treatment for its pre/post pieces, so `insert` works on a silent master instead of failing to find a
+stream that was never there. Every audio piece is padded with silence before it is trimmed to its
+exact wanted length, so a source whose audio track is shorter than its own video (master or shot)
+still comes out the requested length — the concat cannot fall short of the video and trip the A/V
+duration gate below.
+
+**Every later cue time shifts by the shot's length.** The master's clock only runs to `at`, then
+pauses for the shot's duration, then resumes — so an SFX cue, a subtitle, or a music segment that
+was timed against the ORIGINAL master now lands early by exactly the shot's duration for everything
+after the insert point. Any plan authored against a master that later gets an insert must be
+re-timed against the inserted OUTPUT, never left in original-master seconds.
+
+The render is frame-accurate by construction (`$YE/tools/bake.py`'s method): three segments —
+before, the shot, after — are each re-encoded to the master's own width, height and fps, with exact
+frame counts from rounded cumulative boundaries so concat cannot drift, then muxed with audio built
+the same way (each piece resampled to 48kHz stereo before concat). The usual A/V duration gate
+(`abs(video - audio) <= 0.04s`, `10-post-production-pipeline.md` §5) applies to the result the same
+as any other render.
+
 ---
 
 ## 4. Normalising before concat

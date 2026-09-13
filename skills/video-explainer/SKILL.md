@@ -37,6 +37,7 @@ what `scene-plan.md` marked `explainer`.
 |------|------|
 | ANY generation | `reference/global-promo-config.md` (ALWAYS FIRST — §29.5 for the floors) |
 | Shot authoring | `reference/post-production/12-remotion-explainer.md` |
+| Screen walkthrough shots | `reference/post-production/18-screencast.md` (scenes with Screen Source capture/mock only) |
 | Which scenes qualify | `reference/script-to-scene-bridge.md` > "Render Path" |
 | Compositing later | `reference/post-production/10-post-production-pipeline.md` |
 
@@ -111,16 +112,37 @@ Add a `<Composition>` line in `src/Root.tsx` for each new shot.
 
 One idea per shot. A frame carrying six numbers is not read in five seconds.
 
+### Step 4.5.2b: Screencast shots
+
+For a scene whose `Screen Source` (from `scene-plan.md`) is `capture` or `mock`, build a `Screencast`
+shot instead of a plain static frame — see `reference/post-production/18-screencast.md`. Copy the
+capture/mock PNGs named in `{output_folder}/screens/manifest.json` into
+`{output_folder}/shots/public/screens/`, build the `pages`/`cursor`/`clicks` arrays per that
+reference, and pull cue times from `vo-manifest.json` exactly as in Step 4.5.2. A scene whose Screen
+Source is `none` never gets a `Screencast` — it either has no screen at all, or the screen is a single
+held frame built with `WebBrowserFrame` directly.
+
 ### Step 4.5.3: Render and LOOK
+
+```bash
+cd {output_folder}/shots
+node scripts/gen-registry.mjs
+node scripts/render-all.mjs <ShotId>
+node scripts/qa-frames.mjs <ShotId> --out <scratch> b1=<f> payoff=<f>
+```
+
+Name a frame for every cue — every reveal, every screencast arrival/click/navigation, and the payoff
+— then Read each still with vision. Check: does the number or click arrive when it is said, is the
+smallest text still readable, does anything sit outside the safe margin, does the contrast hold, does
+the cursor land on the element it names.
+
+If the Node renderer packages are not installed, fall back to plain ffmpeg:
 
 ```bash
 cd {output_folder}/shots
 npx remotion render src/index.ts <ShotId> out/<ShotId>.mp4
 ffmpeg -ss <cue> -i out/<ShotId>.mp4 -frames:v 1 /tmp/<ShotId>-<cue>.jpg
 ```
-
-Read every still with vision. Check: does the number arrive when it is said, is the smallest text
-still readable, does anything sit outside the safe margin, does the contrast hold.
 
 **Skipping this step is the failure mode of this whole phase.** A shot that renders is not a shot
 that reads.

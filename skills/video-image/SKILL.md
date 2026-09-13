@@ -79,6 +79,19 @@ rather than silently missing:
 Batch {N}: {X} keyframes generated, {Y} scenes skipped (explainer): {list}
 ```
 
+### Rule 34: Screen Source scenes never get an NB2 UI prompt (v3.1.0)
+
+A scene with `Screen Source` `capture` or `mock` never gets an NB2 prompt that draws the UI. The app
+screen image is produced by `python3 tools/gen_app_screen.py capture|mock`, not by Phase 4A or 4B.
+
+**Phase 4A** lists the resulting `ui-<name>-<state>.png` files as UNIQUE assets produced by
+`gen_app_screen.py` — they appear in the asset table for tracking, but no NB2 prompt is written for
+them.
+
+**Phase 4B** references them inline, exactly like any other Phase 4A asset:
+`"...the monitor shows EXACTLY matching ui-<name>-<state>.png"`. Describing the UI from text instead
+of referencing the file is the same Asset-First violation as Rule 10, applied to screens.
+
 ## Hard Rules (NON-NEGOTIABLE)
 
 1. **Ingredients ≠ First+Last Frame** — mutually exclusive VEO modes, NEVER combine
@@ -223,6 +236,82 @@ B) Regenerate specific assets
 C) Add more assets
 ```
 
+#### Step 4A.6: RENDER OFFER
+
+After the asset library is approved (option A above), offer to render it through
+`indusia-image-gen` instead of leaving every prompt copy-paste only:
+
+```
+1. BUILD the render list for the approved batch (all Phase 4A asset prompts):
+   FOR each prompt:
+     - file      = the prompt's `**Output →**` filename
+     - model     = "nano-banana-2"
+     - aspect    = the prompt's first line aspect ratio
+     - refs      = every bare filename in the prompt's Required Reference Images
+                   table, resolved to `{output_folder}/ref/<name>`
+                   → a ref file that does not exist on disk = MISSING: list the
+                     prompt as `skipped`, NEVER render it without the ref
+
+2. SKIP prompts already up to date, against `{output_folder}/renders.json` (the
+   render ledger — schema documented once in
+   `reference/post-production/10-post-production-pipeline.md`):
+   → for each prompt in the render list, write the prompt body to a temp file,
+     then:
+        python3 tools/renders.py {output_folder} check --file <file> \
+          --prompt-file <temp-file>
+     `up-to-date` means the file is already `done` with the same prompt hash —
+     say so ("sudah up to date, dilewati") and drop it from the render list.
+     `render` means it needs one. If the WHOLE batch prints `up-to-date`, skip
+     step 3 entirely (no question, no render).
+
+3. ASK (only if the render list is non-empty):
+   AskUserQuestion:
+   "Render batch {N} sekarang? ({k} gambar, model nano-banana-2)"
+   Options:
+   A) Render sekarang
+   B) Nanti, simpan prompt saja
+   C) Pilih scene tertentu
+
+4. ON "Render sekarang" (or the chosen subset from option C), FOR each prompt in
+   the render list:
+   a. IF the prompt's aspect is not one of `1:1 16:9 9:16 4:3 3:4`:
+        record a `skipped` ledger entry, error "aspect <x> not supported by
+        indusia-image-gen"; continue to the next prompt.
+   b. ELSE call:
+        mcp__indusia-image-gen__generate_image(
+          prompt=<full prompt body text>, model="nano-banana-2",
+          aspect=<aspect>, resolution="2K", output_format="png",
+          output_dir="{output_folder}/.render-tmp", refs=[<resolved ref paths>])
+      - ON success: move the returned local file to the prompt's `**Output →**`
+        path (create parent directories first), then:
+           python3 tools/renders.py {output_folder} record --json \
+             '{"file": "<file>", "phase": "4A", "status": "done", \
+               "cdn_url": "<cdn_url>", "refs": [<refs>], "model": "nano-banana-2"}' \
+             --prompt-file <temp-file>
+        (`record` computes and stores the prompt's sha256 from `--prompt-file`
+        and strips any query string off `cdn_url` before writing.)
+      - ON failure (an error string, or no local path in the result): same
+        `record` call with `"status": "failed"` and the MCP text verbatim in
+        an `"error"` field, no `cdn_url`; continue with the next prompt — one
+        failure never stops the batch.
+
+5. AFTER the batch, Read every produced image (multimodal) and report anything
+   visibly wrong against the prompt before moving on (wrong identity, wrong
+   colour, garbled text) — this is a look, not a re-render trigger by itself.
+
+6. REPORT an end-of-batch table `file | status | error` covering every prompt
+   in the original render list (done / failed / skipped), then list the
+   `skipped` ones due to missing refs separately so the user knows what to
+   upload.
+
+7. Filenames: `docs/evals/indusia-render-probe.md` records
+   `filename-preserved: yes` — a bare filename passed in `refs=[...]` is
+   uploaded to the model under that exact name (verified on a real MCP call
+   against `geminigen_client.py::build_multipart`). No fallback anchor clause
+   is needed; identity-lock prompts keep the bare filename exactly as written
+   in every other reference file.
+```
+
 **Save output:** `{output_folder}/nb2-reference-prompts.md`
 
 ---
@@ -312,6 +401,57 @@ FOR each batch (ACT or sub-batch):
      A) Approve batch — proceed to next batch
      B) Revise specific scenes — list scene numbers
      C) Regenerate entire batch — start fresh
+
+  5.5. RENDER OFFER (only after option A above):
+     a. BUILD the render list for this batch's approved keyframe prompts (START
+        and END frames, or ingredient images):
+        - file   = the prompt's `**Output →**` filename
+        - model  = "nano-banana-2"
+        - aspect = the prompt's first line aspect ratio
+        - refs   = every bare filename in the prompt's Required Reference Images
+                   table, resolved to `{output_folder}/ref/<name>`
+                   → a ref file that does not exist on disk = MISSING: list the
+                     prompt as `skipped`, NEVER render it without the ref
+     b. SKIP prompts already up to date: write the prompt to a temp file, then
+        `python3 tools/renders.py {output_folder} check --file <file>
+        --prompt-file <temp-file>` — `up-to-date` means already `done` with
+        the same prompt hash, say "sudah up to date, dilewati", drop from the
+        render list. Whole batch `up-to-date` → skip to step 6 (no question,
+        no render).
+     c. ASK (only if the render list is non-empty):
+        AskUserQuestion:
+        "Render batch {N} sekarang? ({k} gambar, model nano-banana-2)"
+        Options:
+        A) Render sekarang
+        B) Nanti, simpan prompt saja
+        C) Pilih scene tertentu
+     d. ON "Render sekarang" (or the chosen subset), FOR each prompt in the
+        render list:
+        - aspect outside `1:1 16:9 9:16 4:3 3:4` → `skipped`, error
+          "aspect <x> not supported by indusia-image-gen"; next prompt.
+        - ELSE call `mcp__indusia-image-gen__generate_image(prompt=<full
+          prompt body>, model="nano-banana-2", aspect=<aspect>,
+          resolution="2K", output_format="png",
+          output_dir="{output_folder}/.render-tmp", refs=[<resolved ref
+          paths>])`. Success → move the returned local file to the
+          `**Output →**` path (create parents first), then
+          `python3 tools/renders.py {output_folder} record --json '{...
+          "phase": "4B", "status": "done", "cdn_url": "<cdn_url>", ...}'
+          --prompt-file <temp-file>` (strips the cdn_url query string,
+          computes the prompt sha256). Failure (error string or no local
+          path) → same `record` call with `"status": "failed"`; continue
+          with the next prompt.
+     e. AFTER the batch, Read every produced image (multimodal) and report
+        anything visibly wrong against the prompt (wrong identity, wrong
+        colour, garbled text, broken continuity with the previous scene's
+        end frame) before moving on.
+     f. REPORT an end-of-batch table `file | status | error` for every prompt
+        in the render list, then list `skipped` prompts due to missing refs
+        separately.
+     g. Filenames: `docs/evals/indusia-render-probe.md` records
+        `filename-preserved: yes` — bare filenames passed in `refs=[...]` are
+        uploaded to the model under that exact name (verified on a real MCP
+        call). No fallback anchor clause is needed.
 
   6. APPEND approved batch to {output_folder}/image-prompts.md
 

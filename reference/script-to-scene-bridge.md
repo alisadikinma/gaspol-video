@@ -194,15 +194,15 @@ See reference/image-video-gen/08-kling-production-guide.md for full specs and 5-
 
 ## Scene Breakdown
 
-| # | Beat | Duration | Render Path | VEO Mode | Extend? | Resolution | Scene Type | Dialogue? |
-|---|------|----------|-------------|----------|---------|------------|------------|-----------|
-| 1 | Pattern Interrupt | 4s | live-action | Frame | No | 1080p | B-Roll | No |
-| 2 | Hook | 6s | live-action | Frame | No | 1080p | Presenter | Yes (lip sync) |
-| 3 | Foreshadow | 8s | live-action | Frame | No | 720p | Presenter | Yes (lip sync) |
-| 4 | Agitate | 15s | live-action | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
-| 5 | Guide 1 | 5s | explainer | — | No | 720p | B-Roll | VO only |
-| 6 | Guide 2 | 15s | live-action | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
-| ... | ... | ... | ... | ... | ... | ... | ... | ... |
+| # | Beat | Duration | Render Path | Screen Source | VEO Mode | Extend? | Resolution | Scene Type | Dialogue? |
+|---|------|----------|-------------|----------------|----------|---------|------------|------------|-----------|
+| 1 | Pattern Interrupt | 4s | live-action | none | Frame | No | 1080p | B-Roll | No |
+| 2 | Hook | 6s | live-action | none | Frame | No | 1080p | Presenter | Yes (lip sync) |
+| 3 | Foreshadow | 8s | live-action | none | Frame | No | 720p | Presenter | Yes (lip sync) |
+| 4 | Agitate | 15s | live-action | none | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
+| 5 | Guide 1 | 5s | explainer | mock | — | No | 720p | B-Roll | VO only |
+| 6 | Guide 2 | 15s | live-action | none | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... |
 
 ### Render Path — which engine builds this scene (v3.0.0)
 
@@ -237,6 +237,23 @@ as `live-action + overlay:<shot-id>`. A presenter reading a chart is this case, 
 **Duration for explainer scenes** is not bound by any platform's clip limit. A Remotion shot can be
 any length, so its duration comes from the narration that runs over it, not from an 8-second budget.
 
+### Screen Source — where an app screen comes from (v3.1.0)
+
+A scene whose frame shows a monitor, phone, tablet, dashboard or browser with readable product UI
+needs an app screen image. `Screen Source` decides how that image is produced, decided at Phase 3,
+before Phase 4A spends any NB2 credits.
+
+| Value | Meaning | Tool |
+|---|---|---|
+| `capture` | the real app is reachable by URL | `python3 tools/gen_app_screen.py capture {output_folder}` |
+| `mock` | the app does not exist yet or cannot be reached | `python3 tools/gen_app_screen.py mock {output_folder}` |
+| `none` | no app screen in this scene | — |
+
+**Assignment rule:** a scene whose frame shows a monitor, phone, tablet, dashboard or browser with
+readable product UI gets `capture` or `mock`; every other scene gets `none`. Decide this at Phase 3,
+before Phase 4A spends credits — the resulting `ui-*.png` files are produced by `gen_app_screen.py`,
+never by an NB2 prompt (see `video-image/SKILL.md` Rule 34).
+
 ## Extension Chain Map
 
 Scene 4: Clip 4a (8s, 720p) → Extend → Clip 4b (+7s) = 15s total
@@ -253,6 +270,11 @@ Scene 6: Clip 6a (8s, 720p) → Extend → Clip 6b (+7s) = 15s total
 > See `global-promo-config.md` Section 17 (Asset-First Production Model).
 
 ### For First+Last Frame Mode
+
+Every `ui-{name}.png` reference below (start frame, end frame, and the Required Reference
+Images table) applies only when the scene's Screen Source is `prompt` (an NB2-generated
+screen). Skip it when Screen Source is `capture` or `mock` — that file comes from
+`tools/gen_app_screen.py` as `ui-<name>[-<state>].png` instead.
 
 Generate TWO NB2 images per scene:
 
@@ -298,7 +320,7 @@ OUTPUT: 16:9 LANDSCAPE aspect ratio. Width > Height. Do NOT crop or change ratio
 | 7 | `brand-{asset}.png` | Brand asset | ⬜ (if brand visible) |
 | 8 | `vehicle-{type}-{name}.png` | Vehicle | ⬜ (if vehicle in scene) |
 | 9 | `object-{name}.png` | Object/equipment | ⬜ (if object in scene) |
-| 10 | `ui-{name}.png` | UI/screen | ⬜ (if screen visible) |
+| 10 | `ui-{name}.png` | UI/screen | ⬜ (if screen visible AND Screen Source is `prompt`; skip when `capture`\|`mock` — see `tools/gen_app_screen.py`) |
 | 11 | `scene-{NN-1}-end.png` | Previous scene end frame — grading & continuity anchor | ⬜ (CONDITIONAL — v2.2.0: include ONLY IF env(N-1) == env(N). Hard cut between scenes = DROP this row. See global-promo-config.md §27.) |
 ```
 
@@ -1298,6 +1320,10 @@ OUTPUT: 16:9 LANDSCAPE aspect ratio. Width > Height. Do NOT crop or change ratio
 **Dependency:** None.
 
 ### UI/Screen Composite Template — TIER N (depends on sub-elements)
+
+Skip this template when the scene's Screen Source is `capture` or `mock` — the file comes
+from `tools/gen_app_screen.py` as `ui-<name>[-<state>].png` instead of an NB2 prompt (see
+`Screen Source` above and `reference/post-production/18-screencast.md`).
 
 For UI screens, dashboards, CCTV displays, etc. that contain other visual elements.
 
