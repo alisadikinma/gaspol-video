@@ -79,9 +79,21 @@ _EN_TENS = {
     "eighty": 80, "ninety": 90,
 }
 _EN_SCALES = {"hundred": 100, "thousand": 1000, "million": 1000000, "billion": 1000000000}
-_EN_NUMBER_WORDS = set(_EN_UNITS) | set(_EN_TEENS) | set(_EN_TENS) | set(_EN_SCALES) | {"and"}
+# NOTE: "and" is deliberately NOT a member here — it only ever joins a hundreds group
+# ("one hundred and five"), never two independent numbers ("one and two" stays two
+# numbers). See _en_run_end, which is the only place "and" is allowed to extend a run.
+_EN_NUMBER_WORDS = set(_EN_UNITS) | set(_EN_TEENS) | set(_EN_TENS) | set(_EN_SCALES)
 
 _THOUSANDS_RE = re.compile(r"\d{1,3}(?:[.,]\d{3})+")
+
+# A digit (or a decimal split into two digit tokens by norm()'s punctuation strip, e.g.
+# "1.5" / "1,5" -> "1" "5") immediately followed by a scale word: "3 juta" -> 3000000,
+# "1 5 juta" (i.e. "1.5 juta") -> 1500000, "42 ribu" -> 42000.
+_DIGIT_RE = re.compile(r"^\d+$")
+_SCALE_MULT = {
+    "miliar": 10 ** 9, "milyar": 10 ** 9, "juta": 10 ** 6, "ribu": 10 ** 3,
+    "thousand": 10 ** 3, "million": 10 ** 6, "billion": 10 ** 9,
+}
 
 
 def _id_parse_small(words):
@@ -131,7 +143,9 @@ def parse_id_number_words(words):
 
 
 def parse_en_number_words(words):
-    """Parse a maximal run of English number words into an int, or None."""
+    """Parse a maximal run of English number words into an int, or None. "and" is only
+    ever passed in here already validated by _en_run_end (it joins a hundreds group),
+    so it is always safe to skip."""
     if not words:
         return None
     current = 0
@@ -161,6 +175,91 @@ def parse_en_number_words(words):
     return (total + current) if has_value else None
 
 
+def _en_run_end(words, i):
+    """End index (exclusive) of the maximal English number-word run starting at i.
+    "and" only extends the run when it directly follows "hundred" and is itself
+    followed by another number word — that is the ONLY context where English joins
+    two numbers into one ("one hundred and five"); "one and two" must stay two
+    separate numbers, so "and" elsewhere ends the run."""
+    n = len(words)
+    j = i
+    while j < n:
+        w = words[j]
+        if w in _EN_NUMBER_WORDS:
+            j += 1
+            continue
+        if (w == "and" and j > i and words[j - 1] == "hundred" and j + 1 < n
+                and words[j + 1] in _EN_NUMBER_WORDS):
+            j += 1
+            continue
+        break
+    return j
+
+
+def _year_split_en(words):
+    """"twenty twenty-six" (norm() splits the hyphen: ["twenty","twenty","six"]) is a
+    two-digit-pair year form, not a cardinal sum — 20 and 26 read side by side as 2026,
+    not added to 46. Recognised only when the run has no scale word and splits cleanly
+    into two independent 1-2 word tens/teens groups. Returns an int or None."""
+    if any(w in _EN_SCALES for w in words) or "and" in words:
+        return None
+    n = len(words)
+    for g1_len in (1, 2):
+        if g1_len >= n:
+            break
+        g1 = words[:g1_len]
+        if g1[0] not in _EN_TENS and g1[0] not in _EN_TEENS:
+            continue
+        if g1_len == 2 and g1[1] not in _EN_UNITS:
+            continue
+        rest = words[g1_len:]
+        if len(rest) > 2 or not rest:
+            continue
+        if rest[0] not in _EN_TENS and rest[0] not in _EN_TEENS:
+            continue
+        v1 = parse_en_number_words(g1)
+        v2 = parse_en_number_words(rest)
+        if v1 is not None and v2 is not None and 10 <= v1 <= 99 and 0 <= v2 <= 99:
+            return v1 * 100 + v2
+    return None
+
+
+def _parse_en_run(words):
+    """Full-run English parse: try the two-digit-pair year form first, else the
+    ordinary cardinal sum."""
+    year = _year_split_en(words)
+    return year if year is not None else parse_en_number_words(words)
+
+
+def _longest_parseable_prefix(words, parse_fn):
+    """Try `words` in full, then successively shorter prefixes, returning
+    (value, length) for the LONGEST prefix that parses — a malformed tail (an ASR
+    garble that breaks the grammar) should not sink the whole run when a real number
+    is sitting right at the front of it. None if nothing at all parses."""
+    for end in range(len(words), 0, -1):
+        v = parse_fn(words[:end])
+        if v is not None:
+            return v, end
+    return None
+
+
+def _try_digit_scale_run(words, i):
+    """Digit token(s) immediately followed by a scale word: "3" "juta" -> 3000000;
+    "42" "ribu" -> 42000; a decimal written "1.5"/"1,5" is split by norm()'s
+    punctuation strip into two digit tokens, so "1" "5" "juta" -> 1500000. Returns
+    (value, span) or None."""
+    n = len(words)
+    if not _DIGIT_RE.match(words[i]):
+        return None
+    if (i + 2 < n and _DIGIT_RE.match(words[i + 1]) and words[i + 2] in _SCALE_MULT):
+        whole, frac, scale = words[i], words[i + 1], words[i + 2]
+        value = float(f"{whole}.{frac}") * _SCALE_MULT[scale]
+        return int(round(value)), 3
+    if i + 1 < n and words[i + 1] in _SCALE_MULT:
+        return int(words[i]) * _SCALE_MULT[words[i + 1]], 2
+    return None
+
+
 def collapse_number_runs(words):
     """[w0, w1, ...] -> [(token, span), ...]. A maximal run of number words (Indonesian
     or English) becomes one (canonical digit string, run length) pair; every other word
@@ -170,20 +269,21 @@ def collapse_number_runs(words):
     while i < n:
         w = words[i]
         value, span = None, 0
-        if w in _ID_NUMBER_WORDS:
+        ds = _try_digit_scale_run(words, i)
+        if ds is not None:
+            value, span = ds
+        if value is None and w in _ID_NUMBER_WORDS:
             j = i
             while j < n and words[j] in _ID_NUMBER_WORDS:
                 j += 1
-            v = parse_id_number_words(words[i:j])
-            if v is not None:
-                value, span = v, j - i
+            found = _longest_parseable_prefix(words[i:j], parse_id_number_words)
+            if found is not None:
+                value, span = found[0], found[1]
         if value is None and w in _EN_NUMBER_WORDS:
-            j = i
-            while j < n and words[j] in _EN_NUMBER_WORDS:
-                j += 1
-            v = parse_en_number_words(words[i:j])
-            if v is not None:
-                value, span = v, j - i
+            j = _en_run_end(words, i)
+            found = _longest_parseable_prefix(words[i:j], _parse_en_run)
+            if found is not None:
+                value, span = found[0], found[1]
         if value is not None:
             out.append((str(value), span))
             i += span
@@ -331,18 +431,35 @@ def analyze(intended, rendered, gap_s=GAP_S, low_confidence=LOW_CONFIDENCE, drif
             for i in range(i1, i2):
                 missing.append(intended[i])
         elif tag == "replace":
-            len_i, len_j = i2 - i1, j2 - j1
-            for k in range(max(len_i, len_j)):
-                exp = intended[i1 + k] if k < len_i else None
-                m = b_meta[j1 + k] if k < len_j else None
-                if exp is not None and m is not None:
-                    replaced.append({"start_ms": m["start_ms"], "heard": m["text"],
-                                      "expected": exp["word"]})
-                    _mark(m, exp["layer_id"])
-                elif m is not None:
-                    inserted.append({"start_ms": m["start_ms"], "text": m["text"]})
-                elif exp is not None:
-                    missing.append(exp)
+            # An unequal-length replace block often isn't a real mismatch — it's the
+            # same speech re-segmented into a different number of tokens (script
+            # "Moni datang" vs ASR "Mo ni datang"). Compare both sides with the
+            # spaces removed: if what was actually SAID is ~the same, report it as
+            # one "heard differently" entry instead of manufacturing an insert/miss.
+            exp_words = [intended[k]["word"] for k in range(i1, i2)]
+            heard_metas = [b_meta[j] for j in range(j1, j2)]
+            heard_words = [m["text"] for m in heard_metas]
+            ratio = SequenceMatcher(None, "".join(exp_words), "".join(heard_words)).ratio()
+            if ratio >= 0.8:
+                layer_id = intended[i1]["layer_id"]
+                replaced.append({"start_ms": heard_metas[0]["start_ms"],
+                                  "heard": " ".join(heard_words),
+                                  "expected": " ".join(exp_words)})
+                for m in heard_metas:
+                    _mark(m, layer_id)
+            else:
+                len_i, len_j = i2 - i1, j2 - j1
+                for k in range(max(len_i, len_j)):
+                    exp = intended[i1 + k] if k < len_i else None
+                    m = b_meta[j1 + k] if k < len_j else None
+                    if exp is not None and m is not None:
+                        replaced.append({"start_ms": m["start_ms"], "heard": m["text"],
+                                          "expected": exp["word"]})
+                        _mark(m, exp["layer_id"])
+                    elif m is not None:
+                        inserted.append({"start_ms": m["start_ms"], "text": m["text"]})
+                    elif exp is not None:
+                        missing.append(exp)
 
     # Interior gaps: consecutive MATCHED rendered words from the same layer, paused too long.
     gaps = []
@@ -527,7 +644,10 @@ def verify(project, master=None, asr_json=None, env=None, log=print):
     scene_count = len(audio_plan.get("scenes", []))
     segment_count = len(edit_plan.get("segments", []))
     if segment_count < scene_count:
-        note = f"drift check skipped: {segment_count} edit segments for {scene_count} scenes"
+        starts = scene_starts(edit_plan)
+        checked = sum(1 for s in audio_plan.get("scenes", []) if s.get("scene") in starts)
+        note = (f"drift checked for {checked} of {scene_count} scenes "
+                f"(edit plan has {segment_count} segments)")
         log(note)
         report_text = note + "\n\n" + report_text
 
@@ -559,20 +679,22 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     env = _load_env()
+    # Exit codes: 0 clean, 1 P6 FAIL (missing/inserted word — a real content problem),
+    # 2 ERROR (the tool could not complete the check at all: a bad/missing plan or
+    # master, ffmpeg failure, a transcription-layer error, or anything unexpected),
+    # 3 SKIPPED (no ASSEMBLYAI_API_KEY and no --asr-json, handled inside verify()).
+    # 2 must never be read as a PASS or a FAIL by video-validate --post.
     try:
         outcome = verify(args.project, master=args.master, asr_json=args.asr_json, env=env)
         if outcome["report_path"]:
             print(f"wrote {outcome['report_path']}")
         return outcome["exit_code"]
-    except VerifyError as exc:
+    except (VerifyError, SubtitleError, urllib.error.URLError, OSError) as exc:
         print(f"verify_render: {exc}", file=sys.stderr)
-        return 1
-    except SubtitleError as exc:
+        return 2
+    except Exception as exc:  # noqa: BLE001 - never let an unexpected bug read as PASS/FAIL
         print(f"verify_render: {exc}", file=sys.stderr)
-        return 1
-    except (urllib.error.URLError, OSError) as exc:
-        print(f"verify_render: {exc}", file=sys.stderr)
-        return 1
+        return 2
 
 
 if __name__ == "__main__":

@@ -240,12 +240,10 @@ class VerifyRenderTest(unittest.TestCase):
         asr_path.write_text(json.dumps({"words": evenly_timed_words("Halo dunia", 2000)}))
         logged = []
         outcome = verify_render.verify(self.project, asr_json=str(asr_path), log=logged.append)
-        self.assertTrue(
-            any("drift check skipped: 1 edit segments for 2 scenes" in line for line in logged),
-            logged,
-        )
+        expected = "drift checked for 1 of 2 scenes (edit plan has 1 segments)"
+        self.assertTrue(any(expected in line for line in logged), logged)
         report = Path(outcome["report_path"]).read_text()
-        self.assertIn("drift check skipped: 1 edit segments for 2 scenes", report)
+        self.assertIn(expected, report)
 
     def test_nothing_to_verify_when_no_narration_or_dialogue_layers(self):
         audio_plan = {"audio_source": "elevenlabs", "scenes": [
@@ -315,6 +313,31 @@ class VerifyRenderTest(unittest.TestCase):
         self.assertEqual(r["replaced"][0]["heard"], "42")
         self.assertEqual(len(r["missing"]), 0)
         self.assertEqual(len(r["inserted"]), 0)
+
+    # -- GV-2: unequal-length replace block is one "heard differently", not inserted/missing
+
+    def test_resegmented_word_is_one_replaced_entry_not_inserted(self):
+        # script: "Moni datang" ; ASR heard it as three tokens: "Mo" "ni" "datang" —
+        # same speech, different tokenisation, must not produce a missing/inserted word.
+        audio_plan = audio_plan_one_layer("Moni datang", dur_s=2.0)
+        edit_plan = edit_plan_segments([{"kind": "clip", "src": "clips/scene-01.mp4",
+                                          "in_s": 0.0, "out_s": 2.0}])
+        self._write_plans(audio_plan, edit_plan)
+        rendered = [
+            {"text": "Mo", "start_ms": 0, "end_ms": 300, "confidence": 0.95},
+            {"text": "ni", "start_ms": 300, "end_ms": 600, "confidence": 0.95},
+            {"text": "datang", "start_ms": 600, "end_ms": 1100, "confidence": 0.95},
+        ]
+        asr_path = self.project / "asr.json"
+        asr_path.write_text(json.dumps({"words": rendered}))
+        outcome = verify_render.verify(self.project, asr_json=str(asr_path))
+        r = outcome["result"]
+        self.assertEqual(len(r["replaced"]), 1)
+        self.assertEqual(r["replaced"][0]["expected"], "moni")
+        self.assertEqual(r["replaced"][0]["heard"], "mo ni")
+        self.assertEqual(len(r["missing"]), 0)
+        self.assertEqual(len(r["inserted"]), 0)
+        self.assertEqual(outcome["exit_code"], 0)
 
     def test_collapsed_number_timestamps_span_first_to_last_source_word(self):
         # "empat puluh dua" spoken as 3 separate ASR words; the collapsed "42" token's
@@ -416,6 +439,60 @@ class NumberCollapseTest(unittest.TestCase):
             verify_render.collapse_numbers(["empat", "puluh", "tiga"]),
             verify_render.collapse_numbers(["42"]))
 
+    # -- GV-2: digit + scale-word merging ----------------------------------------------
+
+    def test_id_digit_then_scale_word_merges_with_word_form(self):
+        self.assertEqual(
+            verify_render.collapse_numbers(["tiga", "juta", "rupiah"]),
+            verify_render.collapse_numbers(["3", "juta", "rupiah"]))
+        self.assertEqual(verify_render.collapse_numbers(["3", "juta", "rupiah"]),
+                          ["3000000", "rupiah"])
+
+    def test_id_word_form_then_digit_scale_merges(self):
+        self.assertEqual(
+            verify_render.collapse_numbers(["empat", "puluh", "dua", "ribu"]),
+            verify_render.collapse_numbers(["42", "ribu"]))
+        self.assertEqual(verify_render.collapse_numbers(["42", "ribu"]), ["42000"])
+
+    def test_decimal_comma_or_point_before_scale_word_is_1_5_million(self):
+        # norm() strips "." / "," from "1.5"/"1,5", leaving two adjacent digit tokens —
+        # this is exactly what collapse_number_runs sees for both spellings.
+        self.assertEqual(verify_render.norm("1.5 juta"), ["1", "5", "juta"])
+        self.assertEqual(verify_render.norm("1,5 juta"), ["1", "5", "juta"])
+        self.assertEqual(
+            verify_render.collapse_numbers(verify_render.norm("1.5 juta")), ["1500000"])
+        self.assertEqual(
+            verify_render.collapse_numbers(verify_render.norm("1,5 million")), ["1500000"])
+
+    # -- GV-2: English "and" only joins inside hundreds ---------------------------------
+
+    def test_english_and_between_two_numbers_is_not_summed(self):
+        self.assertEqual(verify_render.collapse_numbers(["one", "and", "two"]), ["1", "and", "2"])
+
+    def test_english_hundred_and_still_joins(self):
+        self.assertEqual(verify_render.collapse_numbers("one hundred and five".split()), ["105"])
+
+    # -- GV-2: English two-digit-pair year form ------------------------------------------
+
+    def test_english_two_digit_pair_year_form(self):
+        # norm() splits the hyphen in "twenty-six" into two words.
+        self.assertEqual(
+            verify_render.collapse_numbers(["twenty", "twenty", "six"]), ["2026"])
+
+    def test_ordinary_two_word_cardinal_is_not_treated_as_a_year(self):
+        self.assertEqual(verify_render.collapse_numbers(["twenty", "five"]), ["25"])
+
+    # -- GV-2: longest parseable prefix instead of failing the whole run ----------------
+
+    def test_longest_parseable_prefix_used_when_full_run_fails(self):
+        # "satu ribu dua tiga" ("dua tiga" alone is invalid Indonesian grammar — two
+        # bare units with no puluh/ratus/belas connector) must not give up on the
+        # whole run; "satu ribu dua" (1002) is the longest prefix that parses.
+        self.assertIsNone(
+            verify_render.parse_id_number_words(["satu", "ribu", "dua", "tiga"]))
+        self.assertEqual(
+            verify_render.collapse_numbers(["satu", "ribu", "dua", "tiga"]), ["1002", "3"])
+
 
 class MainErrorWrappingTest(unittest.TestCase):
     """main() must never let a transcription-layer exception escape as a raw traceback —
@@ -443,7 +520,7 @@ class MainErrorWrappingTest(unittest.TestCase):
              mock.patch.object(verify_render, "transcribe_assemblyai",
                                 side_effect=gen_subs.SubtitleError("AssemblyAI failed: boom")):
             rc = verify_render.main([str(self.project)])
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 2)
 
     def test_url_error_from_transcription_is_caught(self):
         with mock.patch.object(verify_render, "_load_env",
@@ -452,7 +529,7 @@ class MainErrorWrappingTest(unittest.TestCase):
              mock.patch.object(verify_render, "transcribe_assemblyai",
                                 side_effect=urllib.error.URLError("network down")):
             rc = verify_render.main([str(self.project)])
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 2)
 
     def test_os_error_from_transcription_is_caught(self):
         with mock.patch.object(verify_render, "_load_env",
@@ -461,7 +538,37 @@ class MainErrorWrappingTest(unittest.TestCase):
              mock.patch.object(verify_render, "transcribe_assemblyai",
                                 side_effect=OSError("disk full")):
             rc = verify_render.main([str(self.project)])
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 2)
+
+    def test_missing_plan_via_main_exits_2(self):
+        # audio-plan.json / edit-plan.json missing entirely -> VerifyError -> ERROR (2),
+        # never 1 (FAIL) — the check never even ran, it has nothing to report against.
+        with tempfile.TemporaryDirectory() as tmp2:
+            empty_project = Path(tmp2)
+            (empty_project / "work").mkdir()
+            rc = verify_render.main([str(empty_project)])
+        self.assertEqual(rc, 2)
+
+    def test_missing_master_via_main_exits_2(self):
+        (self.project / "output" / "master.mp4").unlink()
+        with mock.patch.object(verify_render, "_load_env",
+                                return_value={"ASSEMBLYAI_API_KEY": "x"}):
+            rc = verify_render.main([str(self.project)])
+        self.assertEqual(rc, 2)
+
+    def test_ffmpeg_failure_via_main_exits_2(self):
+        with mock.patch.object(verify_render, "_load_env",
+                                return_value={"ASSEMBLYAI_API_KEY": "x"}), \
+             mock.patch.object(verify_render, "FFMPEG", "/usr/bin/ffmpeg"), \
+             mock.patch.object(verify_render.subprocess, "run") as run_mock:
+            run_mock.return_value = mock.Mock(returncode=1, stderr="boom")
+            rc = verify_render.main([str(self.project)])
+        self.assertEqual(rc, 2)
+
+    def test_unexpected_exception_in_main_exits_2(self):
+        with mock.patch.object(verify_render, "verify", side_effect=RuntimeError("bug")):
+            rc = verify_render.main([str(self.project)])
+        self.assertEqual(rc, 2)
 
 
 if __name__ == "__main__":
