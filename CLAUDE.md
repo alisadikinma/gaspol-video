@@ -661,4 +661,4 @@ All configurable values live in `reference/global-promo-config.md` — single so
 ## gaspol Ticket Counter
 
 Prefix: GV
-Last ticket: GV-1
+Last ticket: GV-2
