@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from tests.py.media import make_clip, requires_ffmpeg
-from tools import make_stems
+from tools import make_stems, mix_music
 
 
 def _probe_audio(path):
@@ -66,6 +66,24 @@ class MusicFilterTest(unittest.TestCase):
         filt, n = make_stems.music_filter([], duration=10.0)
         self.assertIsNone(filt)
         self.assertEqual(n, 0)
+
+
+class MusicResolveSegmentsWiringTest(unittest.TestCase):
+    """make_stems must delegate segment normalization to mix_music.resolve_segments,
+    not reimplement gain defaults / numeric coercion / overlap checks itself."""
+
+    def test_missing_gain_db_defaults_to_minus_22_in_filter(self):
+        segments = [{"from_s": 0.0, "to_s": 5.0, "track": "a.mp3"}]
+        resolved = mix_music.resolve_segments(segments, master_duration_s=5.0)
+        filt, n = make_stems.music_filter(resolved, duration=5.0)
+        self.assertEqual(n, 1)
+        self.assertIn(f"volume={mix_music.DEFAULT_GAIN_DB}dB", filt)
+
+    def test_string_from_s_and_to_s_are_coerced_to_float(self):
+        segments = [{"from_s": "1.5", "to_s": "4.5", "track": "a.mp3"}]
+        resolved = mix_music.resolve_segments(segments, master_duration_s=10.0)
+        self.assertIsInstance(resolved[0]["from_s"], float)
+        self.assertIsInstance(resolved[0]["to_s"], float)
 
 
 class RealStemsTest(unittest.TestCase):
@@ -166,6 +184,33 @@ class RealStemsTest(unittest.TestCase):
         result = make_stems.build_music(self.project, plan_path,
                                         self.project / "output" / "stems" / "music.wav", 2.0)
         self.assertIsNone(result, "no usable segment must produce no music stem")
+
+    @requires_ffmpeg
+    def test_string_from_s_in_real_music_plan_builds_successfully(self):
+        self._master(seconds=3.0)
+        track = self.project / "track2.mp3"
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+             "-i", "sine=frequency=220:duration=3.0", str(track)],
+            check=True,
+        )
+        plan = {"out": "output/master-mixed.mp4", "segments": [
+            {"from_s": "0.0", "to_s": "3.0", "track": "track2.mp3"},
+        ]}
+        plan_path = self.project / "work" / "music-plan.json"
+        plan_path.write_text(json.dumps(plan))
+        out = make_stems.build_music(self.project, plan_path,
+                                     self.project / "output" / "stems" / "music.wav", 3.0)
+        self.assertIsNotNone(out)
+
+    @requires_ffmpeg
+    def test_voice_stem_is_full_length_when_master_audio_is_shorter(self):
+        master = self.project / "output" / "master.mp4"
+        make_clip(master, seconds=4.0, audio_seconds=2.0)
+        out = make_stems.build_voice(
+            master, self.project / "output" / "stems" / "voice.wav", 4.0)
+        rate, channels, duration = _probe_audio(out)
+        self.assertAlmostEqual(duration, 4.0, delta=0.05)
 
 
 if __name__ == "__main__":

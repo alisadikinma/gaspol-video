@@ -18,11 +18,14 @@ Stdlib only: json, subprocess, tempfile. ffmpeg/ffprobe decode, mix and measure.
 
 import argparse
 import json
+import math
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+from tools import mix_music
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
@@ -36,13 +39,25 @@ class StemError(Exception):
     """A stem cannot be built as asked."""
 
 
+def _finite_float(value, what):
+    """float(value), rejecting NaN/Infinity — python's json module accepts those tokens
+    and a non-finite number reaching an ffmpeg filtergraph produces silent garbage."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError) as exc:
+        raise StemError(f"{what}: not a number ({value!r})") from exc
+    if not math.isfinite(f):
+        raise StemError(f"{what}: not finite ({value!r})")
+    return f
+
+
 def sfx_batches(events, duration, batch=BATCH_SIZE):
     """Drop events at or past `duration`, then split what remains into batches of `batch`.
 
     Returns (batches, skipped) where `batches` is a list of event-lists and `skipped` is
     the count of events dropped for being past the end of the master.
     """
-    usable = [e for e in events if float(e["at_s"]) < duration]
+    usable = [e for e in events if _finite_float(e["at_s"], "sfx at_s") < duration]
     skipped = len(events) - len(usable)
     batches = [usable[i:i + batch] for i in range(0, len(usable), batch)]
     return batches, skipped
@@ -91,13 +106,12 @@ def _duration_of(path):
         raise StemError(f"{Path(path).name}: unreadable duration") from exc
 
 
-def _write_graph(filt):
-    f = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False)
-    try:
-        f.write(filt)
-    finally:
-        f.close()
-    return f.name
+def _write_graph(filt, tmpdir, name="filter.txt"):
+    """Write a filter-graph script inside a caller-owned TemporaryDirectory, so it is
+    cleaned up when that directory goes away instead of leaking in the system temp dir."""
+    path = Path(tmpdir) / name
+    path.write_text(filt)
+    return str(path)
 
 
 def _run_ffmpeg(cmd):
@@ -115,13 +129,17 @@ def build_voice(master, out, duration):
         raise StemError(f"{master} not found")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    filt = f"[0:a]aformat=sample_rates={SAMPLE_RATE}:channel_layouts=stereo[vout]"
-    graph = _write_graph(filt)
-    cmd = [FFMPEG, "-y", "-v", "error", "-i", str(master),
-           "-filter_complex_script", graph, "-map", "[vout]",
-           "-ac", str(CHANNELS), "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s24le",
-           "-t", f"{duration:.6f}", str(out)]
-    _run_ffmpeg(cmd)
+    # apad: a master whose audio stream is shorter than its video (or than the requested
+    # stem duration) still yields a full-length stem — the pad is silence, then -t trims it
+    # to exactly `duration`.
+    filt = f"[0:a]aformat=sample_rates={SAMPLE_RATE}:channel_layouts=stereo,apad[vout]"
+    with tempfile.TemporaryDirectory() as tmp:
+        graph = _write_graph(filt, tmp)
+        cmd = [FFMPEG, "-y", "-v", "error", "-i", str(master),
+               "-filter_complex_script", graph, "-map", "[vout]",
+               "-ac", str(CHANNELS), "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s24le",
+               "-t", f"{duration:.6f}", str(out)]
+        _run_ffmpeg(cmd)
     print(f"voice stem: {master} -> {out} ({duration:.3f}s)")
     return str(out)
 
@@ -182,8 +200,8 @@ def build_sfx(project, plan_path, out, duration, batch=BATCH_SIZE):
 
             parts, labels = [], ["[0:a]"]
             for i, ev in enumerate(batch_events, start=1):
-                delay_ms = int(round(float(ev["at_s"]) * 1000))
-                gain = ev.get("gain_db", 0)
+                delay_ms = int(round(_finite_float(ev["at_s"], "sfx at_s") * 1000))
+                gain = _finite_float(ev.get("gain_db", 0), "sfx gain_db")
                 parts.append(
                     f"[{i}:a]aformat=sample_rates={SAMPLE_RATE}:channel_layouts=stereo,"
                     f"adelay={delay_ms}:all=1,volume={gain}dB[e{i}]"
@@ -192,7 +210,7 @@ def build_sfx(project, plan_path, out, duration, batch=BATCH_SIZE):
             parts.append(
                 f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0:dropout_transition=0[mix]"
             )
-            graph = _write_graph(";".join(parts))
+            graph = _write_graph(";".join(parts), tmp, name=f"filter_part{bi:02d}.txt")
             part_path = tmp / f"sfx_part{bi:02d}.wav"
             cmd += ["-filter_complex_script", graph, "-map", "[mix]",
                     "-ac", str(CHANNELS), "-ar", str(SAMPLE_RATE), "-c:a", "pcm_f32le",
@@ -208,7 +226,7 @@ def build_sfx(project, plan_path, out, duration, batch=BATCH_SIZE):
         else:
             sum_filt = "".join(f"[{i}:a]" for i in range(len(part_files))) + \
                 f"amix=inputs={len(part_files)}:normalize=0:dropout_transition=0[mix]"
-        graph = _write_graph(sum_filt)
+        graph = _write_graph(sum_filt, tmp, name="filter_final.txt")
         cmd += ["-filter_complex_script", graph, "-map", "[mix]",
                 "-ac", str(CHANNELS), "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s24le",
                 "-t", f"{duration:.6f}", str(out)]
@@ -251,18 +269,35 @@ def build_music(project, plan_path, out, duration):
         print("! no usable music track — no music stem was built", file=sys.stderr)
         return None
 
-    filt, n = music_filter(usable, duration)
+    # Delegate segment normalization to mix_music.py — same default gain (-22 dB), the
+    # same float coercion of from_s/to_s (a JSON string works), the same trim to master
+    # duration, and the same overlap check. Reimplementing this here would drift.
+    try:
+        resolved = mix_music.resolve_segments(usable, master_duration_s=duration)
+    except mix_music.MusicError as exc:
+        raise StemError(str(exc)) from exc
+
+    for seg in resolved:
+        seg["gain_db"] = _finite_float(seg.get("gain_db", mix_music.DEFAULT_GAIN_DB),
+                                        "music gain_db")
+        if "fade_in_s" in seg:
+            seg["fade_in_s"] = _finite_float(seg["fade_in_s"], "music fade_in_s")
+        if "fade_out_s" in seg:
+            seg["fade_out_s"] = _finite_float(seg["fade_out_s"], "music fade_out_s")
+
+    filt, n = music_filter(resolved, duration)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [FFMPEG, "-y", "-v", "error", "-f", "lavfi", "-t", f"{duration:.6f}",
-           "-i", f"anullsrc=r={SAMPLE_RATE}:cl=stereo"]
-    for seg in usable:
-        cmd += ["-i", str(seg["_resolved_track"])]
-    graph = _write_graph(filt)
-    cmd += ["-filter_complex_script", graph, "-map", "[aout]",
-            "-ac", str(CHANNELS), "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s24le",
-            "-t", f"{duration:.6f}", str(out)]
-    _run_ffmpeg(cmd)
+    with tempfile.TemporaryDirectory() as tmp:
+        cmd = [FFMPEG, "-y", "-v", "error", "-f", "lavfi", "-t", f"{duration:.6f}",
+               "-i", f"anullsrc=r={SAMPLE_RATE}:cl=stereo"]
+        for seg in resolved:
+            cmd += ["-i", str(seg["_resolved_track"])]
+        graph = _write_graph(filt, tmp)
+        cmd += ["-filter_complex_script", graph, "-map", "[aout]",
+                "-ac", str(CHANNELS), "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s24le",
+                "-t", f"{duration:.6f}", str(out)]
+        _run_ffmpeg(cmd)
     print(f"music stem: {n} segment(s) -> {out} ({duration:.3f}s)")
     return str(out)
 
