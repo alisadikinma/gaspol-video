@@ -86,7 +86,12 @@ python3 tools/composite.py insert master.mp4 shot.mp4 --at 12.0 --gain-db 3 -o o
 
 Output = master[0..at] + shot (its own video AND audio, in full) + master[at..end]. Total duration
 grows: **output length = master length + shot length.** A shot with no audio stream gets silence of
-its own length rather than being rejected.
+its own length rather than being rejected; a master with no audio stream at all gets the same
+treatment for its pre/post pieces, so `insert` works on a silent master instead of failing to find a
+stream that was never there. Every audio piece is padded with silence before it is trimmed to its
+exact wanted length, so a source whose audio track is shorter than its own video (master or shot)
+still comes out the requested length — the concat cannot fall short of the video and trip the A/V
+duration gate below.
 
 **Every later cue time shifts by the shot's length.** The master's clock only runs to `at`, then
 pauses for the shot's duration, then resumes — so an SFX cue, a subtitle, or a music segment that

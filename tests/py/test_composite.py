@@ -54,6 +54,24 @@ class CompositeTest(unittest.TestCase):
             composite.require_alpha(opaque)
         self.assertIn("alpha", str(ctx.exception).lower())
 
+    @requires_ffmpeg
+    def test_failed_cutaway_leaves_no_output_file(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0)
+        shot = make_silent_clip(self.dir / "shot.mp4", seconds=1.0)
+        out = self.dir / "out.mp4"
+        out.write_bytes(b"stale")
+        real_run = composite.subprocess.run
+
+        def flaky(cmd, *a, **kw):
+            if str(out) in [str(c) for c in cmd]:
+                return mock.Mock(returncode=1, stderr="synthetic failure")
+            return real_run(cmd, *a, **kw)
+
+        with mock.patch.object(composite.subprocess, "run", side_effect=flaky):
+            with self.assertRaises(composite.CompositeError):
+                composite.cutaway(master, shot, at_s=1.0, out_s=2.0, out=out)
+        self.assertFalse(out.exists(), "a failed run must not leave a partial/stale output file")
+
 
 def _make_alpha_mov(path, seconds=1.5, size="320x240"):
     """A transparent .mov shot, the fixture the plan specifies for split/insert tests."""
@@ -171,6 +189,20 @@ class CompositeSplitTest(unittest.TestCase):
             master, shot, at_s=1.0, out_s=2.0, box=(20, 20, 100, 80), out=self.dir / "out.mp4",
         )
         self.assertIsNone(duration_of(out, "a:0"), "a silent master must stay silent, no gate needed")
+
+    def test_split_rejects_non_finite_at_out_s_zoom_and_crop(self):
+        with self.assertRaises(composite.CompositeError):
+            composite.split("m.mp4", "s.mp4", at_s=float("nan"), out_s=2.0,
+                            box=(0, 0, 10, 10), out="o.mp4")
+        with self.assertRaises(composite.CompositeError):
+            composite.split("m.mp4", "s.mp4", at_s=1.0, out_s=float("inf"),
+                            box=(0, 0, 10, 10), out="o.mp4")
+        with self.assertRaises(composite.CompositeError):
+            composite.split("m.mp4", "s.mp4", at_s=1.0, out_s=2.0,
+                            box=(0, 0, 10, 10), out="o.mp4", zoom=float("nan"))
+        with self.assertRaises(composite.CompositeError):
+            composite.split("m.mp4", "s.mp4", at_s=1.0, out_s=2.0,
+                            box=(0, 0, 10, 10), out="o.mp4", crop_cx=float("nan"))
 
     @requires_ffmpeg
     def test_pixel_inside_box_differs_from_master_during_span(self):
@@ -303,6 +335,52 @@ class CompositeInsertTest(unittest.TestCase):
             at_s=2.0, shot_dur_s=1.0, end_s=4.0, gain_db=0.0, has_shot_audio=False,
         )
         self.assertIn("anullsrc=r=48000:cl=stereo:d=1.0000", filt)
+
+    @requires_ffmpeg
+    def test_insert_works_when_master_has_no_audio(self):
+        master = make_silent_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = make_clip(self.dir / "shot.mp4", seconds=1.0, size="320x240")
+        out = composite.insert(master, shot, at_s=2.0, out=self.dir / "out.mp4")
+        v_dur = duration_of(out, "v:0")
+        a_dur = duration_of(out, "a:0")
+        self.assertAlmostEqual(v_dur, 5.0, delta=0.1)
+        self.assertAlmostEqual(a_dur, 5.0, delta=0.1)
+
+    @requires_ffmpeg
+    def test_insert_shot_audio_shorter_than_its_video_still_passes_av_gate(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = make_clip(self.dir / "shot.mp4", seconds=3.0, audio_seconds=2.9, size="320x240")
+        out = composite.insert(master, shot, at_s=2.0, out=self.dir / "out.mp4")
+        v_dur = duration_of(out, "v:0")
+        a_dur = duration_of(out, "a:0")
+        self.assertAlmostEqual(v_dur, 7.0, delta=0.1)
+        self.assertLessEqual(abs(v_dur - a_dur), 0.04)
+
+    def test_insert_rejects_non_finite_at(self):
+        with self.assertRaises(composite.CompositeError):
+            composite.insert("no-such-master.mp4", "no-such-shot.mp4",
+                             at_s=float("nan"), out=str(self.dir / "out.mp4"))
+        with self.assertRaises(composite.CompositeError):
+            composite.insert("no-such-master.mp4", "no-such-shot.mp4",
+                             at_s=float("inf"), out=str(self.dir / "out.mp4"))
+
+    @requires_ffmpeg
+    def test_failed_insert_final_mux_leaves_no_output_file(self):
+        master = make_clip(self.dir / "master.mp4", seconds=2.0, size="320x240")
+        shot = make_clip(self.dir / "shot.mp4", seconds=1.0, size="320x240")
+        out = self.dir / "out.mp4"
+        out.write_bytes(b"stale")
+        real_run = composite.subprocess.run
+
+        def flaky(cmd, *a, **kw):
+            if str(out) in [str(c) for c in cmd]:
+                return mock.Mock(returncode=1, stderr="synthetic failure")
+            return real_run(cmd, *a, **kw)
+
+        with mock.patch.object(composite.subprocess, "run", side_effect=flaky):
+            with self.assertRaises(composite.CompositeError):
+                composite.insert(master, shot, at_s=1.0, out=out)
+        self.assertFalse(out.exists(), "a failed final mux must not leave a stale/partial output file")
 
 
 if __name__ == "__main__":

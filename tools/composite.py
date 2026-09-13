@@ -25,6 +25,7 @@ underneath it.
 
 import argparse
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -86,6 +87,15 @@ def require_alpha(path):
     return True
 
 
+def _require_finite(value, name):
+    """--at/--out-s/--zoom/crop values come straight off the CLI (or straight out of a
+    caller's own arithmetic); NaN/Infinity pass every ordinary comparison silently and
+    produce a broken filtergraph instead of a clear refusal."""
+    if not math.isfinite(value):
+        raise CompositeError(f"--{name} must be a finite number (got {value})")
+    return value
+
+
 def validate_span(at_s, out_s, master_duration_s):
     if at_s < 0:
         raise CompositeError(f"span starts before the master ({at_s}s)")
@@ -98,7 +108,10 @@ def validate_span(at_s, out_s, master_duration_s):
     return True
 
 
-def _run(cmd):
+def _run(cmd, out=None):
+    """Run one ffmpeg step. When `out` names this step's final output file, a failure
+    never leaves a 0-byte (or partial/stale) file behind — the caller sees a clean error
+    and a clean filesystem, not a file that looks like it might be a real result."""
     if FFMPEG is None:
         raise CompositeError(
             "ffmpeg not found on PATH — nothing was composited. Run this elsewhere:\n  "
@@ -106,6 +119,8 @@ def _run(cmd):
         )
     proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True)
     if proc.returncode != 0:
+        if out is not None:
+            Path(out).unlink(missing_ok=True)
         raise CompositeError(f"composite failed:\n{proc.stderr.strip()[-600:]}")
 
 
@@ -118,7 +133,7 @@ def cutaway(master, shot, at_s, out_s, out):
     )
     _run([FFMPEG, "-y", "-v", "error", "-i", master, "-itsoffset", at_s, "-i", shot,
           "-filter_complex", filt, "-map", "[v]", "-map", "0:a?",
-          "-c:a", "copy", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", out])
+          "-c:a", "copy", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", out], out=out)
     return str(out)
 
 
@@ -179,6 +194,11 @@ def _check_av_gate(out, tool, tol=0.04):
 def split(master, shot, at_s, out_s, box, out, crop_cx=0.5, crop_cy=0.5, zoom=1.0):
     """Picture-in-picture: the shot draws the frame and leaves a transparent window where a
     cropped/scaled view of the master shows through, for the span [at_s, out_s]."""
+    _require_finite(at_s, "at")
+    _require_finite(out_s, "out-s")
+    _require_finite(crop_cx, "crop-cx")
+    _require_finite(crop_cy, "crop-cy")
+    _require_finite(zoom, "zoom")
     master_duration = duration_of(master)
     validate_span(at_s, out_s, master_duration)
     if master_duration is not None and out_s > master_duration + 1e-6:
@@ -207,7 +227,7 @@ def split(master, shot, at_s, out_s, box, out, crop_cx=0.5, crop_cy=0.5, zoom=1.
     if master_duration is not None:
         cmd += ["-t", master_duration]
     cmd += ["-c:a", "copy", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", out]
-    _run(cmd)
+    _run(cmd, out=out)
     if _has_stream(master, "a"):
         _check_av_gate(out, "split")
     return str(out)
@@ -231,17 +251,30 @@ def insert_plan(at_s, master_duration, shot_duration, fps):
 
 
 def insert_audio_filter(at_s, shot_dur_s, end_s, gain_db=0.0, has_shot_audio=True,
-                         master_label="0:a", shot_label="1:a"):
+                         has_master_audio=True, master_label="0:a", shot_label="1:a"):
     """The audio graph for `insert`: master[0:at] + shot audio (or silence of its length) +
     master[at:end], each normalised to 48kHz stereo before concat. Positive gain gets a
-    limiter so a boosted shot cannot clip; negative gain never needs one."""
-    fmt = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
+    limiter so a boosted shot cannot clip; negative gain never needs one.
+
+    `apad` runs before `atrim` on every real audio piece: a source (master or shot) whose
+    audio stream is shorter than its own video stream would otherwise trim to less than the
+    requested length, so the concatenated audio comes out shorter than the video and fails
+    the 0.04s A/V duration gate. Padding first, then trimming to the exact wanted length,
+    means the piece is always exactly as long as it claims to be.
+
+    A master with no audio stream at all (`has_master_audio=False`) never references
+    `master_label` — its pre/post pieces are plain silence instead.
+    """
+    fmt = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad"
     parts = []
     labels = []
     if at_s > 1e-6:
-        parts.append(
-            f"[{master_label}]atrim=start=0:end={at_s:.4f},asetpts=PTS-STARTPTS,{fmt}[ains0]"
-        )
+        if has_master_audio:
+            parts.append(
+                f"[{master_label}]{fmt},atrim=start=0:end={at_s:.4f},asetpts=PTS-STARTPTS[ains0]"
+            )
+        else:
+            parts.append(f"anullsrc=r=48000:cl=stereo:d={at_s:.4f}[ains0]")
         labels.append("[ains0]")
 
     gain_clause = ""
@@ -251,17 +284,21 @@ def insert_audio_filter(at_s, shot_dur_s, end_s, gain_db=0.0, has_shot_audio=Tru
             gain_clause += ",alimiter=limit=0.97:level=false"
     if has_shot_audio:
         parts.append(
-            f"[{shot_label}]atrim=start=0:end={shot_dur_s:.4f},asetpts=PTS-STARTPTS,"
-            f"{fmt}{gain_clause}[ains1]"
+            f"[{shot_label}]{fmt},atrim=start=0:end={shot_dur_s:.4f},asetpts=PTS-STARTPTS"
+            f"{gain_clause}[ains1]"
         )
     else:
         parts.append(f"anullsrc=r=48000:cl=stereo:d={shot_dur_s:.4f}[ains1]")
     labels.append("[ains1]")
 
     if end_s - at_s > 1e-6:
-        parts.append(
-            f"[{master_label}]atrim=start={at_s:.4f}:end={end_s:.4f},asetpts=PTS-STARTPTS,{fmt}[ains2]"
-        )
+        if has_master_audio:
+            parts.append(
+                f"[{master_label}]{fmt},atrim=start={at_s:.4f}:end={end_s:.4f},"
+                f"asetpts=PTS-STARTPTS[ains2]"
+            )
+        else:
+            parts.append(f"anullsrc=r=48000:cl=stereo:d={end_s - at_s:.4f}[ains2]")
         labels.append("[ains2]")
 
     return ";".join(parts) + f";{''.join(labels)}concat=n={len(labels)}:v=0:a=1[a]"
@@ -272,6 +309,7 @@ def insert(master, shot, at_s, out, gain_db=0.0):
     play, the master (and its narration) freezes, then everything resumes. Total output
     duration is master duration + shot duration; every later cue time in the output shifts
     by the shot's length, which `13-ffmpeg-edit.md` documents for callers."""
+    _require_finite(at_s, "at")
     master_duration = duration_of(master)
     if master_duration is None:
         raise CompositeError(f"{Path(master).name}: unreadable")
@@ -286,6 +324,7 @@ def insert(master, shot, at_s, out, gain_db=0.0):
     if shot_duration is None:
         raise CompositeError(f"{Path(shot).name}: unreadable")
     has_shot_audio = _has_stream(shot, "a")
+    has_master_audio = _has_stream(master, "a")
 
     master_w, master_h, fps = _video_info(master)
     plan = insert_plan(at_s, master_duration, shot_duration, fps)
@@ -316,13 +355,15 @@ def insert(master, shot, at_s, out, gain_db=0.0):
         total = master_duration + shot_duration
         audio_filt = insert_audio_filter(
             at_s, shot_duration, master_duration, gain_db=gain_db,
-            has_shot_audio=has_shot_audio, master_label="1:a", shot_label="2:a",
+            has_shot_audio=has_shot_audio, has_master_audio=has_master_audio,
+            master_label="1:a", shot_label="2:a",
         )
         out_path = Path(out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         _run([FFMPEG, "-y", "-v", "error", "-i", video_concat, "-i", master, "-i", shot,
               "-filter_complex", audio_filt, "-map", "0:v:0", "-map", "[a]",
-              "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-t", total, out_path])
+              "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-t", total, out_path],
+             out=out_path)
 
     _check_av_gate(out, "insert")
     return str(out)
@@ -336,7 +377,7 @@ def overlay(master, shot, at_s, out=None, out_s=None):
     filt = f"[0:v][1:v]overlay=0:0:enable='between(t,{at_s},{end})'[v]"
     _run([FFMPEG, "-y", "-v", "error", "-i", master, "-itsoffset", at_s, "-i", shot,
           "-filter_complex", filt, "-map", "[v]", "-map", "0:a?",
-          "-c:a", "copy", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", out])
+          "-c:a", "copy", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", out], out=out)
     return str(out)
 
 
