@@ -31,6 +31,7 @@ test("scaffold copies the lib and script files a registry-based workspace needs"
       "scripts/gen-registry.mjs",
       "scripts/render-all.mjs",
       "scripts/qa-frames.mjs",
+      "scripts/render-stills.mjs",
       "src/registry.gen.tsx",
     ]) {
       const p = path.join(shotsRoot, rel);

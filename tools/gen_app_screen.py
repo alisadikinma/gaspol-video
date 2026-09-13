@@ -18,6 +18,8 @@ real app once with `--headed` against a persistent `browser_profile` instead.
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +30,8 @@ from tools import _venv  # noqa: E402
 
 SCREENS_JSON_REL = Path("screens") / "screens.json"
 MANIFEST_REL = Path("screens") / "manifest.json"
+DATA_JSON_REL = Path("screens") / "data.json"
+TEMPLATE_BRAND_PATH = Path(__file__).resolve().parent.parent / "templates" / "remotion" / "brand.json"
 
 ALLOWED_ACTION_KEYS = {"goto", "wait", "wait_for", "click", "fill", "press", "scroll", "shot"}
 ALLOWED_META_KEYS = {"optional", "timeout", "url_label", "title"}
@@ -129,6 +133,122 @@ def capture_spec(config: dict) -> dict:
     if capture is None:
         raise ScreenError("screens.json has no capture block")
     return capture
+
+
+def is_placeholder_brand(brand: dict, template: dict) -> bool:
+    """True when every real field of `brand` (everything but `_comment`) still equals the
+    shipped template's value — i.e. nobody has written the client's brand yet."""
+    keys = [k for k in template if k != "_comment"]
+    return all(brand.get(k) == template.get(k) for k in keys)
+
+
+def mock_jobs(spec, data, project, only=None):
+    """Expand a `screens.json` `mock` list into one render job per (screen, state).
+
+    `spec` is the `mock` list itself (each entry: name, component, states, ...). `data` is
+    the parsed `screens/data.json`. Raises ScreenError when a screen has no data.json key,
+    when its component .tsx file is missing, or when a state name is invalid.
+    """
+    jobs = []
+    for entry in spec:
+        name = entry["name"]
+        if only is not None and name != only:
+            continue
+        component = entry["component"]
+        if name not in data:
+            raise ScreenError(f"data.json has no key for screen {name!r}")
+        component_file = Path(project) / "shots" / "src" / "shots" / "screens" / f"{component}.tsx"
+        if not component_file.exists():
+            raise ScreenError(f"missing component file: {component_file}")
+        for state in entry.get("states", []):
+            if not isinstance(state, str) or not SHOT_NAME_RE.match(state):
+                raise ScreenError(f"bad state name for {name!r}: {state!r}")
+            jobs.append(
+                {
+                    "component": component,
+                    "props": {"state": state, "data": data[name]},
+                    "out": str(shot_path(project, f"{name}-{state}")),
+                    "name": name,
+                    "state": state,
+                    "data_key": name,
+                    "url_label": entry.get("url_label", ""),
+                    "title": entry.get("title", ""),
+                }
+            )
+    return jobs
+
+
+def run_mock(project, only=None):
+    """Render one PNG per (mock screen, state) through the project's Remotion workspace.
+
+    Requires the workspace at `{project}/shots/` to already be scaffolded, `npm install`ed,
+    and its `src/shots/brand.json` written with real (non-placeholder) values."""
+    shots_dir = Path(project) / "shots"
+    brand_path = shots_dir / "src" / "shots" / "brand.json"
+    if not brand_path.exists():
+        raise ScreenError(f"{brand_path} not found; scaffold the shots workspace first")
+
+    brand = json.loads(brand_path.read_text(encoding="utf-8"))
+    template = json.loads(TEMPLATE_BRAND_PATH.read_text(encoding="utf-8"))
+    if is_placeholder_brand(brand, template):
+        raise ScreenError("brand.json still holds template placeholders; write it from strategic-brief.md first")
+
+    config = load_screens_json(project)
+    mock_spec = config.get("mock")
+    if not mock_spec:
+        raise ScreenError("screens.json has no mock block")
+
+    data_path = Path(project) / DATA_JSON_REL
+    if not data_path.exists():
+        raise ScreenError(f"{data_path} not found")
+    data = json.loads(data_path.read_text(encoding="utf-8"))
+
+    jobs = mock_jobs(mock_spec, data, project, only=only)
+    if not jobs:
+        raise ScreenError("no mock jobs matched")
+
+    node = shutil.which("node")
+    if node is None:
+        raise ScreenError("node not found")
+
+    gen_proc = subprocess.run(
+        [node, "scripts/gen-registry.mjs"], cwd=str(shots_dir), capture_output=True, text=True
+    )
+    if gen_proc.returncode != 0:
+        raise ScreenError(f"gen-registry failed:\n{gen_proc.stderr.strip()[-800:]}")
+
+    entries = []
+    for job in jobs:
+        out_path = Path(job["out"])
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"mock {job['name']}/{job['state']} -> {out_path.relative_to(project)}")
+        proc = subprocess.run(
+            [node, "scripts/render-stills.mjs", job["component"], "--props", json.dumps(job["props"]), "--out", str(out_path)],
+            cwd=str(shots_dir),
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            stderr_tail = proc.stderr.strip()[-800:]
+            if "@remotion/renderer" in proc.stderr or "Cannot find module" in proc.stderr:
+                raise ScreenError(f"run `npm install` in {shots_dir} first:\n{stderr_tail}")
+            raise ScreenError(f"render-stills failed:\n{stderr_tail}")
+
+        entries.append(
+            {
+                "name": job["name"],
+                "file": out_path.name,
+                "url_label": job["url_label"],
+                "title": job["title"],
+                "source": "mock",
+                "simulated": True,
+                "component": job["component"],
+                "state": job["state"],
+                "data_key": job["data_key"],
+                "captured_at": _now_iso(),
+            }
+        )
+    return entries
 
 
 def write_manifest(project, new_entries) -> None:
@@ -269,6 +389,18 @@ def _cli_capture(args) -> int:
     return 0
 
 
+def _cli_mock(args) -> int:
+    try:
+        entries = run_mock(args.project, only=args.only)
+    except ScreenError as exc:
+        print(f"gen_app_screen: {exc}", file=sys.stderr)
+        return 1
+
+    write_manifest(args.project, entries)
+    print(f"rendered {len(entries)} mock screen(s)")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -277,10 +409,16 @@ def main(argv=None):
     capture_ap.add_argument("project")
     capture_ap.add_argument("--headed", action="store_true")
 
+    mock_ap = sub.add_parser("mock")
+    mock_ap.add_argument("project")
+    mock_ap.add_argument("--only")
+
     args = ap.parse_args(argv)
 
     if args.mode == "capture":
         return _cli_capture(args)
+    if args.mode == "mock":
+        return _cli_mock(args)
 
     print(f"gen_app_screen: unknown mode {args.mode}", file=sys.stderr)
     return 2
