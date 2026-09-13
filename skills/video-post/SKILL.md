@@ -324,7 +324,16 @@ said.
 Exit 0: clean, or only advisory findings (heard-differently, an interior gap, low confidence, A/V
 drift) — all listed with a timestamp in `work/verify-report.md`, not blocking. Exit 1: a word is
 missing or extra — read the report, fix the edit or regenerate the VO, do not ship past a FAIL.
-Exit 3: no `ASSEMBLYAI_API_KEY` and no `--asr-json` — report this as **skipped**, never as passed.
+Exit 2: the tool could not complete the check at all (missing/invalid plan, missing master, an
+ffmpeg failure, or any other tool error) — report this as **ERROR**, never as PASS or FAIL, and fix
+the printed `verify_render: <message>` before re-running. Exit 3: no `ASSEMBLYAI_API_KEY` and no
+`--asr-json` — report this as **skipped**, never as passed.
+
+If the report opens with `drift checked for <k> of <m> scenes (edit plan has <n> segments)`, only
+`k` scenes had a master-clock position to check drift against — the rest were word-diffed but not
+drift-checked. Note also: a `composite insert` shifts the master clock (it freezes the master and
+plays a shot in full before resuming), so drift after an insert must be read against OUTPUT time,
+not the original edit-plan timeline.
 
 ### 5.2 Optional: export stems for a human editor (v3.1.0)
 
@@ -346,7 +355,7 @@ Report what exists and what did not run:
 output/master.mp4         assembled, A/V gate passed
 output/master-mixed.mp4   {N} SFX cues, music {yes/no}, captions {burned/sidecar/none}
 output/master.srt         {M} cues, {K} scenes untimed
-work/verify-report.md     P6 {PASS/FAIL/SKIPPED} — {a} extra, {b} missing, {c} advisory findings
+work/verify-report.md     P6 {PASS/FAIL/ERROR/SKIPPED} — {a} extra, {b} missing, {c} advisory findings
 Not run: {anything that degraded, and why}
 ```
 

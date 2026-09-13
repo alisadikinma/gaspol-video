@@ -512,13 +512,23 @@ python3 tools/verify_render.py {output_folder}
 A second ASR pass over the rendered master (`output/master-mixed.mp4`, falling back to
 `output/master.mp4`), diffed against the intended narration/dialogue in `work/audio-plan.json`.
 
-- **FAIL** on any missing or inserted word — content the script asked for that never made it into
-  the render, or content that rode along uninvited.
+- **FAIL** (exit 1) on any missing or inserted word — content the script asked for that never made
+  it into the render, or content that rode along uninvited.
 - **WARN** on a word heard differently, an interior gap, a low-confidence word, or an A/V drift
   flag — all advisory, all named with a timestamp in `work/verify-report.md` so the fix is a matter
   of listening at that second, not guessing.
+- **ERROR**, never PASS or FAIL, on exit code 2 — the check itself could not complete: a missing or
+  invalid `audio-plan.json`/`edit-plan.json`, a missing master, an ffmpeg failure, or any other tool
+  error. Report the printed `verify_render: <message>` and fix that condition before re-running; a
+  render that was never actually checked must not read as either a pass or a fail.
 - **SKIPPED**, never PASS, on exit code 3 (`ASSEMBLYAI_API_KEY` not set and no `--asr-json` was
   given). A skipped check is reported as skipped in the summary — it must never read as a pass.
+- When the report's first line is `drift checked for <k> of <m> scenes (edit plan has <n>
+  segments)` — fewer edit segments than scenes — only the first `k` scenes had a known master-clock
+  position to check drift against; the rest ran the word diff but skipped their drift row. A
+  `composite insert` (see `tools/composite.py insert`) freezes the master at a timestamp and plays a
+  shot in full, which shifts every later scene's position on the master clock — read drift after an
+  insert against OUTPUT time, not the original edit-plan timeline.
 
 ## Output Format
 

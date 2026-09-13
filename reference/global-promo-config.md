@@ -1639,10 +1639,17 @@ packaging copy may not present it as a shipped feature.
 | `verify_gap_s` | 0.40 — intra-layer silence at or above this is flagged |
 | `verify_low_confidence` | 0.70 — rendered words below this ASR confidence are flagged |
 | `verify_drift_s` | 0.25 — per-scene delta between planned and heard start beyond this is flagged |
-| `verify_exit_codes` | `0` clean, `1` FAIL (any missing or inserted word), `3` SKIPPED (no `ASSEMBLYAI_API_KEY` and no `--asr-json`) |
+| `verify_exit_codes` | `0` clean, `1` FAIL (any missing or inserted word), `2` ERROR (the check itself could not complete — missing/invalid plan, missing master, ffmpeg failure, or any other tool error), `3` SKIPPED (no `ASSEMBLYAI_API_KEY` and no `--asr-json`) |
 
-Exit `3` is always reported as `SKIPPED` in `video-validate --post`, never as `PASS` — see
-`tools/verify_render.py` and Check P6.
+Exit `2` is always reported as `ERROR` and exit `3` as `SKIPPED` in `video-validate --post` — neither
+is ever `PASS`, and `2` is never conflated with the `1` FAIL that means the render itself said the
+wrong thing. See `tools/verify_render.py` and Check P6.
+
+When `work/verify-report.md` opens with `drift checked for <k> of <m> scenes (edit plan has <n>
+segments)`, only `k` scenes had a known master-clock position to check drift against. A `composite
+insert` (`tools/composite.py insert`) freezes the master at a timestamp and plays a shot in full
+before resuming, which shifts every later scene's position — drift after an insert must be read
+against OUTPUT time, not the original edit-plan timeline.
 
 ---
 
