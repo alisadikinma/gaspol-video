@@ -26,7 +26,7 @@ assumption. Cost: one image credit, spent with the user's approval.
 ```
 OK
 local: /private/tmp/claude-501/-Users-alisadikin-Drive-D-claude-plugin-gaspol-video/a2fdaf4a-0852-4766-bd11-f133860002b5/scratchpad/gv2-probe/image/20260913-110312-e9469ea8-af27-11f1-98c6-762a55ae2c2d.png
-cdn_url: https://7a4964de26acd06ff740870066a92ff8.r2.cloudflarestorage.com/geminigen-prd-upload-bucket/1795594/generated_result/image/e9469ea8-af27-11f1-98c6-762a55ae2c2d/gen/20260913_040305_0_UTC_0.png?response-content-type=application%2Foctet-stream&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=ac21101432ac699ee432dddd257a928b%2F20260913%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260913T040312Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=be8a5626b21148e4cc6a162955541da561d9cc096df08ad8f4c3c4fd5a4f6809
+cdn_url: https://7a4964de26acd06ff740870066a92ff8.r2.cloudflarestorage.com/geminigen-prd-upload-bucket/1795594/generated_result/image/e9469ea8-af27-11f1-98c6-762a55ae2c2d/gen/20260913_040305_0_UTC_0.png?<redacted signed url>
 uuid: e9469ea8-af27-11f1-98c6-762a55ae2c2d
 ```
 
