@@ -75,6 +75,22 @@ push). `Screencast` props: `pages`, `cursor?: CursorKey[]`, `clicks?: number[]`,
   URL bar).
 - `zoom` `fx`/`fy` → **image** fraction (transform-origin of the ken-burns push).
 
+**The viewport fraction is not the image fraction.** A page image is drawn with `objectFit: 'cover'`,
+so when its aspect differs from the viewport (a 1920×1080 capture inside the browser box, whose page
+area is shorter because of the tab strip and URL bar) the image is scaled to fill and the overflow is
+cropped equally top and bottom. A cursor target read off the screenshot as `pixel_y / image_height`
+then lands too low. Convert it:
+
+```
+scale      = max(viewport_w / image_w, viewport_h / image_h)
+crop_y_px  = (image_h * scale - viewport_h) / 2
+cursor_y   = (target_px_y * scale - crop_y_px) / viewport_h
+```
+
+(and the same with `x` when the crop is horizontal). This was measured, not reasoned: on the first real
+screencast a row target computed as `0.273` landed between two rows; the converted `0.231` landed on the
+row. Zoom `fx`/`fy` are image fractions and need no conversion. Check the arrival still either way.
+
 `sampleCursor(frame, keys)` eases the cursor between keyframes and is what the pointer and the click
 ripple position both call — use it directly if a shot needs to know where the cursor is at a given
 frame for something else on screen. `CursorPointer` is the SVG pointer itself, exported in case a shot
