@@ -1,0 +1,4 @@
+Pillow>=12
+playwright>=1.50
+google-api-python-client>=2.200
+google-auth-oauthlib>=1.4
