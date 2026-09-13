@@ -123,30 +123,79 @@ Extra: 0 · missing: 2 · heard differently: 3 · gaps: 0 · low-confidence: 1 �
   correctly (ElevenLabs TTS reads written text literally); the ASR's own number-formatting is
   what erased two of the three words at the token level.
 
-## Did normalisation handle it? No — and it was not extended to try.
+## Fix (GV-2): collapse spoken and written numbers before the word diff
 
-The `norm()` function normalises casing and punctuation only; it does not touch digits
-(`digits kept as-is`, per the plan's own contract, because Indonesian scripts write numbers as
-digits like `42` and that is usually the CORRECT comparison — most scenes will already write
-`42` in the script, not `empat puluh dua`). The mismatch here is the reverse and rarer case: the
-**script** spelled the number in words, and the **ASR** silently reformatted it to digits.
+The false FAIL above is fixed. `tools/verify_render.py` now has `collapse_numbers(tokens) ->
+tokens`, a pure function applied to BOTH the intended script's word list and the rendered ASR
+word list before `SequenceMatcher` ever sees them. It scans for maximal runs of number words —
+Indonesian (`nol`..`sembilan`, `sepuluh`, `sebelas`, `belas`, `puluh`, `ratus`, `ribu`, `juta`,
+`miliar`, and the `se`-prefixed forms `seratus`/`seribu`/`sejuta`/`semiliar`) or English (`zero`
+through `billion`, plus `and`) — and replaces each run with one canonical digit token via a
+small recursive-descent parser (`parse_id_number_words` / `parse_en_number_words`). So `"empat
+puluh dua"` and `"42"` normalise to the same token on both sides, and the diff sees them as
+equal instead of a false replace-then-two-missing.
 
-I did not add number-word-to-digit normalisation (e.g. mapping `"empat puluh dua"` ↔ `"42"`).
-Indonesian number-word parsing is not a small, obviously-correct function — it has to handle
-`puluh/ratus/ribu/juta` compounding, ordinal forms, and numbers embedded in longer phrases, and
-a half-implemented version would silently mis-normalise some other number and hide a real
-missing-word bug behind it. That fails the "only if simple and tested" bar from the task, so:
+Two more variants in the same family, handled in `norm()` itself (before `collapse_numbers`
+ever runs): thousands-separated digit groups the ASR may emit (`"2.026"`, `"2,026"`,
+`"1.500.000"`) are merged into a plain integer string, and `"%"` / the word `"percent"` are both
+mapped to the language-neutral token `"persen"` so `"42%"` and `"empat puluh dua persen"` land
+on the same two tokens (`"42"`, `"persen"`).
 
-**Known limitation, recorded here rather than patched over:** `verify_render.py` will report a
-false FAIL (missing words) whenever a script spells a number in words AND AssemblyAI's own
-formatting collapses it to digits in the render transcript. The workaround today is exactly what
-the report already enables — a human reads the report, listens at `00:00 (0.87 s)`, confirms the
-number was actually spoken correctly, and overrides the FAIL by judgement. This is consistent
-with the tool's own stated nature: "advisory... the user's ear still decides." A future fix, if
-this recurs often, would be a small Indonesian-number-word-to-digit table (0-99 covers the
-overwhelming majority of in-script numbers) applied to the INTENDED side only, so both sides
-compare in digit form — deliberately not attempted here without a second real example to test it
-against.
+Timestamps stay correct across a collapsed run: `flatten_rendered` now returns collapsed tokens
+alongside a metadata list (`{"start_ms", "end_ms", "text", "orig_idxs"}`), and every original
+ASR word index a run absorbed gets marked matched/`render_layer`-tagged when the collapsed token
+matches — so gaps, drift and low-confidence flags (which iterate the raw per-word ASR list
+directly) are unaffected, and a "replaced"/"missing" report line for a collapsed token takes the
+start of its first source word and the end of its last, per `tests/py/test_verify_render.py::
+test_collapsed_number_timestamps_span_first_to_last_source_word`. A genuinely different number
+(`"empat puluh tiga"` vs `"42"`) still comes back as `replaced` (`expected "43", heard "42"`),
+never silently matched.
+
+TDD: `tests/py/test_verify_render.py` grew a `NumberCollapseTest` class (the parser, unit-by-unit
+for both languages, thousands separators, percent mapping, non-number words left alone) plus
+three `VerifyRenderTest` cases for the two real directions (words→digits, digits→words) and the
+timestamp-span check. RED was confirmed (5 failures + `AttributeError` on the not-yet-existing
+`collapse_numbers`) before the implementation; `python3 -m unittest tests.py.test_verify_render`
+now reports **27 tests, OK**.
+
+### Re-run against the saved ASR transcript (no new API cost)
+
+Same project, same live `work/verify-asr.json` from the run above, no new AssemblyAI or
+ElevenLabs call:
+
+```bash
+python3 tools/verify_render.py "$PROJ" --asr-json "$PROJ/work/verify-asr.json"
+```
+
+Result, before vs after the fix:
+
+| | missing | extra | heard differently | exit code |
+|---|---|---|---|---|
+| Before (recorded above) | 2 (`"puluh"`, `"dua"`) | 0 | 3 | 1 (FAIL) |
+| After | **0** | **0** | 2 | **0** (PASS) |
+
+`work/verify-report.md` now:
+
+```
+Extra: 0 · missing: 0 · heard differently: 2 · gaps: 0 · low-confidence: 1 · drift flags: 0
+
+## Heard differently (possible mangled join, or ASR variance)
+00:00 (0.03 s) · expected "tiap", heard "setiap"
+00:00 (0.33 s) · expected "truk", heard "trak"
+
+## Low-confidence rendered words (< 0.70)
+00:00 · conf 0.15 · "trak"
+
+## A/V drift: OK (within budget)
+00:00 · +0.031s vs planned · "Setiap"
+```
+
+The digits-vs-words false FAIL (`empat puluh dua` vs `42`) is gone entirely — both `"puluh"` and
+`"dua"` no longer appear as missing, and `"empat"`→`"42"` no longer appears as replaced, because
+`collapse_numbers` now normalises both sides to the token `"42"` before the diff runs. The two
+remaining "heard differently" lines (`tiap`→`setiap`, `truk`→`trak`) are genuine ASR variance —
+exactly the kind of thing this tool is supposed to still flag — and correctly do not fail the
+run.
 
 ## Verification against the plan's checklist
 
@@ -156,3 +205,4 @@ against.
 | Exit 3 path never reported as PASS | Confirmed by `test_no_key_and_no_asr_json_exits_3`; live run here used a real key, exit was 1 (FAIL), not conflated with PASS or SKIPPED |
 | `bash tests/run.sh` prints `RESULT PASS` | Yes (see commit) |
 | No placeholder/TODO in new code | Yes |
+| Digits-vs-words false FAIL fixed | Yes — `collapse_numbers`, re-run above: 0 missing / 0 extra, exit 0 |

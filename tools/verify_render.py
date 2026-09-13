@@ -41,10 +41,173 @@ class VerifyError(Exception):
     """The render cannot be verified as asked. Message names the offending file."""
 
 
+# -- Number-word collapsing ----------------------------------------------------------
+#
+# A script may spell a number in words ("empat puluh dua") while AssemblyAI's own
+# transcript formatting collapses the spoken equivalent to digits ("42"), or vice versa.
+# Left alone, the word-level diff sees a 3-word run replaced by a 1-word token and
+# reports two of the three words as missing/inserted — a false P6 FAIL on a render that
+# is actually correct. `collapse_numbers` normalises both sides to the same canonical
+# digit token before the diff ever runs.
+
+_ID_UNITS = {
+    "nol": 0, "kosong": 0, "satu": 1, "dua": 2, "tiga": 3, "empat": 4, "lima": 5,
+    "enam": 6, "tujuh": 7, "delapan": 8, "sembilan": 9,
+}
+_ID_TERMINAL = {"sepuluh": 10, "sebelas": 11}
+_ID_BIG_SCALES = [("miliar", 10 ** 9), ("milyar", 10 ** 9), ("juta", 10 ** 6), ("ribu", 10 ** 3)]
+_ID_SE_PREFIXED = {
+    "seratus": ("satu", "ratus"), "seribu": ("satu", "ribu"),
+    "sejuta": ("satu", "juta"), "semiliar": ("satu", "miliar"), "semilyar": ("satu", "milyar"),
+}
+_ID_NUMBER_WORDS = (
+    set(_ID_UNITS) | set(_ID_TERMINAL) | set(_ID_SE_PREFIXED)
+    | {"puluh", "ratus", "belas", "ribu", "juta", "miliar", "milyar"}
+)
+
+_EN_UNITS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9,
+}
+_EN_TEENS = {
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+}
+_EN_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+    "eighty": 80, "ninety": 90,
+}
+_EN_SCALES = {"hundred": 100, "thousand": 1000, "million": 1000000, "billion": 1000000000}
+_EN_NUMBER_WORDS = set(_EN_UNITS) | set(_EN_TEENS) | set(_EN_TENS) | set(_EN_SCALES) | {"and"}
+
+_THOUSANDS_RE = re.compile(r"\d{1,3}(?:[.,]\d{3})+")
+
+
+def _id_parse_small(words):
+    """Parse a run of Indonesian number words worth < 1000 (no ribu/juta/miliar)."""
+    if not words:
+        return 0
+    if len(words) == 1:
+        if words[0] in _ID_TERMINAL:
+            return _ID_TERMINAL[words[0]]
+        if words[0] in _ID_UNITS:
+            return _ID_UNITS[words[0]]
+    if "ratus" in words:
+        i = words.index("ratus")
+        prefix_val = _id_parse_small(words[:i]) if words[:i] else 1
+        rest = _id_parse_small(words[i + 1:])
+        return None if prefix_val is None or rest is None else prefix_val * 100 + rest
+    if "belas" in words:
+        i = words.index("belas")
+        prefix_val = _id_parse_small(words[:i]) if words[:i] else 1
+        return None if prefix_val is None else prefix_val + 10
+    if "puluh" in words:
+        i = words.index("puluh")
+        prefix_val = _id_parse_small(words[:i]) if words[:i] else 1
+        rest = _id_parse_small(words[i + 1:])
+        return None if prefix_val is None or rest is None else prefix_val * 10 + rest
+    return None
+
+
+def parse_id_number_words(words):
+    """Parse a maximal run of Indonesian number words into an int, or None."""
+    if not words:
+        return None
+    expanded = []
+    for w in words:
+        expanded.extend(_ID_SE_PREFIXED.get(w, (w,)))
+    for name, mult in _ID_BIG_SCALES:
+        if name in expanded:
+            i = expanded.index(name)
+            prefix = expanded[:i]
+            prefix_val = _id_parse_small(prefix) if prefix else 1
+            tail = expanded[i + 1:]
+            rest = parse_id_number_words(tail) if tail else 0
+            if prefix_val is None or rest is None:
+                return None
+            return prefix_val * mult + rest
+    return _id_parse_small(expanded)
+
+
+def parse_en_number_words(words):
+    """Parse a maximal run of English number words into an int, or None."""
+    if not words:
+        return None
+    current = 0
+    total = 0
+    has_value = False
+    for w in words:
+        if w == "and":
+            continue
+        if w in _EN_UNITS:
+            current += _EN_UNITS[w]
+            has_value = True
+        elif w in _EN_TEENS:
+            current += _EN_TEENS[w]
+            has_value = True
+        elif w in _EN_TENS:
+            current += _EN_TENS[w]
+            has_value = True
+        elif w == "hundred":
+            current = (current or 1) * 100
+            has_value = True
+        elif w in _EN_SCALES:
+            total += (current or 1) * _EN_SCALES[w]
+            current = 0
+            has_value = True
+        else:
+            return None
+    return (total + current) if has_value else None
+
+
+def collapse_number_runs(words):
+    """[w0, w1, ...] -> [(token, span), ...]. A maximal run of number words (Indonesian
+    or English) becomes one (canonical digit string, run length) pair; every other word
+    passes through as (word, 1)."""
+    out = []
+    i, n = 0, len(words)
+    while i < n:
+        w = words[i]
+        value, span = None, 0
+        if w in _ID_NUMBER_WORDS:
+            j = i
+            while j < n and words[j] in _ID_NUMBER_WORDS:
+                j += 1
+            v = parse_id_number_words(words[i:j])
+            if v is not None:
+                value, span = v, j - i
+        if value is None and w in _EN_NUMBER_WORDS:
+            j = i
+            while j < n and words[j] in _EN_NUMBER_WORDS:
+                j += 1
+            v = parse_en_number_words(words[i:j])
+            if v is not None:
+                value, span = v, j - i
+        if value is not None:
+            out.append((str(value), span))
+            i += span
+        else:
+            out.append((w, 1))
+            i += 1
+    return out
+
+
+def collapse_numbers(tokens):
+    """Pure [word, ...] -> [word, ...] with every maximal number-word run replaced by
+    one canonical digit token. Non-number words (and already-digit tokens) pass through
+    unchanged."""
+    return [tok for tok, _ in collapse_number_runs(tokens)]
+
+
 def norm(text):
-    """Lowercase, strip punctuation except apostrophes, split into words. Digits are kept
-    as-is — Indonesian scripts write numbers as digits ("42"), not words."""
+    """Lowercase, merge thousands-separated digit groups ("2.026"/"2,026" -> "2026"), map
+    "%"/"percent" to the language-neutral token "persen", strip remaining punctuation
+    except apostrophes, and split into words. Digits are otherwise kept as-is —
+    Indonesian scripts write numbers as digits ("42"), not words."""
     t = (text or "").lower()
+    t = _THOUSANDS_RE.sub(lambda m: m.group(0).replace(".", "").replace(",", ""), t)
+    t = t.replace("%", " persen ")
+    t = re.sub(r"\bpercent\b", "persen", t)
     t = re.sub(r"[^\w'\s]", " ", t, flags=re.UNICODE)
     return [w for w in t.split() if w]
 
@@ -75,7 +238,9 @@ def scene_starts(edit_plan):
 def build_intended(audio_plan, edit_plan):
     """Flatten every narration/dialogue layer, in scene then at_s order, into one word list.
     Each word carries its planned master-clock time (None when the plan has fewer edit
-    segments than scenes — the diff still runs, drift just skips that layer)."""
+    segments than scenes — the diff still runs, drift just skips that layer). A maximal
+    run of number words within a layer's text collapses into one canonical digit entry,
+    whose planned time is taken from the FIRST word of that run — see collapse_number_runs."""
     starts = scene_starts(edit_plan)
     entries = []
     layer_id = 0
@@ -85,34 +250,55 @@ def build_intended(audio_plan, edit_plan):
         layers = sorted(layers, key=lambda l: float(l.get("at_s", 0.0)))
         for layer in layers:
             layer_id += 1
-            words = norm(layer.get("text", ""))
-            if not words:
+            raw_words = norm(layer.get("text", ""))
+            if not raw_words:
                 continue
             scene_start = starts.get(scene.get("scene"))
             at_s = float(layer.get("at_s", 0.0))
             dur_s = float(layer.get("dur_s", 0.0) or 0.0)
             planned_layer_s = (scene_start + at_s) if scene_start is not None else None
-            n = len(words)
-            for i, word in enumerate(words):
+            n = len(raw_words)
+            pos = 0
+            for word, span in collapse_number_runs(raw_words):
                 if planned_layer_s is not None and dur_s > 0:
-                    planned_word_s = planned_layer_s + dur_s * (i / n)
+                    planned_word_s = planned_layer_s + dur_s * (pos / n)
                 else:
                     planned_word_s = planned_layer_s
                 entries.append({
                     "scene": scene.get("scene"), "layer_id": layer_id, "word": word,
                     "planned_word_s": planned_word_s, "planned_layer_s": planned_layer_s,
                 })
+                pos += span
     return entries
 
 
 def flatten_rendered(words):
-    """Token list -> (normalised word list, index back to the source ASR word)."""
-    out, idx = [], []
+    """ASR word dicts -> (collapsed token list, parallel metadata list). Each metadata
+    entry is {"start_ms", "end_ms", "text", "orig_idxs"} — one per token after per-word
+    normalisation AND cross-word number-run collapsing. `orig_idxs` lists every index
+    into `words` the token was built from: a single index normally, several when a
+    number-word run spanning multiple ASR words collapsed into one digit token (the
+    token then takes the start of its first source word and the end of its last)."""
+    pieces, piece_idx = [], []
     for i, w in enumerate(words):
         for piece in norm(w.get("text", "")):
-            out.append(piece)
-            idx.append(i)
-    return out, idx
+            pieces.append(piece)
+            piece_idx.append(i)
+
+    out, meta = [], []
+    pos = 0
+    for token, span in collapse_number_runs(pieces):
+        idxs = sorted(set(piece_idx[pos:pos + span]))
+        first, last = idxs[0], idxs[-1]
+        out.append(token)
+        meta.append({
+            "start_ms": words[first].get("start_ms"),
+            "end_ms": words[last].get("end_ms"),
+            "text": token,
+            "orig_idxs": idxs,
+        })
+        pos += span
+    return out, meta
 
 
 def analyze(intended, rendered, gap_s=GAP_S, low_confidence=LOW_CONFIDENCE, drift_s=DRIFT_S):
@@ -120,24 +306,26 @@ def analyze(intended, rendered, gap_s=GAP_S, low_confidence=LOW_CONFIDENCE, drif
     is reported as "heard differently", never counted toward missing/inserted — those two are
     reserved for content that is truly absent or truly extra, which is what P6 fails on."""
     a_words = [e["word"] for e in intended]
-    b_words, b_idx = flatten_rendered(rendered)
+    b_words, b_meta = flatten_rendered(rendered)
 
     matched = [False] * len(rendered)
     render_layer = [None] * len(rendered)
     inserted, missing, replaced = [], [], []
 
+    def _mark(meta_entry, layer_id):
+        for ridx in meta_entry["orig_idxs"]:
+            matched[ridx] = True
+            render_layer[ridx] = layer_id
+
     matcher = SequenceMatcher(None, a_words, b_words, autojunk=False)
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
             for k, j in enumerate(range(j1, j2)):
-                ridx = b_idx[j]
-                matched[ridx] = True
-                render_layer[ridx] = intended[i1 + k]["layer_id"]
+                _mark(b_meta[j], intended[i1 + k]["layer_id"])
         elif tag == "insert":
             for j in range(j1, j2):
-                ridx = b_idx[j]
-                w = rendered[ridx]
-                inserted.append({"start_ms": w.get("start_ms"), "text": w.get("text")})
+                m = b_meta[j]
+                inserted.append({"start_ms": m["start_ms"], "text": m["text"]})
         elif tag == "delete":
             for i in range(i1, i2):
                 missing.append(intended[i])
@@ -145,16 +333,13 @@ def analyze(intended, rendered, gap_s=GAP_S, low_confidence=LOW_CONFIDENCE, drif
             len_i, len_j = i2 - i1, j2 - j1
             for k in range(max(len_i, len_j)):
                 exp = intended[i1 + k] if k < len_i else None
-                ridx = b_idx[j1 + k] if k < len_j else None
-                if exp is not None and ridx is not None:
-                    w = rendered[ridx]
-                    replaced.append({"start_ms": w.get("start_ms"), "heard": w.get("text"),
+                m = b_meta[j1 + k] if k < len_j else None
+                if exp is not None and m is not None:
+                    replaced.append({"start_ms": m["start_ms"], "heard": m["text"],
                                       "expected": exp["word"]})
-                    matched[ridx] = True
-                    render_layer[ridx] = exp["layer_id"]
-                elif ridx is not None:
-                    w = rendered[ridx]
-                    inserted.append({"start_ms": w.get("start_ms"), "text": w.get("text")})
+                    _mark(m, exp["layer_id"])
+                elif m is not None:
+                    inserted.append({"start_ms": m["start_ms"], "text": m["text"]})
                 elif exp is not None:
                     missing.append(exp)
 
