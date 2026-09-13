@@ -2,7 +2,7 @@
 """Clean platform-native dialogue before it goes through the Voice Changer.
 
     python3 tools/clean_voice.py IN.mp4 -o OUT.mp4 [--method isolate|rnnoise]
-                                  [--model sh|cb|bd] [--no-preserve-level]
+                                  [--model sh|cb] [--no-preserve-level]
 
 The Voice Changer (`voice_changer.mjs`) expects a clean, single-speaker dialogue take. A
 platform-native clip recorded outdoors carries wind, traffic or crowd noise underneath the
@@ -41,7 +41,7 @@ FFPROBE = shutil.which("ffprobe")
 ISO_URL = "https://api.elevenlabs.io/v1/audio-isolation"
 ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = ROOT / "tools" / "models" / "rnnoise"
-KNOWN_MODELS = ("sh", "cb", "bd")
+KNOWN_MODELS = ("sh", "cb")
 
 
 class CleanError(Exception):

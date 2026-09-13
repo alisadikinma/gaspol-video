@@ -27,6 +27,22 @@ class ModelPathTest(unittest.TestCase):
         with self.assertRaises(clean_voice.CleanError):
             clean_voice.model_path("xx")
 
+    def test_bd_was_dropped(self):
+        # bd.rnnn was a 14-byte "404: Not Found" page (broken upstream too) — dropped, not shipped.
+        with self.assertRaises(clean_voice.CleanError):
+            clean_voice.model_path("bd")
+
+
+class ShippedModelsAreRealTest(unittest.TestCase):
+    def test_every_shipped_rnnn_is_larger_than_100kb(self):
+        files = list(clean_voice.MODELS_DIR.glob("*.rnnn"))
+        self.assertTrue(files, "expected at least one .rnnn model to be shipped")
+        for f in files:
+            self.assertGreater(
+                f.stat().st_size, 100_000,
+                f"{f} is only {f.stat().st_size} bytes — looks like a broken/404 download, not a real model",
+            )
+
 
 class MultipartBodyTest(unittest.TestCase):
     def test_contains_field_name_and_bytes(self):

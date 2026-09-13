@@ -63,9 +63,12 @@ Adapted:
   * clean_voice methods — ElevenLabs Voice Isolator and ffmpeg `arnndn` (RNNoise)
     as two interchangeable noise-reduction paths, RMS level matched back to the
     source, and the refuse-rather-than-stretch duration gate the Voice Changer
-    already enforces. Reworked as `tools/clean_voice.py`; the three RNNoise
-    models (`sh.rnnn`, `cb.rnnn`, `bd.rnnn`) are copied verbatim into
-    `tools/models/rnnoise/` — the one sanctioned binary asset in this repo.
+    already enforces. Reworked as `tools/clean_voice.py`; two RNNoise models
+    (`sh.rnnn`, `cb.rnnn`) are copied verbatim into `tools/models/rnnoise/` —
+    the one sanctioned binary asset category in this repo. A third model,
+    `bd.rnnn`, was in the original set but its upstream URL 404s (the "model"
+    was a 14-byte HTML error page even in the source project), so it was
+    dropped rather than shipped broken.
   * bake.py split/insert filter method — frame-accurate three-segment concat for
     inserting a full clip into a master, and a crop-into-a-box-plus-overlay
     filter graph for picture-in-picture. Reworked as `composite.py split` and

@@ -179,9 +179,11 @@ and warns on the rest. Without `ASSEMBLYAI_API_KEY`, P6 reports `skipped`, never
 
 Pass 1, only for `platform-native` scenes. No noise field exists today, so the audio plan gains an
 optional per-scene `clean: none | isolate | rnnoise` (default `none`), set after listening to the clip. `--method eleven` (Voice Isolator) or
-`--method rnnoise` (ffmpeg `arnndn`, models `sh`, `cb`, `bd` shipped in `tools/models/rnnoise/`). RMS is
-matched back to the source; the source file is never overwritten. Output duration must equal input
-within 0.05 s or the tool refuses, the same rule the Voice Changer enforces.
+`--method rnnoise` (ffmpeg `arnndn`, models `sh` and `cb` shipped in `tools/models/rnnoise/`). A
+third model, `bd`, was dropped: its upstream file is a 404 page, not a real model, in the source
+project as well as here — `model_path("bd")` raises rather than shipping a broken 14-byte asset.
+RMS is matched back to the source; the source file is never overwritten. Output duration must
+equal input within 0.05 s or the tool refuses, the same rule the Voice Changer enforces.
 
 #### 5.7 `composite.py` — `split` and `insert`
 
