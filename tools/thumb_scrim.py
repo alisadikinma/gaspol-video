@@ -100,10 +100,18 @@ def parse_box(s, w, h):
     return left, top, right, bottom
 
 
+def hue_distance(a, b):
+    """Shortest distance between two hues on the 0..360 wheel — 355 and 0 are 5 apart,
+    not 355; a plain abs() difference fails to protect a headline whose hue sits just
+    across the wrap-around boundary from `--hue`."""
+    d = abs(a - b) % 360
+    return min(d, 360 - d)
+
+
 def is_headline_pixel(r, g, b, hue):
     """True for a saturated, bright pixel near `hue` degrees — the letters, not the ground."""
     h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-    return s > 0.45 and v > 0.45 and abs((h * 360) - hue) < 40
+    return s > 0.45 and v > 0.45 and hue_distance(h * 360, hue) < 40
 
 
 def _sample_colors(im, box, predicate=None):
@@ -192,7 +200,10 @@ def fit_to_target_contrast(im, box, target_contrast, hue=DEFAULT_HUE, protect="h
     )
     headline = _median_rgb(headline_colors) or (255, 255, 255)
 
-    strength = DEFAULT_STRENGTH
+    # Start the search from 0.0, not DEFAULT_STRENGTH: contrast only rises with strength,
+    # so starting high never fails to reach the target, it just skips every lower strength
+    # that would already have worked and over-darkens the thumbnail for no reason.
+    strength = 0.0
     out = None
     contrast = 0.0
     while strength <= MAX_STRENGTH + 1e-9:

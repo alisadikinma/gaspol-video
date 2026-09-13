@@ -25,6 +25,24 @@ class WcagContrastTest(unittest.TestCase):
         self.assertAlmostEqual(thumb_scrim.wcag_contrast((128, 64, 32), (128, 64, 32)), 1.0, places=3)
 
 
+class IsHeadlinePixelTest(unittest.TestCase):
+    def test_hue_distance_wraps_the_0_360_boundary(self):
+        import colorsys
+
+        # Hue 355 is only 5 degrees from hue 0 going the short way round the wheel — a
+        # naive abs(h*360 - hue) reports 355 and fails to protect it.
+        r, g, b = colorsys.hsv_to_rgb(355 / 360, 0.8, 0.8)
+        r, g, b = int(r * 255), int(g * 255), int(b * 255)
+        self.assertTrue(thumb_scrim.is_headline_pixel(r, g, b, hue=0.0))
+
+    def test_a_genuinely_far_hue_is_still_not_protected(self):
+        import colorsys
+
+        r, g, b = colorsys.hsv_to_rgb(180 / 360, 0.8, 0.8)
+        r, g, b = int(r * 255), int(g * 255), int(b * 255)
+        self.assertFalse(thumb_scrim.is_headline_pixel(r, g, b, hue=0.0))
+
+
 class ParseBoxTest(unittest.TestCase):
     def test_valid_box_inside_image(self):
         self.assertEqual(thumb_scrim.parse_box("10,20,100,200", 1280, 720), (10, 20, 100, 200))
@@ -77,6 +95,21 @@ class ScrimContrastTest(unittest.TestCase):
         self.assertGreaterEqual(contrast, 4.0)
         self.assertLessEqual(strength, 0.95)
         self.assertEqual(out_im.size, (640, 360))
+
+    def test_fit_to_target_contrast_finds_the_minimal_strength_not_the_default_floor(self):
+        from PIL import Image
+
+        im = Image.open(self.path)
+        # This fixture reaches contrast 2.31 at strength 0.30 (measured directly against
+        # apply_scrim). The search must start at 0.0, not at DEFAULT_STRENGTH (0.55) — a
+        # search that starts high always "succeeds" but skips every lower strength that
+        # would already have worked, over-darkening the thumbnail for no reason.
+        out_im, strength, contrast = thumb_scrim.fit_to_target_contrast(
+            im, (0, 0, 640, 200), target_contrast=2.3, hue=120.0,
+            fade_y=300, x_hold=640, x_fade=640,
+        )
+        self.assertGreaterEqual(contrast, 2.3)
+        self.assertLessEqual(strength, 0.35)
 
     def test_cli_writes_output_with_target_contrast(self):
         out_path = self.dir / "out.png"
