@@ -1601,6 +1601,24 @@ user's `.env`. This is the same client-agnostic rule that forbids hardcoding cli
 | `title_safe_margin_pct` | 5 |
 | palette / fonts | from the project's `strategic-brief.md`. **No palette ships in this plugin.** |
 
+### 29.6 Rendering (v3.1.0 — in-session render offers)
+
+| Key | Value |
+|---|---|
+| `render_offer` | `per_batch` |
+| `render_image_model` | `nano-banana-2` |
+| `render_image_resolution` | `2K` |
+| `render_video_model` | `veo-3.1-fast` |
+| `render_video_durations` | `4, 6, 8` |
+| `render_video_aspects` | `16:9, 9:16` |
+| `render_ledger` | `{output_folder}/renders.json` |
+| `render_not_offered` | Seedance scenes, Kling scenes, Scene Extension, duration outside 4/6/8, aspect outside 16:9/9:16 |
+
+Rendering is always an offer, never automatic — the user picks `Render sekarang` per batch in
+Phase 4B (`skills/video-image/SKILL.md`) and Phase 5.1 (`skills/video-gen/SKILL.md`). See
+`docs/evals/indusia-render-probe.md` for the filename-preservation finding that this rendering
+scheme relies on.
+
 ---
 
 ## Section 30 — Subtitle Style (v3.0.0)
