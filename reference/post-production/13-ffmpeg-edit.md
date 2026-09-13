@@ -56,7 +56,12 @@ composited first, and the composited file is what the edit plan points at.
 A third `tools/composite.py` mode, for when the master needs to keep playing INSIDE a box while a
 graphic (a lower third, a stat card, a captioned frame) owns the rest of the picture — the TSX shot
 draws the whole frame and leaves a transparent window at the box's screen position; the master, cropped
-and scaled to fit, shows through that window for the span:
+and scaled to fit, shows through that window for the span. `--out-s` cannot land past the master's
+own end — the picture-in-picture only makes sense while the master is still playing, so `split`
+refuses rather than freezing on the master's last frame. When the master carries an audio stream,
+the usual A/V duration gate (`abs(video - audio) <= 0.04s`, §5 below) applies to the result exactly
+as it does for `insert`; a master with no audio produces a silent output and the gate is skipped
+because there is nothing to compare:
 
 ```bash
 python3 tools/composite.py split master.mp4 shot.mov \

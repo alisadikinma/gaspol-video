@@ -166,11 +166,25 @@ def split_filter(box, master_w, master_h, fps, at_s, out_s, crop_cx=0.5, crop_cy
     )
 
 
+def _check_av_gate(out, tool, tol=0.04):
+    v_dur = duration_of(out)
+    a_dur = duration_of(out, "a:0")
+    if v_dur is None or a_dur is None or abs(v_dur - a_dur) > tol:
+        Path(out).unlink(missing_ok=True)
+        raise CompositeError(
+            f"{tool}: A/V mismatch after render (video {v_dur}, audio {a_dur}) exceeds {tol}s"
+        )
+
+
 def split(master, shot, at_s, out_s, box, out, crop_cx=0.5, crop_cy=0.5, zoom=1.0):
     """Picture-in-picture: the shot draws the frame and leaves a transparent window where a
     cropped/scaled view of the master shows through, for the span [at_s, out_s]."""
     master_duration = duration_of(master)
     validate_span(at_s, out_s, master_duration)
+    if master_duration is not None and out_s > master_duration + 1e-6:
+        raise CompositeError(
+            f"split ends at {out_s}s, past the end of the master ({master_duration:.2f}s)"
+        )
     require_alpha(shot)
     if not (0.0 <= crop_cx <= 1.0):
         raise CompositeError(f"crop-cx {crop_cx} out of range 0..1")
@@ -194,6 +208,8 @@ def split(master, shot, at_s, out_s, box, out, crop_cx=0.5, crop_cy=0.5, zoom=1.
         cmd += ["-t", master_duration]
     cmd += ["-c:a", "copy", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", out]
     _run(cmd)
+    if _has_stream(master, "a"):
+        _check_av_gate(out, "split")
     return str(out)
 
 
@@ -308,12 +324,7 @@ def insert(master, shot, at_s, out, gain_db=0.0):
               "-filter_complex", audio_filt, "-map", "0:v:0", "-map", "[a]",
               "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-t", total, out_path])
 
-    v_dur = duration_of(out)
-    a_dur = duration_of(out, "a:0")
-    if v_dur is None or a_dur is None or abs(v_dur - a_dur) > 0.04:
-        raise CompositeError(
-            f"insert: A/V mismatch after render (video {v_dur}, audio {a_dur}) exceeds 0.04s"
-        )
+    _check_av_gate(out, "insert")
     return str(out)
 
 

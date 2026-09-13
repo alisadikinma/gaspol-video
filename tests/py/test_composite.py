@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.py.media import duration_of, make_clip, make_silent_clip, requires_ffmpeg
 from tools import composite
@@ -138,6 +139,38 @@ class CompositeSplitTest(unittest.TestCase):
                 out=self.dir / "out.mp4",
             )
         self.assertIn("alpha", str(ctx.exception).lower())
+
+    @requires_ffmpeg
+    def test_out_s_past_master_end_is_rejected(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = _make_alpha_mov(self.dir / "shot.mov", seconds=1.0, size="320x240")
+        with self.assertRaises(composite.CompositeError) as ctx:
+            composite.split(
+                master, shot, at_s=1.0, out_s=9.0, box=(20, 20, 100, 80),
+                out=self.dir / "out.mp4",
+            )
+        self.assertIn("master", str(ctx.exception).lower())
+
+    @requires_ffmpeg
+    def test_av_gate_deletes_output_and_raises_on_mismatch(self):
+        master = make_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = _make_alpha_mov(self.dir / "shot.mov", seconds=1.0, size="320x240")
+        out = self.dir / "out.mp4"
+        with mock.patch.object(composite, "duration_of", side_effect=[4.0, 4.0, 4.3]):
+            with self.assertRaises(composite.CompositeError) as ctx:
+                composite.split(
+                    master, shot, at_s=1.0, out_s=2.0, box=(20, 20, 100, 80), out=out,
+                )
+        self.assertIn("mismatch", str(ctx.exception).lower())
+
+    @requires_ffmpeg
+    def test_av_gate_skipped_when_master_has_no_audio(self):
+        master = make_silent_clip(self.dir / "master.mp4", seconds=4.0, size="320x240")
+        shot = _make_alpha_mov(self.dir / "shot.mov", seconds=1.0, size="320x240")
+        out = composite.split(
+            master, shot, at_s=1.0, out_s=2.0, box=(20, 20, 100, 80), out=self.dir / "out.mp4",
+        )
+        self.assertIsNone(duration_of(out, "a:0"), "a silent master must stay silent, no gate needed")
 
     @requires_ffmpeg
     def test_pixel_inside_box_differs_from_master_during_span(self):
