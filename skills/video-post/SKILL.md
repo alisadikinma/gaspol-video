@@ -93,12 +93,12 @@ node tools/voice_changer.mjs {output_folder}/clips/scene-NN-clean.mp4 \
      --out {output_folder}/vo/scene-NN-c2.mp3
 ```
 
-**Clean before converting, when the clip needs it.** A `dialogue` layer with `clean` set to
-`isolate` or `rnnoise` in `audio-plan.json` runs `tools/clean_voice.py` on that scene's clip
-FIRST — before `voice_changer.mjs` ever sees the audio. Speech-to-speech converts noise right
-along with the voice, so removing it after conversion is too late. Skip this step when `clean`
-is `none` (the default): the clip is already quiet, and cleaning a clean take buys nothing. See
-`11-voice-cast-and-vo.md` §5.
+**Clean before converting, when the clip needs it.** `clean` is set per SCENE (not per layer) in
+`audio-plan.json` — `10-post-production-pipeline.md` §3.2. A scene with `clean` set to `isolate`
+or `rnnoise` runs `tools/clean_voice.py` on that scene's clip FIRST — before `voice_changer.mjs`
+ever sees the audio. Speech-to-speech converts noise right along with the voice, so removing it
+after conversion is too late. Skip this step when `clean` is `none` (the default): the clip is
+already quiet, and cleaning a clean take buys nothing. See `11-voice-cast-and-vo.md` §5.
 
 `gen_vo.mjs` stitches consecutive requests so prosody carries across scenes, and writes
 `vo-manifest.json` with measured durations and word timings — the input for pass 2 and pass 4.
