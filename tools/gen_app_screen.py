@@ -100,21 +100,27 @@ def shot_path(project, name) -> Path:
 
 
 def merge_manifest(existing, new_entries):
-    """Merge `new_entries` into `existing` by `name`. Entries not touched by `new_entries`
-    (e.g. mock screens while capturing, or vice versa) are kept untouched."""
-    new_by_name = {e["name"]: e for e in new_entries}
+    """Merge `new_entries` into `existing` by `(name, state)`. Entries not touched by
+    `new_entries` (e.g. mock screens while capturing, or vice versa) are kept untouched.
+
+    The key includes `state` because one mock screen yields one entry per state; keyed by name
+    alone, a re-run kept only the last state."""
+    def key(entry):
+        return (entry.get("name"), entry.get("state"))
+
+    new_by_key = {key(e): e for e in new_entries}
     merged = []
     seen = set()
     for entry in existing:
-        name = entry.get("name")
-        if name in new_by_name:
-            merged.append(new_by_name[name])
-            seen.add(name)
-        else:
-            merged.append(entry)
+        k = key(entry)
+        if k in seen:
+            continue  # a manifest written by the old name-only merge can hold duplicates
+        merged.append(new_by_key.get(k, entry))
+        seen.add(k)
     for entry in new_entries:
-        if entry["name"] not in seen:
+        if key(entry) not in seen:
             merged.append(entry)
+            seen.add(key(entry))
     return merged
 
 

@@ -170,9 +170,11 @@ comprehension `{e["name"]: e for e in new_entries}` collapses them to whichever 
 entry that shared the name, which is how a second copy appears instead of the first getting
 restored.
 
-This bug reproduces on any repeat `mock` run of a screen with 2+ states — it is not specific to
-this environment or to `anpr-dashboard`. It was not introduced by this re-run; it was already
-present in `merge_manifest()` before this ticket's fixes. No fix is included here: item 4 of this
-plan-verifier pass is documentation-only (re-run and record what actually happens), and changing
-`merge_manifest()`'s keying is out of that scope. Filed here so it is visible rather than
-silently left for the next person to rediscover.
+This bug reproduced on any repeat `mock` run of a screen with 2+ states.
+
+**Fixed in the same ticket.** `merge_manifest()` now keys by `(name, state)` and collapses
+duplicates that the old name-only merge had already written. Regression tests:
+`test_rerun_of_multi_state_mock_keeps_every_state`, `test_duplicates_left_by_old_merge_collapse`.
+Verified on the same real project: starting from the corrupted manifest above, two consecutive
+`python3 tools/gen_app_screen.py mock <project>` runs left exactly
+`[('anpr-dashboard', 'plate-detected'), ('anpr-dashboard', 'initial')]`.

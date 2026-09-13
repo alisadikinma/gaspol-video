@@ -193,6 +193,23 @@ class MergeManifestTest(unittest.TestCase):
         self.assertEqual(by_name["mock-screen"]["source"], "mock")
         self.assertEqual(by_name["cap-screen"]["file"], "ui-cap-screen-v2.png")
 
+    def test_rerun_of_multi_state_mock_keeps_every_state(self):
+        # Found on a real re-run: keying by name alone kept only the last state.
+        states = [
+            {"name": "anpr-dashboard", "state": "initial", "source": "mock", "simulated": True,
+             "file": "ui-anpr-dashboard-initial.png"},
+            {"name": "anpr-dashboard", "state": "plate-detected", "source": "mock", "simulated": True,
+             "file": "ui-anpr-dashboard-plate-detected.png"},
+        ]
+        first = merge_manifest([], states)
+        second = merge_manifest(first, [dict(e) for e in states])
+        self.assertEqual(sorted(e["state"] for e in second), ["initial", "plate-detected"])
+
+    def test_duplicates_left_by_old_merge_collapse(self):
+        dup = {"name": "anpr-dashboard", "state": "plate-detected", "file": "ui-anpr-dashboard-plate-detected.png"}
+        merged = merge_manifest([dict(dup), dict(dup)], [dict(dup)])
+        self.assertEqual(len(merged), 1)
+
     def test_appends_brand_new_entries(self):
         merged = merge_manifest([], [{"name": "a"}, {"name": "b"}])
         self.assertEqual([e["name"] for e in merged], ["a", "b"])
