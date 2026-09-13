@@ -31,6 +31,66 @@ Adapted:
   * ElevenLabs text-to-speech prosody stitching across consecutive requests.
   * AssemblyAI as the transcription provider, and the idea of biasing the
     recognizer with per-video keyterms.
+  * capture_web — the step-runner shape for driving a browser against a spec file
+    (goto/click/fill/wait/scroll/shot), minus its `eval` step (arbitrary JS from a
+    spec file is a credential-injection risk this plugin refuses to carry) and
+    minus its VS Code serve-web integration (not relevant to a promo pipeline).
+    Reworked as `tools/gen_app_screen.py capture`.
+  * screencast, browser and kit Remotion components (`remotion/src/lib/{screencast,
+    browser,kit}.tsx`) — cursor/click keyframes as viewport fractions, cut-vs-
+    crossfade transition rules, browser chrome. Ported into
+    `templates/remotion/lib/` with every Claude-Code-specific piece and the
+    `lucide-react` dependency removed; brand tokens come from this plugin's own
+    `brand.json`, not a shipped palette.
+  * gen-registry, render-all and qa-frames scripts (`remotion/scripts/`) — the
+    composition-discovery-then-render shape and the QA-still convention (a still
+    at every named cue, read rather than trusted). Ported with the `--type` /
+    typeOfGroup grouping removed (this plugin has no shot-type taxonomy to group
+    by).
+  * verify_cut method — a second ASR pass over the finished render, diffed
+    against the intended script text with `difflib`, reporting inserted/missing/
+    replaced words, intra-sentence gaps, low-confidence tokens and per-scene
+    drift. Reworked as `tools/verify_render.py` and validator check P6, sharing
+    the AssemblyAI client already factored out of `gen_subs.py` rather than
+    copying it.
+  * make_stems method — full-length, ungated WAV stems per layer (voice/SFX/
+    music) for a human editor, gains baked in instead of the mix-time ducking the
+    finished master uses. Reworked as `tools/make_stems.py`.
+  * gen_music method — library-first track generation against ElevenLabs Music
+    (skip a mood that already has a track, `--force` to regenerate) with
+    loudness normalisation toward a target LUFS clamped by a peak ceiling.
+    Reworked as `tools/gen_music.py` against this plugin's own mood palette.
+  * clean_voice methods — ElevenLabs Voice Isolator and ffmpeg `arnndn` (RNNoise)
+    as two interchangeable noise-reduction paths, RMS level matched back to the
+    source, and the refuse-rather-than-stretch duration gate the Voice Changer
+    already enforces. Reworked as `tools/clean_voice.py`; the three RNNoise
+    models (`sh.rnnn`, `cb.rnnn`, `bd.rnnn`) are copied verbatim into
+    `tools/models/rnnoise/` — the one sanctioned binary asset in this repo.
+  * bake.py split/insert filter method — frame-accurate three-segment concat for
+    inserting a full clip into a master, and a crop-into-a-box-plus-overlay
+    filter graph for picture-in-picture. Reworked as `composite.py split` and
+    `composite.py insert`, both running through this plugin's existing A/V
+    duration gate.
+  * composite_logo.py and thumb_scrim.py — deterministic thumbnail post-process
+    (real logo pasted with its own colours, headline scrim darkened until a
+    measured WCAG contrast target is reached). Ported minus every Claude brand
+    colour default and the tile/mark options that assumed a specific logo mark;
+    the logo and its colours always come from the user's own file.
+  * yt_stats.py — OAuth installed-app flow against the YouTube Data and
+    Analytics APIs, read-only scopes, writing views/watch-time/retention into a
+    project's packaging calibration file. Ported as-is; the token and client
+    secret live under the user's home directory, never in this repo.
+
+Not adopted from claude-youtube-editor (v3.1.0 pass): gen_video.py (fal — this plugin
+renders through the indusia MCP servers only), gen_avatar.mjs (this plugin's proven
+lip-sync path is VEO native lip-sync plus the ElevenLabs Voice Changer, not a
+separate avatar generator), the clean-cut family (render_cuts, cutlib, analyze_cut,
+make_proxy, make_review, format_transcript, editor/ — built for editing a long-form
+recording, not a short assembled promo), brand-setup, yt_upload.py, notion_sync.py
+(brand values already come from strategic-brief.md; upload/sync sit outside what a
+video-production plugin should own), lib/vscode.tsx (Claude-Code-specific), and
+gen_thumbnail.py (thumbnail rendering is the image plugin's job — this plugin only
+adds the deterministic logo/scrim post-process on top of it).
 
 -------------------------------------------------------------------------------
 MoneyPrinterTurbo — https://github.com/harry0703/MoneyPrinterTurbo

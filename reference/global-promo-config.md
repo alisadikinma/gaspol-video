@@ -1619,6 +1619,31 @@ Phase 4B (`skills/video-image/SKILL.md`) and Phase 5.1 (`skills/video-gen/SKILL.
 `docs/evals/indusia-render-probe.md` for the filename-preservation finding that this rendering
 scheme relies on.
 
+### 29.7 Screens (v3.1.0 — app screens and screencasts)
+
+| Key | Value |
+|---|---|
+| `screen_source` | `capture` \| `mock` \| `none`, decided at Phase 3 next to `render_path` |
+| `screens_folder` | `{output_folder}/screens/` (`screens.json`, `data.json`, `manifest.json`) |
+| `screen_manifest_flag` | `simulated: true` for `mock`, `false` for `capture` |
+| `screen_ref_pattern` | `ref/ui-<name>-<state>.png` |
+
+A `capture|mock` scene never gets an NB2 prompt that draws the UI (Rule 34, validator check C11).
+`video-package` reads `manifest.json`'s `simulated` flag: a mock screen may illustrate a flow, but
+packaging copy may not present it as a shipped feature.
+
+### 29.8 Verify (v3.1.0 — P6, the second ASR pass)
+
+| Key | Value |
+|---|---|
+| `verify_gap_s` | 0.40 — intra-layer silence at or above this is flagged |
+| `verify_low_confidence` | 0.70 — rendered words below this ASR confidence are flagged |
+| `verify_drift_s` | 0.25 — per-scene delta between planned and heard start beyond this is flagged |
+| `verify_exit_codes` | `0` clean, `1` FAIL (any missing or inserted word), `3` SKIPPED (no `ASSEMBLYAI_API_KEY` and no `--asr-json`) |
+
+Exit `3` is always reported as `SKIPPED` in `video-validate --post`, never as `PASS` — see
+`tools/verify_render.py` and Check P6.
+
 ---
 
 ## Section 30 — Subtitle Style (v3.0.0)
