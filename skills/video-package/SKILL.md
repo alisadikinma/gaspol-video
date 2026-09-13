@@ -116,6 +116,23 @@ Pass the three concept briefs to `ai-image-carousel-prompt-gen`. If it is not in
 
 Then print them.
 
+### Step 7.8: Optional deterministic post-process (v3.1.0)
+
+Once the image plugin returns thumbnail plates, these two tools render nothing new — they finish
+what came back, exactly the same way every time:
+
+```bash
+python3 tools/composite_logo.py --base plate.png --logo logo.png --out out.png \
+  --clear-box L,T,R,B --center X,Y --size 940 --glow R,G,B --jpg
+python3 tools/thumb_scrim.py --in plate.png --out out.png \
+  --target-contrast 4.0 --text-box L,T,R,B --jpg
+```
+
+`composite_logo.py` pastes the real logo file, pixel-exact, in the logo's own colours — a model
+redraws a brand mark from scratch every time, drifting its colour and shape. `thumb_scrim.py`
+deepens the headline's background scrim to a measured WCAG contrast when the rendered plate's
+scrim falls short. Both are optional; skip them when the plate already reads clearly.
+
 ---
 
 ## Quality Gates

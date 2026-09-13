@@ -94,3 +94,24 @@ Where there is no cover, say so rather than producing three bets nobody will use
 For each bet, emit a concept brief: the lever, the promise, the focal hierarchy, the text budget, and
 what must be recognisable. Hand those to `ai-image-carousel-prompt-gen`. With that plugin absent,
 print the briefs and name what is missing.
+
+## 8. Deterministic post-process (v3.1.0)
+
+The image plugin renders the plate; these two tools render nothing new — they finish it once, the
+same way every time.
+
+- `python3 tools/composite_logo.py --base plate.png --logo logo.png --out out.png [--clear-box
+  L,T,R,B] [--center X,Y] [--size N] [--glow R,G,B] [--jpg]` — a model asked to draw a brand mark
+  redraws it from scratch every roll (colour drift, wrong petal count). This pastes the real logo
+  file instead, pixel-exact, in the logo's own colours. `--clear-box` paints out a region the model
+  drew (a plate's model-drawn logo, say) before the real one goes on. No bloom unless `--glow` is
+  given; no recolouring, ever.
+- `python3 tools/thumb_scrim.py --in plate.png --out out.png [--strength 0.55] [--target-contrast
+  4.0 --text-box L,T,R,B] [--jpg]` — a rendered scrim behind a headline plateaus wherever the model
+  left it, which is often short of a legible 4:1. This darkens the ground deterministically, either
+  to a fixed `--strength` or, given a target and the headline's box, by searching upward until the
+  WCAG contrast between the headline fill and its ground reaches it. The headline itself stays
+  protected by default (`--protect none` to darken everything).
+
+Both are optional, applied after the image plugin hands back thumbnails, and both need Pillow
+(`tools/setup.sh` — see `tools/_venv.py`).
