@@ -42,6 +42,10 @@ ISO_URL = "https://api.elevenlabs.io/v1/audio-isolation"
 ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = ROOT / "tools" / "models" / "rnnoise"
 KNOWN_MODELS = ("sh", "cb")
+# Any input with no video stream to preserve — not just .wav — takes the audio-only
+# output path. A .mp3/.m4a/etc source has nothing for "-map 0:v:0" to find, so routing
+# it through the video-mux branch fails with "Stream map '0:v:0' matches no streams".
+AUDIO_ONLY_EXTS = {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg"}
 
 
 class CleanError(Exception):
@@ -115,14 +119,19 @@ def has_audio_stream(path):
 
 
 def _astat(path, label):
+    """The `Overall` value for `label` out of ffmpeg's astats filter, not channel 1's.
+
+    astats prints one block per channel, then an `Overall` summary block last — a plain
+    "first match" regex silently reads channel 1 alone, which is wrong (and, for a stereo
+    source with an unbalanced mix, measurably wrong) whenever the input is not mono."""
     proc = subprocess.run(
         [FFMPEG, "-hide_banner", "-i", str(path), "-af", "astats=metadata=1",
          "-f", "null", os.devnull],
         capture_output=True, text=True,
     )
     combined = proc.stdout + proc.stderr
-    m = re.search(rf"{label}:\s*(-?[\d.]+)", combined)
-    return float(m.group(1)) if m else None
+    matches = re.findall(rf"{label}:\s*(-?[\d.]+)", combined)
+    return float(matches[-1]) if matches else None
 
 
 def load_env():
@@ -189,7 +198,7 @@ def clean(in_path, out_path, method="isolate", model="sh", preserve_level=True,
         raise CleanError(f"{in_path.name} has no audio stream")
 
     env = env if env is not None else load_env()
-    is_wav = in_path.suffix.lower() == ".wav"
+    is_audio_only = in_path.suffix.lower() in AUDIO_ONLY_EXTS
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
@@ -222,7 +231,9 @@ def clean(in_path, out_path, method="isolate", model="sh", preserve_level=True,
                 f"/ peak {clean_peak} dB -> gain {gain:+.2f} dB")
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        if is_wav:
+        if is_audio_only:
+            # No video stream to preserve — write straight to the output container ffmpeg
+            # infers from out_path's own extension (mp3, wav, m4a, ...).
             _run([FFMPEG, "-y", "-v", "error", "-i", str(cleaned),
                   "-af", f"volume={gain:.2f}dB", str(out_path)])
         else:

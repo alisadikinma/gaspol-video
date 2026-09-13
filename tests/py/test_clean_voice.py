@@ -1,3 +1,4 @@
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -50,6 +51,43 @@ class MultipartBodyTest(unittest.TestCase):
         self.assertIn(b'name="audio"', body)
         self.assertIn(b"FAKEBYTES", body)
         self.assertIn(b"--BOUNDARY123--", body)
+
+
+class AstatOverallVsChannelTest(unittest.TestCase):
+    @requires_ffmpeg
+    def test_reads_overall_not_channel_1_for_a_stereo_file_with_differing_channels(self):
+        import subprocess  # noqa: F811 (local import mirrors other tests in this file)
+
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            path = Path(tmp.name) / "stereo.wav"
+            # Loud left channel, much quieter right channel: channel 1's RMS and the
+            # Overall RMS are measurably different, so a regression back to "first match
+            # in the ffmpeg output" (channel 1) is caught, not accidentally passed.
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error",
+                 "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                 "-f", "lavfi", "-i", "sine=frequency=440:duration=1,volume=0.1",
+                 "-filter_complex", "[0:a][1:a]amerge=inputs=2[a]", "-map", "[a]",
+                 "-ac", "2", str(path)],
+                check=True,
+            )
+            proc = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-i", str(path), "-af", "astats=metadata=1",
+                 "-f", "null", "/dev/null"],
+                capture_output=True, text=True,
+            )
+            combined = proc.stdout + proc.stderr
+            all_rms = [float(v) for v in re.findall(r"RMS level dB:\s*(-?[\d.]+)", combined)]
+            channel1_rms = all_rms[0]
+            expected_overall_rms = all_rms[-1]
+            self.assertNotAlmostEqual(expected_overall_rms, channel1_rms, places=1)
+
+            overall_rms = clean_voice._astat(path, "RMS level dB")
+            self.assertIsNotNone(overall_rms)
+            self.assertAlmostEqual(overall_rms, expected_overall_rms, places=3)
+        finally:
+            tmp.cleanup()
 
 
 class CleanRefusesOverwriteTest(unittest.TestCase):
@@ -120,6 +158,27 @@ class CleanRnnoiseRealRunTest(unittest.TestCase):
         self.assertIn("cannot measure duration", str(ctx.exception))
         self.assertIn("lip-sync", str(ctx.exception))
         self.assertFalse(out.exists(), "an unverifiable output must not be left behind")
+
+    @requires_ffmpeg
+    def test_mp3_input_is_cleaned_without_needing_a_video_stream(self):
+        import subprocess
+
+        src = self.dir / "in.mp3"
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+             "-i", "sine=frequency=440:duration=2", str(src)],
+            check=True,
+        )
+        out = self.dir / "out.mp3"
+        # Before the fix, only .wav took the audio-only path; any other extension
+        # (including audio formats like .mp3) fell into the video-mux branch and failed
+        # with "Stream map '0:v:0' matches no streams" because in_path has no video.
+        result = clean_voice.clean(src, out, method="rnnoise", model="sh")
+        self.assertEqual(result, str(out))
+        self.assertTrue(out.exists())
+        in_dur = duration_of(src, "a:0")
+        out_dur = duration_of(out, "a:0")
+        self.assertAlmostEqual(in_dur, out_dur, delta=0.1)
 
     @requires_ffmpeg
     def test_unmeasurable_output_duration_refuses_rather_than_accepting(self):
