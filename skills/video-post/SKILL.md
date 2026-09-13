@@ -326,6 +326,18 @@ drift) — all listed with a timestamp in `work/verify-report.md`, not blocking.
 missing or extra — read the report, fix the edit or regenerate the VO, do not ship past a FAIL.
 Exit 3: no `ASSEMBLYAI_API_KEY` and no `--asr-json` — report this as **skipped**, never as passed.
 
+### 5.2 Optional: export stems for a human editor (v3.1.0)
+
+```bash
+python3 tools/make_stems.py {output_folder} --all
+```
+
+Not part of the mix — a hand-off. Writes `output/stems/voice.wav`, `sfx.wav`, `music.wav`: three
+full-length WAVs, none ducked, each starting at master 0.000 and running the exact duration of
+`output/master.mp4`, so a human editor can drag all three onto a timeline at zero with no
+nudging. Offer this when the client wants a single layer revised outside this pipeline, or hands
+the project to an editor. Skip it otherwise — it renders nothing the final mix needs.
+
 ### Final summary
 
 Report what exists and what did not run:
