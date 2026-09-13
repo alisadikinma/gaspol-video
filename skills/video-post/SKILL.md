@@ -301,6 +301,22 @@ is dropped:
 ffmpeg -r <src_fps> -i master-mixed.mp4 -c:v libx264 -crf 19 -pix_fmt yuv420p -c:a aac master-h264.mp4
 ```
 
+### 5.1 Verify the render says what the script says (P6, v3.1.0)
+
+```bash
+python3 tools/verify_render.py {output_folder}
+```
+
+A second ASR pass over the finished master, diffed against the narration/dialogue already in
+`work/audio-plan.json`. This runs AFTER the A/V gate, on the file that is about to ship — the gate
+proves the two tracks are the same length, this proves the audio track still says what the script
+said.
+
+Exit 0: clean, or only advisory findings (heard-differently, an interior gap, low confidence, A/V
+drift) — all listed with a timestamp in `work/verify-report.md`, not blocking. Exit 1: a word is
+missing or extra — read the report, fix the edit or regenerate the VO, do not ship past a FAIL.
+Exit 3: no `ASSEMBLYAI_API_KEY` and no `--asr-json` — report this as **skipped**, never as passed.
+
 ### Final summary
 
 Report what exists and what did not run:
@@ -309,6 +325,7 @@ Report what exists and what did not run:
 output/master.mp4         assembled, A/V gate passed
 output/master-mixed.mp4   {N} SFX cues, music {yes/no}, captions {burned/sidecar/none}
 output/master.srt         {M} cues, {K} scenes untimed
+work/verify-report.md     P6 {PASS/FAIL/SKIPPED} — {a} extra, {b} missing, {c} advisory findings
 Not run: {anything that degraded, and why}
 ```
 

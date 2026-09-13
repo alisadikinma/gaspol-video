@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tools import gen_subs
 
@@ -139,6 +140,64 @@ class GenSubsTest(unittest.TestCase):
         (self.project / "work" / "audio-plan.json").write_text(json.dumps({"scenes": []}))
         plan = gen_subs.build_plan(self.project)
         self.assertEqual(plan["cues"], [])
+
+
+class FakeResponse:
+    """Minimal stand-in for the context manager urllib.request.urlopen returns."""
+
+    def __init__(self, payload):
+        self._payload = json.dumps(payload).encode("utf-8")
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TranscribeAssemblyaiTest(unittest.TestCase):
+    """P6 (verify_render.py) needs confidence on every word; this must not regress."""
+
+    def test_confidence_survives_the_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "clip.wav"
+            audio_path.write_bytes(b"not-really-audio")
+
+            responses = [
+                FakeResponse({"upload_url": "https://upload.example/x"}),
+                FakeResponse({"id": "job-1"}),
+                FakeResponse({"status": "completed", "words": [
+                    {"text": "hi", "start": 0, "end": 100, "confidence": 0.42},
+                ]}),
+            ]
+            with patch("tools.gen_subs.urllib.request.urlopen", side_effect=responses):
+                result = gen_subs.transcribe_assemblyai(
+                    audio_path, "fake-key", poll_s=0, log=lambda *a: None
+                )
+
+        self.assertEqual(result["words"][0]["confidence"], 0.42)
+
+    def test_missing_confidence_becomes_none_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "clip.wav"
+            audio_path.write_bytes(b"not-really-audio")
+
+            responses = [
+                FakeResponse({"upload_url": "https://upload.example/x"}),
+                FakeResponse({"id": "job-1"}),
+                FakeResponse({"status": "completed", "words": [
+                    {"text": "hi", "start": 0, "end": 100},
+                ]}),
+            ]
+            with patch("tools.gen_subs.urllib.request.urlopen", side_effect=responses):
+                result = gen_subs.transcribe_assemblyai(
+                    audio_path, "fake-key", poll_s=0, log=lambda *a: None
+                )
+
+        self.assertIsNone(result["words"][0]["confidence"])
 
 
 if __name__ == "__main__":

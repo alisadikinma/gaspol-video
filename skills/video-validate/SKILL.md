@@ -19,7 +19,7 @@ Unified validation skill for the AI Video Promo Engine. Covers 5 validation targ
 | `--script` | Script output quality | av-script.md + strategic-brief.md |
 | `--image` | NB2 prompt rules + actual keyframe image review | image-prompts.md + keyframes/*.png |
 | `--video` | VEO prompt rules | video-prompts.md + scene-plan.md |
-| `--post` | Post-production: rendered master and plan files (P1-P3) |
+| `--post` | Post-production: rendered master and plan files (P1-P6) |
 | `--refs` | Cross-file reference consistency (24 checks) | All reference + skill + agent files |
 | `--all` | Everything above | All files |
 
@@ -492,6 +492,23 @@ An em dash in a caption is correct — the ban is on spoken text. Mirrors review
 The bed measures at least 12 dB below the voice, segments do not overlap, and the track traces back
 to the script's music direction. A music failure that left a voice-only master plus a warning is a
 PASS, not a finding. Mirrors reviewer check C10.
+
+### Check P6: The Render Says What The Script Says (v3.1.0)
+
+```bash
+python3 tools/verify_render.py {output_folder}
+```
+
+A second ASR pass over the rendered master (`output/master-mixed.mp4`, falling back to
+`output/master.mp4`), diffed against the intended narration/dialogue in `work/audio-plan.json`.
+
+- **FAIL** on any missing or inserted word — content the script asked for that never made it into
+  the render, or content that rode along uninvited.
+- **WARN** on a word heard differently, an interior gap, a low-confidence word, or an A/V drift
+  flag — all advisory, all named with a timestamp in `work/verify-report.md` so the fix is a matter
+  of listening at that second, not guessing.
+- **SKIPPED**, never PASS, on exit code 3 (`ASSEMBLYAI_API_KEY` not set and no `--asr-json` was
+  given). A skipped check is reported as skipped in the summary — it must never read as a pass.
 
 ## Output Format
 
