@@ -157,8 +157,13 @@ flow; packaging copy may not present it as a shipped feature.
 #### 5.4 `gen_music.py`
 
 Reads `media/music/library/palette.json` moods. For each mood without a track, calls ElevenLabs Music
-with `force_instrumental`, at `--length` (default: the project master's duration), loudness-normalises
-to the bed target, writes `tracks/<mood>.mp3` and rewrites `catalog.json`. Library-first: existing
+with `force_instrumental`, at a length that defaults to the mood's own `duration_s` (60s when a mood
+does not set one) rather than the current project master's duration, loudness-normalises to the bed
+target, writes `tracks/<mood>.mp3` and rewrites `catalog.json`. This is deliberate, not an oversight:
+`media/music/library/` is a cross-project library — a `chill-optimistic` track generated for one
+promo is reused by the next one that picks the same mood, so its length is a property of the mood, not
+of whichever master happened to trigger the generation. `--length-s N` overrides every mood's
+`duration_s` for a one-off run (e.g. to match a specific master exactly). Library-first: existing
 tracks are never re-billed without `--force`. `--dry-run` makes no request. Missing key: exits with the
 variable name; `mix_music.py` stays fail-soft.
 
