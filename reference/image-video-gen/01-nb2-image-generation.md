@@ -109,6 +109,47 @@ See `global-promo-config.md` §26 for full rule + validator C2 (Phase 4A uniquen
 
 See `global-promo-config.md` §26.4 + validator C3 (Phase 4B ref count audit).
 
+### Face refs: three angles, or the face drifts (v3.2.1)
+
+A front-only reference produces a face that is *plausible* from the front and wrong from every other
+angle — and the clip will move the head. The identity ref is a **sheet**, not a photo:
+
+```
+ref/cast-c2-face-3sudut.png     front + profile + three-quarter, same lighting, neutral expression
+ref/cast-c2-face.png            the hero front shot
+```
+
+Name BOTH in the prompt text. Field case: a keyframe built from the front shot alone produced
+"the face is not similar at all" and survived five video renders before the still was rebuilt with
+the 3-angle sheet.
+
+**10 MB hard cap per reference image.** The image API rejects anything larger. A 4K render is
+routinely 17 MB, so keep a downscaled copy for sending and the original for the sheet:
+
+```bash
+mkdir -p ref/_small
+sips -Z 2048 ref/cast-c2-face-3sudut.png --out ref/_small/cast-c2-face-3sudut.png
+```
+
+### Inspect the keyframe before spending a video render (v3.2.1)
+
+A video model reproduces what the still gives it. A defect in the keyframe is not a risk in the clip
+— it is a certainty, and it costs a video render each time to rediscover.
+
+Before any still is promoted to `keyframes/`, crop and look at:
+
+| Check | Why it is on the list |
+|---|---|
+| **Count the hands.** One per arm, attached to a body. | A keyframe with three hands produced three rejected clips before anyone opened the PNG. |
+| **Every hand is doing the thing the script says.** A hand on the wheel stays on the wheel; a hand holding a phone is not also on the wheel. | Fixing "third hand" by regenerating without the constraint produced the opposite defect: both hands off the wheel of a moving truck. |
+| **The face against the ref sheet**, side by side at 100%. | See above. |
+| **Props are in the state the action needs.** An open jerrycan is open; a screen the script wants blank is blank. | A closed jerrycan cannot be filled, whatever the prompt says. |
+| **Nothing the script did not ask for.** | A patrolling guard nobody wanted survived two renders. |
+
+Write the constraint into the image prompt as a positive, not a negative: "left hand gripping the
+steering wheel at 9 o'clock, right hand holding the phone to the ear — exactly two hands" beats
+"no third hand".
+
 ## Text Rendering (94.2% Accuracy)
 
 - Exact wording in **quotes**: `"SALE"`

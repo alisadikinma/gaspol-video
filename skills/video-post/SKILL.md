@@ -94,10 +94,12 @@ NEVER load the storytelling files or the NB2 guide. Neither applies after the cl
 
 ---
 
-## Kelompok mode — the six steps
+## Kelompok mode — the seven steps
 
 Runs once per kelompok, called by `/video-gen` step 5.1b right after that kelompok's prompts are
 approved. Read `work/kelompok.json` first and work only on the named entry.
+
+K.7 only runs when the user sends the kelompok back for revision. Every other step runs every time.
 
 ### K.1 — Voice-over for this kelompok
 Run Pass 1 below, but build `work/audio-plan.json` with ONLY this kelompok's scenes. Keep every
@@ -108,8 +110,32 @@ kelompok so delivery does not reset at the seam. Write `vo: "done"` in the ledge
 "VO-first"), so a kelompok whose clips are rendered before its VO exists has invented durations.
 
 ### K.2 — Clips
-Phase 5 step 5.5 renders them. Nothing new here; the ledger field `clips` flips to `done` when every
-scene in the kelompok has a file in `clips/`.
+Phase 5 step 5.5 renders them. The ledger field `clips` flips to `done` when every scene in the
+kelompok has a file in `clips/` **and each one has passed the two gates below** — not when the file
+merely exists.
+
+**Picture gate — look at frames, not at the prompt.** Pull a contact sheet and crop the area the
+scene is about. The prompt says what was asked for; only the frame says what arrived.
+
+**Speech gate — ASR every clip that has dialogue, before it is promoted.** A dropped sentence looks
+like nothing on screen:
+
+```bash
+python3 tools/verify_render.py {output_folder} --master clips/scene-NN.mp4
+```
+
+A missing line found here costs one clip. Found after the cut, it costs the cut, the voice change
+and every overlay composited on top.
+
+**A rejected clip is archived with its reason in the filename**, never overwritten and never
+deleted while the scene is open:
+
+```
+clips/_tidak-dipakai/scene-04-v5-tangan-ketiga.mp4
+```
+
+`ls` on that folder is then a defect histogram. The same word appearing twice is the signal to stop
+re-prompting and go fix the keyframe — see `03-workflow-pipeline.md` "The Reject Loop".
 
 ### K.3 — Voice change
 For scenes whose `audio_source` is `platform-native` and whose dialogue is spoken on camera, run the
@@ -120,11 +146,37 @@ speech-to-speech conversion (Pass 1 edge cases below). Scenes with no on-camera 
 Render the explainer shots and the overlays that belong to this kelompok's scenes, through
 `/video-explainer`. Do not render the whole film's shots here — only this kelompok's.
 
+**Before rendering, refresh anything an overlay embeds.** An overlay that plays another clip inside
+itself reads a static COPY under `shots/public/`, which does not change when the source clip is
+re-rendered:
+
+```bash
+grep -rl "staticFile('video/" {output_folder}/shots/src
+```
+
+Any scene listed there was re-rendered → rebuild its copy first, or the overlay ships the old take.
+Full procedure in `12-remotion-explainer.md` §8.
+
+**Confirm the `.mov` mtime moved.** `npx remotion render` exits non-zero when the workspace has no
+`tsconfig.json` and leaves the previous render in place; use `node scripts/render-all.mjs {ShotId}`.
+
 ### K.5 — The kelompok cut
 Run Pass 2 scoped to this kelompok: assemble `output/kelompok-K{N}.mp4` from its clips, its VO, its
 converted dialogue and its overlays. **The A/V duration gate applies to the segment** exactly as it
-applies to a master — 0.04s or it is rejected. Write the path into `cut` and set
-`status: "cut-ready"`.
+applies to a master — 0.04s or it is rejected.
+
+Then verify the cut says what the script says, before it goes to the user:
+
+```bash
+python3 tools/verify_render.py {output_folder} --master output/kelompok-K{N}.mp4
+```
+
+The A/V gate proves the two tracks are the same length. This proves the audio track still carries
+every line — a dropped sentence, a garbled head on a trimmed clip, a word the voice changer chewed.
+Word-level timings also LOCATE the defect: "gibberish at 6.59-7.67s" points straight at which clip
+and which trim, which eyeballing the waveform does not.
+
+Only then write the path into `cut` and set `status: "cut-ready"`.
 
 ### K.6 — Approval gate
 ```
@@ -137,7 +189,38 @@ C) Ulang kelompok ini
 A sets `status: "approved"` and `approved_at`. B and C set `status: "rework"` and reset only the
 fields whose work has to be redone — a fix never reaches another kelompok.
 
+**If the user dismisses the modal, do not re-open it.** Report the same three choices as plain text
+and wait. A reviewer who is watching a cut wants to write timecoded notes, not click a radio button.
+
 When every kelompok is `approved`, and only then, run `/video-post --final`.
+
+### K.7 — Rework discipline
+
+A revision round arrives as timecoded notes. Before touching anything, write each note down against
+the layer that actually owns it, because the layer decides the cost:
+
+| Layer the note belongs to | Cost | Example note |
+|---|---|---|
+| **Overlay** (Remotion) | minutes | "pop the logo when he says INDUSIA" |
+| **Edit** (trim / order) | minutes | "0:07-0:09 can be cut, too much silence" |
+| **Audio** (VO, voice change) | one VO run | "the AI should answer out loud too" |
+| **Clip** (re-render) | one video render | "the diesel goes the wrong way" |
+| **Keyframe** (re-render the still, THEN the clip) | a still + a clip | "his face is not similar at all", "hand stuck on the wheel" |
+
+Two things this ordering prevents:
+
+1. **Re-rendering a clip for a defect the keyframe owns.** If the note describes something that is
+   visible in the still — a face, a hand count, a prop's state — the keyframe is the fix. Going
+   straight to the clip is how the same defect comes back three rounds running.
+2. **Fixing one scene and shipping another one stale.** A re-rendered clip invalidates its voice
+   change, its composited copy in `_ov/`, its `_final/`, any `shots/public/` copy an overlay
+   embeds, and the cut. Walk the whole chain or the group ships half-fixed.
+
+Report back note by note, in the user's numbering, saying what was changed and what was verified —
+not a summary of the round. A note that was NOT addressed is named, with the reason. A note that was
+addressed a different way than asked (the diesel moved to a macro insert because the wide shot
+cannot hold it) says so explicitly, so the reviewer is not left looking for something that is not
+there.
 
 ---
 

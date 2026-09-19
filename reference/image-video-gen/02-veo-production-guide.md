@@ -151,6 +151,23 @@ VEO safety filter rejects **two photorealistic face images** uploaded together (
 - First+Last Frame mode → ONLY for faceless scenes (dashboards, products, environments, wide shots without prominent faces)
 - Single I2V with start frame → safe for all face-dominant scenes
 
+## Motion VEO Will Not Do (v3.2.1)
+
+Some motion is not a prompt problem. VEO resolves it wrong at a given scale no matter how the line
+is worded, and each retry costs a render to learn the same thing again.
+
+| Motion | What actually renders | What works instead |
+|---|---|---|
+| **Liquid transferring between two containers, WIDE shot** | The stream misses, reverses, or splashes on the ground. Observed on three separate renders of diesel siphoning into a jerrycan. | Hold the wide static — no liquid animation in it at all — and carry the transfer in a **macro insert** (`S03a`-style, own keyframe, own 4s render). At macro scale the model gets it right. |
+| **Fine hand/finger manipulation of a small prop** | Extra fingers, a hand that fuses to the prop, a hand left behind on whatever it was touching | Frame it so the manipulation is implied, not shown; or stage the hand already in its final position in the keyframe |
+| **A screen face-on to camera in a handheld shot** | Content that warps, flickers and slides, and a screen that never holds still enough for an overlay to track (see `12-remotion-explainer.md` §8) | Turn the prop AWAY from camera. Put the content in a card beside the actor instead of on the glass |
+| **An object doing two contradictory things** (a hand phoning AND steering) | The model grows a third limb rather than choose | Decide in the keyframe. State it as an exact count: "exactly two hands" |
+
+**The general shape:** when the physics is the point of the shot, the shot is a close-up. A wide
+shot is for who and where, not for what a fluid does.
+
+---
+
 ## Lip Sync Mastery
 
 ### Colon Syntax (CRITICAL)
@@ -200,6 +217,10 @@ Spell phonetically: "foh-fur" not "fofr", "eye-oh-tee" not "IoT"
 | On-screen character lip-syncs to VO | Used `Voiceover:` with face visible | Use `Voice-over narrator, [tone]: text` — VEO treats narrator as off-screen |
 | Audio artifact / wrong word | Em dash `—` in dialogue text | Replace `—` with `,` or `. ` in all says:/narrator: text |
 | VEO interpolation distorted/broken | Camera angle or shot size too drastic between start/end frames | Reshoot: max 1-step shot size change, max 15° angle change between frames |
+| Same visual defect on 2+ renders of one scene | The KEYFRAME carries it — prompt wording is irrelevant | Stop rendering. Open the keyframe at 100% and crop the defect area (`03-workflow-pipeline.md` "The Reject Loop") |
+| Liquid pours wrong / splashes outside the target | Wide shot; VEO does not resolve fluid at that scale | Static wide + macro insert. See "Motion VEO Will Not Do" above |
+| A sentence is missing from the delivered dialogue | VEO dropped it; the picture looks fine so nobody notices | ASR the clip and diff against the script BEFORE the clip is promoted — never verify speech by watching |
+| Model renders an extra person/prop nobody asked for | A negative prompt does not remove what the keyframe shows | Remove it from the keyframe, not from the prompt |
 
 ## Scene Extension
 

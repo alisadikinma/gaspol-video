@@ -230,14 +230,27 @@ async function readJson(file) {
   return JSON.parse(await readFile(file, "utf8"));
 }
 
-/** cast-profile.md is markdown; pull the VOICE: blocks out of it. */
+/**
+ * cast-profile.md is markdown; pull the VOICE blocks out of it.
+ *
+ * Two things here are deliberate, both from production failures:
+ *
+ *  - The trailing colon on the `VOICE` heading is OPTIONAL. A profile written
+ *    `### VOICE` used to parse to {} — every character silently lost, and the
+ *    first sign of it was `cast c1 has no VOICE: block` at synthesis time.
+ *  - The slot is read from the BLOCK HEADING, not from anywhere in the block.
+ *    `## Character 5: Kawan sopir` whose body happened to mention
+ *    `cast-c3-costume.png` used to bind character 5's voice to slot c3, which
+ *    is not an error at all — it is the wrong voice, delivered confidently.
+ */
 export function parseCastProfile(markdown) {
   const cast = {};
   const slotRe = /cast-(c\d+)/i;
   const blocks = markdown.split(/^##\s+/m);
   for (const block of blocks) {
-    const slot = block.match(slotRe)?.[1]?.toLowerCase();
-    const voice = block.match(/VOICE:\s*\n([\s\S]*?)(?:\n\s*\n|$)/);
+    const heading = block.split("\n", 1)[0];
+    const slot = (heading.match(slotRe) ?? block.match(slotRe))?.[1]?.toLowerCase();
+    const voice = block.match(/(?:^|\n)#{0,6}[ \t]*VOICE:?[ \t]*\n([\s\S]*?)(?:\n\s*\n|$)/);
     if (!slot || !voice) continue;
     const entry = { settings: {} };
     for (const line of voice[1].split("\n")) {
@@ -284,6 +297,13 @@ async function main(argv) {
   let cast = {};
   try {
     cast = parseCastProfile(await readFile(path.join(projectDir, "cast-profile.md"), "utf8"));
+    if (Object.keys(cast).length === 0) {
+      // Readable but zero entries is the dangerous case: it looks like success.
+      console.error(
+        "warning: cast-profile.md parsed to 0 voices. Each character needs a `## ...(cast-cN)...` " +
+        "heading and a `VOICE` block under it. No voice is substituted; synthesis will stop.",
+      );
+    }
   } catch {
     console.error("warning: cast-profile.md not readable — falling back to default voice settings");
   }
