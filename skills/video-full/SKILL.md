@@ -3,8 +3,9 @@ name: video-full
 description: >
   End-to-end AI video promotional production pipeline. Orchestrates the full 6-phase workflow:
   video-brainstorm (Phase 1) → video-script (Phase 2-3.5) → video-image (Phase 4A+4B) →
-  video-explainer (Phase 4.5, conditional) → video-gen (Phase 5 with Image Review) →
-  video-post (Phase 6: VO, edit, SFX, subtitles, music, mix) → video-package (Phase 7). Generates complete 2-3 minute promotional video
+  video-explainer (Phase 4.5, conditional) → video-gen (Phase 5 with Image Review, delivering one
+  kelompok at a time: VO, clips, voice change, Remotion, kelompok cut, approval) →
+  video-post --final (Phase 6 tail: edit, SFX, subtitles, music, mix) → video-package (Phase 7). Generates complete 2-3 minute promotional video
   packages for any brand. Supports multi-character cast (max 5), any brand or Ali Sadikin preset.
   Triggers on: video full, full pipeline, end to end, video production, bikin video promosi,
   buat video lengkap, video marketing, iklan video, video agency, generate video complete,
@@ -124,28 +125,35 @@ Invoke the video-explainer skill for:
 
 Invoke the video-gen skill for:
 - Image Review (Step 0) — per-scene collaborative review of actual keyframe images
+- Kelompok ledger (Step 5.0b) — `work/kelompok.json`, the batches this film is delivered in
 - VEO 3.1 video prompt generation with camera movement, 3-layer audio, lip sync
 - Batch-by-ACT with prompt-reviewer agent validation
 - After each approved batch, a **render offer** — `Render sekarang?` through
   `mcp__indusia-video-gen__generate_video` (`veo-3.1-fast`), for VEO scenes only; Seedance, Kling,
   Scene Extension, and unsupported durations/aspects stay copy-paste
+- **Then step 5.1b hands that kelompok straight to post (v3.2.0):** its VO, its voice change, its
+  Remotion shots and overlays, and a `output/kelompok-K{N}.mp4` cut the user approves before the
+  next batch starts. Phase 5 and the first two Phase 6 passes interleave; they are no longer two
+  separate stages.
 
-**Wait for Image Review and Phase 5 approval gates.**
+**Wait for Image Review, and for the approval gate of every kelompok.**
 
 **Verify output exists:**
 - `{output_folder}/video-prompts.md`
+- `{output_folder}/work/kelompok.json` with every entry `approved`
+- `{output_folder}/output/kelompok-K*.mp4` — one cut per kelompok
 
 ---
 
-### Step 6: Run `/video-post` (Phase 6) — after the clips exist
+### Step 6: Run `/video-post --final` (Phase 6 tail) — after every kelompok is approved
 
-This step runs on GENERATED CLIPS, not on prompts. Stop here until the user has actually rendered
-the platform clips from `video-prompts.md` and put them in `{output_folder}/clips/`.
+Passes 1 and 2 already ran per kelompok inside Step 5. This step is the global tail, and it refuses
+to start while any entry in `work/kelompok.json` is not `approved` — it says which one and stops.
 
-Invoke the video-post skill for its five passes, in order:
-1. Voice-over — ElevenLabs TTS, plus speech-to-speech for platform-spoken dialogue (optionally
-   cleaned first with `tools/clean_voice.py` for noisy platform-native clips)
-2. Edit — ffmpeg assembly under the A/V duration gate
+Invoke the video-post skill for the remaining passes, in order:
+1. ~~Voice-over~~ — already done per kelompok; every line was spoken, measured and approved there
+2. Edit — concatenate the approved `output/kelompok-K*.mp4` cuts into `output/master.mp4` under the
+   A/V duration gate. An approved segment is never re-rendered here.
 3. SFX — domain-aware cue sheet, user-audited before anything is mixed
 4. Subtitles and music — captions built from the script, music bed under the voice
 5. Final mix
@@ -193,7 +201,8 @@ Present final production package:
 | image-prompts.md | Scene keyframe NB2 prompts (start + end frames) | /video-image |
 | video-prompts.md | VEO 3.1 video prompts with audio specs | /video-gen |
 | shots/out/ | Rendered Remotion explainer shots (only when a scene is Render Path `explainer`) | /video-explainer |
-| output/master-mixed.mp4 | Finished, mixed video: VO, SFX, captions, music | /video-post |
+| output/kelompok-K*.mp4 | One approved cut per kelompok: picture + narasi + tempelan | /video-gen + /video-post |
+| output/master-mixed.mp4 | Finished, mixed video: VO, SFX, captions, music | /video-post --final |
 | output/master.srt | Caption file, text taken from the script | /video-post |
 | packaging.md | Locked title, three thumbnail bets, description | /video-package |
 
@@ -211,6 +220,8 @@ All hard rules from individual skills apply. Key cross-cutting rules:
 3. **Phase 3.5 is HARD BLOCK** — cannot proceed to Phase 4 without ALL refs validated
 4. **Asset-first, scene-second** — Phase 4A atoms before Phase 4B molecules
 5. **Image Review before VEO** — Phase 5 Step 0 reviews actual images before generating video prompts
+5b. **A kelompok is approved on its cut, not on its clips** — picture with narration and overlays,
+    reviewed before the next kelompok starts
 6. **Audio is NEVER optional** — all 3 layers specified in every VEO prompt
 7. **Product is NEVER the hero** — customer is hero, product is bridge
 8. **Phase 6 needs real clips** — it runs on rendered video, not on prompts. Stop and wait rather

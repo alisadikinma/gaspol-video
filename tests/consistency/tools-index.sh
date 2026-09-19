@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# v3.1.0 docs sync gate. Every tool this ticket ships or ported must be named in
+# v3.2.0 docs sync gate. Every tool this ticket ships or ported must be named in
 # CLAUDE.md's Architecture table, every post-production reference must be listed
 # there too, the plugin version must be bumped, and NOTICE must carry the new
 # attribution debt. This is the check `docs(GV-2): sync CLAUDE.md, NOTICE and
-# config for 3.1.0` exists to satisfy.
+# config for 3.2.0` exists to satisfy.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
@@ -36,8 +36,8 @@ for f in reference/post-production/*.md; do
   fi
 done
 
-if ! grep -qF '"version": "3.1.0"' .claude-plugin/plugin.json; then
-  echo "FAIL plugin.json version is not 3.1.0"
+if ! grep -qF '"version": "3.2.0"' .claude-plugin/plugin.json; then
+  echo "FAIL plugin.json version is not 3.2.0"
   fail=1
 fi
 

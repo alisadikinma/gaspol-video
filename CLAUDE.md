@@ -28,7 +28,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `/video-image` | Phase 4: NB2 asset library + scene keyframes |
 | `/video-gen` | Phase 5: image review + VEO video prompts |
 | `/video-explainer` | Phase 4.5: coded Remotion shots for scenes that must be readable |
-| `/video-post` | Phase 6: voice-over, assembly, SFX, subtitles, music, final mix |
+| `/video-post` | Phase 6, two modes: per kelompok (VO + kelompok cut) and `--final` (assembly, SFX, subtitles, music, final mix) |
 | `/video-package` | Phase 7: locked title, three thumbnail bets, description |
 | `/video-validate` | Unified validator: `--script` / `--image` / `--video` / `--refs` / `--all` / `--post` |
 | `/video-add-platform` | Scaffold new AI video platform support |
@@ -46,7 +46,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `skills/video-gen/SKILL.md` | Phase 5 — image review + VEO video prompts |
 | `skills/video-full/SKILL.md` | Orchestrator — runs all 7 production skills in sequence |
 | `skills/video-explainer/SKILL.md` | Phase 4.5 — Remotion explainer shots (scenes with legible text) + screencast shots for app screens |
-| `skills/video-post/SKILL.md` | Phase 6 — five passes: VO, edit, SFX, subtitles+music, mix; optional stems and P6 verify |
+| `skills/video-post/SKILL.md` | Phase 6 — five passes: VO, edit, SFX, subtitles+music, mix; scoped per kelompok then `--final`; optional stems and P6 verify |
 | `skills/video-package/SKILL.md` | Phase 7 — title, thumbnail bets, description; rendering routed to the image plugin; optional logo/scrim post-process |
 | `skills/video-validate/SKILL.md` | Unified validator (--script / --image / --video / --refs / --post / --all) |
 | `skills/video-add-platform/SKILL.md` | Scaffold new video platform support |

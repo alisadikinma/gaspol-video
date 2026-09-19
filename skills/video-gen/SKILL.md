@@ -170,6 +170,31 @@ appears in EVERY prompt for that character, copy-pasted, never paraphrased. See
 
 ---
 
+### Step 5.0b: KELOMPOK LEDGER (v3.2.0 — runs after the audio-source decision)
+
+Phase 5 no longer hands a finished pile of clips to Phase 6. It delivers one **kelompok** at a time,
+already carrying its narration and its overlays, so the user reviews what the audience will see.
+
+Write `{output_folder}/work/kelompok.json` (schema:
+`reference/post-production/10-post-production-pipeline.md` §3.9) from `scene-plan.md`:
+
+- one entry per Phase 5 batch, in play order, `K1`, `K2`, …
+- each entry lists the batch's scenes INCLUDING its explainer scenes — an explainer belongs to the
+  kelompok it plays in, not to a separate pile
+- every work field starts `pending`, `status` starts `pending`
+
+Show the kelompok list to the user before any prompt is generated:
+
+```
+AskUserQuestion:
+"Film ini dibagi {N} kelompok. Tiap kelompok dikerjakan sampai jadi potongan bernarasi sebelum
+lanjut ke kelompok berikutnya. Pembagiannya sudah pas?"
+A) Sudah pas
+B) Ubah pembagian — sebutkan scene mana pindah ke kelompok mana
+```
+
+---
+
 ### Step 5.0: PLATFORM SELECTION (v2.3.0 — runs AFTER voice strategy, BEFORE Image Review)
 
 Phase 5 supports three video platforms. Pick at start of session before any image review.
@@ -430,6 +455,40 @@ FOR each batch (ACT or sub-batch):
 
 END FOR
 ```
+
+#### Step 5.1b: HAND THE KELOMPOK TO POST (v3.2.0)
+
+Runs inside the batch loop, after step 5.5, for the kelompok just approved, BEFORE the next batch's prompts are generated.
+This is the change that replaces "finish every clip, then start Phase 6".
+
+```
+FOR the kelompok just approved:
+
+  1. K.1 VO — invoke /video-post for this kelompok id. It builds audio-plan.json scoped to these
+     scenes and generates the narration.
+     NOTE: when the audio source is `elevenlabs`, this VO step runs BEFORE step 5.5, because
+     measured VO length sets clip duration. The order inside the batch is then
+     5.1 prompts -> 5.1b K.1 VO -> 5.5 render -> 5.1b K.3 onward.
+
+  2. K.3 voice change for the on-camera dialogue in these clips, when any scene is platform-native.
+
+  3. K.4 Remotion — invoke /video-explainer for THIS kelompok's explainer scenes and overlays only.
+
+  4. K.5 kelompok cut — /video-post assembles output/kelompok-K{N}.mp4 under the A/V duration gate.
+
+  5. K.6 approval gate — the user watches the cut, not the silent clips.
+     Approved -> update work/kelompok.json, go to the next batch.
+     Rework    -> fix inside this kelompok only. Never start the next batch on a kelompok in rework.
+END FOR
+```
+
+Two rules that make this safe:
+
+- **A rework never reaches another kelompok.** Reset only the fields whose work must be redone.
+- **The global tail waits.** Passes 3, 4, 5 and Check P6 run once, in `/video-post --final`, after
+  every kelompok is `approved`.
+
+---
 
 #### Step 5.2: Output Mode
 
