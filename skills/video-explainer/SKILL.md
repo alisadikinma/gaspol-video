@@ -77,8 +77,13 @@ coded shot.
 
 ### Step 4.5.0: Read the plan
 
-Read `scene-plan.md` and list the `explainer` scenes with their durations and what each one has to
-make readable. Present the list before building anything:
+**Scope first (v3.2.0).** If the caller named a kelompok (`/video-explainer K2`, or the hand-off
+from `/video-gen` step 5.1b), read `work/kelompok.json` and build ONLY the shots and overlays whose
+scenes are in that kelompok. With no kelompok named, build every explainer scene — the old whole-film
+behaviour, still correct when the project is not run per kelompok.
+
+Read `scene-plan.md` and list the `explainer` scenes in scope with their durations and what each one
+has to make readable. Present the list before building anything:
 
 ```
 {N} explainer scenes:
@@ -161,6 +166,10 @@ Record each rendered shot in `scene-plan.md` next to its scene (`shot: <ShotId>`
 plan can place it. Overlay shots additionally record their placement span.
 
 ---
+
+When this run was scoped to a kelompok, set that kelompok's `remotion` field to `done` in
+`work/kelompok.json` and return to `/video-gen` step 5.1b — the kelompok cut (K.5) is next, not the
+next kelompok's shots.
 
 ## Quality Gates
 

@@ -15,20 +15,41 @@ Phases 1 to 5 produce a **prompt package**. Phase 6 turns generated clips into a
 Phase 4B  scene keyframes (NB2)          live-action scenes only
 Phase 4.5 /video-explainer               explainer scenes -> Remotion shots
 Phase 5   /video-gen                     platform prompts + audio-source decision
-          [user generates clips, uploads them to {output_folder}/clips/]
-Phase 6   /video-post                    five passes, in this order
+          per kelompok: VO -> clips -> voice change -> Remotion -> kelompok cut -> approval
+Phase 6   /video-post --final            global tail, once every kelompok is approved
 Phase 7   /video-package                 title, thumbnail bets, description
 ```
 
-The five passes of `/video-post` run in a fixed order, and the order is not a preference:
+### The kelompok is the unit of delivery (v3.2.0)
 
-| # | Pass | Why it cannot move |
+A **kelompok** is the batch Phase 5 already works in: one ACT, or a sub-batch of at most 5 scenes.
+A kelompok is carried to a near-final state before the next one starts, because a clip is not
+reviewable on picture alone — it is reviewable when it carries its narration and its overlay, which
+is what the audience sees.
+
+| Step | What runs | Why it sits here |
 |---|---|---|
-| 1 | Audio | The voice-over has to exist before anything knows how long a beat really is. |
-| 2 | Edit | Cue times only mean something once the master timeline exists. |
-| 3 | SFX | Needs the assembled master to place cues against. |
-| 4 | Subtitles + music | Subtitles need the final audio; music is levelled against the finished voice. |
-| 5 | Final mix | Everything else must be in place before loudness and limiting are set. |
+| K.1 | Pass 1 scoped to this kelompok's lines | VO-first sets clip duration; it cannot come after the clips |
+| K.2 | Render this kelompok's clips (Phase 5 step 5.5) | unchanged |
+| K.3 | Voice change on platform-native dialogue in those clips | needs the clip audio to exist |
+| K.4 | Remotion shots and overlays belonging to this kelompok | independent of clips, needed for the cut |
+| K.5 | Pass 2 scoped: `output/kelompok-K{N}.mp4` under the A/V duration gate | the reviewable artefact |
+| K.6 | User approves the kelompok | a fix here is contained to at most 5 scenes |
+
+State lives in `work/kelompok.json` (§3.9). A kelompok that is not `approved` never feeds the tail.
+
+### The global tail runs once
+
+| # | Pass | Why it stays global |
+|---|---|---|
+| 2 | Edit (full) | concatenates the approved kelompok segments into `output/master.mp4` |
+| 3 | SFX | cue levels are judged against the whole film |
+| 4 | Subtitles + music | music is levelled against the finished voice across the film |
+| 5 | Final mix | loudness and limiting are set once |
+
+The passes keep their internal order. What v3.2.0 changes is their **scope**: passes 1 and 2 run per
+kelompok first, then passes 2 to 5 run once over segments that are already approved. Pass 1 never
+runs in the tail — every line was spoken, measured and approved inside its kelompok.
 
 ---
 
@@ -49,13 +70,14 @@ Everything Phase 6 reads and writes lives under the project's `{output_folder}`.
   vo/                    Phase 6   narration and converted dialogue audio + vo-manifest.json
   sfx/                   Phase 6   cues generated for this project
   work/                  Phase 6   the plan files below
+    kelompok.json
     clip-manifest.json
     audio-plan.json
     edit-plan.json
     sfx-plan.json
     subtitle-plan.json
     music-plan.json
-  output/                Phase 6   master.mp4, master.srt, master-mixed.mp4
+  output/                Phase 6   kelompok-K{N}.mp4, master.mp4, master.srt, master-mixed.mp4
 ```
 
 Naming rules that other tools depend on:
@@ -63,6 +85,8 @@ Naming rules that other tools depend on:
 - A clip for scene 3 is `clips/scene-03.mp4`. Its first extension is `clips/scene-03-ext1.mp4`.
 - A rendered Remotion shot is `shots/out/<ShotId>.mp4`, or `.mov` when it carries alpha.
 - Narration audio is `vo/scene-{NN}-narr.mp3`; converted dialogue is `vo/scene-{NN}-c{N}.mp3`.
+- A kelompok cut is `output/kelompok-K{N}.mp4`. It is a segment of the film, not a draft of the whole
+  film, and the tail concatenates these — it does not re-render them.
 
 ---
 
@@ -227,6 +251,48 @@ instead of restating it.
   model`) and a count per status — the quick way to see what still needs a render offer.
 
 ---
+
+### 3.9 `kelompok.json` — the delivery ledger (v3.2.0)
+
+Written by Phase 5 at step 5.0b, updated at every K step, read by `/video-post` in both modes.
+One entry per kelompok, in play order.
+
+```json
+{
+  "kelompok": [
+    {
+      "id": "K1",
+      "act": "BABAK 1 — MASALAH",
+      "scenes": ["S01", "S02", "S03", "S04", "S05"],
+      "vo": "done",
+      "clips": "done",
+      "voice_change": "n/a",
+      "remotion": "done",
+      "cut": "output/kelompok-K1.mp4",
+      "status": "approved",
+      "approved_at": "2026-09-19"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | `K1`, `K2`, … in play order. Stable for the life of the project. |
+| `act` | the ACT this kelompok belongs to, copied from `scene-plan.md` |
+| `scenes` | scene ids in this kelompok, including its explainer scenes |
+| `vo` `clips` `voice_change` `remotion` | `pending` · `done` · `n/a` |
+| `cut` | path to the kelompok segment, written at step K.5 |
+| `status` | `pending` · `in-progress` · `cut-ready` · `approved` · `rework` |
+| `approved_at` | date the user approved the kelompok; absent until then |
+
+Rules:
+
+- A kelompok reaches `cut-ready` only when every one of its four work fields is `done` or `n/a`.
+- Only `approved` kelompok feed the global tail. The tail refuses to start while any kelompok is not
+  `approved`, and says which.
+- `rework` means the user rejected the cut. Fixing it re-runs only the steps whose field was reset,
+  and never touches another kelompok.
 
 ## 4. The A/V duration gate
 

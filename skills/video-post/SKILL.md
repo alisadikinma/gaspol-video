@@ -4,10 +4,12 @@ description: >
   Phase 6 of AI video production. Turns generated clips into a finished, mixed file: builds
   the voice-over (ElevenLabs TTS plus speech-to-speech for platform-spoken dialogue),
   assembles with ffmpeg under an A/V duration gate, scores domain-aware SFX, burns captions
-  built from the script, lays a music bed under the voice, and mixes. Five passes in a fixed
-  order, with a hard user-audit gate before anything is mixed.
+  built from the script, lays a music bed under the voice, and mixes. Runs in two modes: per
+  kelompok (a batch of at most 5 scenes carried to a reviewable cut) and --final (the global tail
+  over approved kelompok). Five passes in a fixed order, with a hard user-audit gate before
+  anything is mixed.
   Triggers on: video post, post production, pasca produksi, rakit video, mix audio, sfx,
-  subtitle, musik, phase 6, final mix, jadikan video, gabung klip.
+  subtitle, musik, phase 6, final mix, jadikan video, gabung klip, kelompok, per kelompok.
 ---
 
 # Video Post — Phase 6: From Clips to a Finished File
@@ -25,8 +27,34 @@ is not a preference:
 | 4 | Subtitles + music | `master.srt`, `music-plan.json` | subtitles need the final audio; music is levelled against the finished voice |
 | 5 | Final mix | `output/master-mixed.mp4` | loudness and limiting are set once everything is in place |
 
+## Two modes (v3.2.0)
+
+The passes above keep their order. What changed is their **scope**.
+
+| Mode | Invoked as | Scope | Produces |
+|---|---|---|---|
+| Kelompok | `/video-post K{N}` — normally called by `/video-gen` step 5.1b, not by hand | one kelompok: at most 5 scenes | `output/kelompok-K{N}.mp4` |
+| Final | `/video-post --final` | the whole film, from approved kelompok cuts | `output/master-mixed.mp4` |
+
+**Kelompok mode** runs pass 1 for that kelompok's lines, the voice change for its clips, its Remotion
+overlays, then pass 2 scoped to those scenes. It ends at a user approval gate. Passes 3 to 5 do NOT
+run here.
+
+**Final mode** runs pass 2 over the approved kelompok cuts (concatenate — never re-render an approved
+segment), then passes 3, 4 and 5 over the whole film, then Check P6. Pass 1 does NOT run here: every
+line was already spoken, measured and approved inside its kelompok.
+
+Why this split: a clip is not reviewable on picture alone. It is reviewable when it carries its
+narration and its overlay. Finding a narration or sync mistake after all clips exist means
+re-rendering clips that were already approved on picture; finding it inside an open kelompok costs
+at most five scenes.
+
+`work/kelompok.json` is the ledger for both modes — schema in
+`reference/post-production/10-post-production-pipeline.md` §3.9.
+
 ## Prerequisite
 
+- `{output_folder}/work/kelompok.json` — the delivery ledger, written by Phase 5 step 5.0b
 - `{output_folder}/clips/` — the user's generated clips, named `scene-{NN}[-ext{K}].mp4`
 - `{output_folder}/av-script.md`, `scene-plan.md`, `cast-profile.md`, `strategic-brief.md`
 - `{output_folder}/shots/out/` — rendered explainer shots, when the video has any
@@ -52,7 +80,10 @@ NEVER load the storytelling files or the NB2 guide. Neither applies after the cl
 
 ## Hard Rules (NON-NEGOTIABLE)
 
-1. **The passes run in order.** Skipping one leaves the next working from numbers it invented.
+1. **The passes run in order, inside whatever scope is running.** Skipping one leaves the next
+   working from numbers it invented. In kelompok mode that order is passes 1 then 2; in final mode it
+   is passes 2, 3, 4, 5. Never start the final mode while a kelompok is still not `approved` — say
+   which one and stop.
 2. **Every pass is a plan first, a render second.** Author the JSON, show it, then run the tool.
 3. **The A/V duration gate blocks.** Video and audio equal within 0.04s or the render is rejected —
    not shipped with a note.
@@ -60,6 +91,53 @@ NEVER load the storytelling files or the NB2 guide. Neither applies after the cl
 5. **A tool never substitutes a voice.** Missing env var means stop and ask.
 6. **Degradation is loud.** A missing binary or key costs one capability, says which, and the phase
    continues.
+
+---
+
+## Kelompok mode — the six steps
+
+Runs once per kelompok, called by `/video-gen` step 5.1b right after that kelompok's prompts are
+approved. Read `work/kelompok.json` first and work only on the named entry.
+
+### K.1 — Voice-over for this kelompok
+Run Pass 1 below, but build `work/audio-plan.json` with ONLY this kelompok's scenes. Keep every
+Pass 1 rule, including `previous_request_ids` carry-over: pass the last request id from the previous
+kelompok so delivery does not reset at the seam. Write `vo: "done"` in the ledger.
+
+**This step comes before the clips, not after.** Measured VO length sets clip duration (Phase 5
+"VO-first"), so a kelompok whose clips are rendered before its VO exists has invented durations.
+
+### K.2 — Clips
+Phase 5 step 5.5 renders them. Nothing new here; the ledger field `clips` flips to `done` when every
+scene in the kelompok has a file in `clips/`.
+
+### K.3 — Voice change
+For scenes whose `audio_source` is `platform-native` and whose dialogue is spoken on camera, run the
+speech-to-speech conversion (Pass 1 edge cases below). Scenes with no on-camera dialogue set
+`voice_change: "n/a"`.
+
+### K.4 — Remotion
+Render the explainer shots and the overlays that belong to this kelompok's scenes, through
+`/video-explainer`. Do not render the whole film's shots here — only this kelompok's.
+
+### K.5 — The kelompok cut
+Run Pass 2 scoped to this kelompok: assemble `output/kelompok-K{N}.mp4` from its clips, its VO, its
+converted dialogue and its overlays. **The A/V duration gate applies to the segment** exactly as it
+applies to a master — 0.04s or it is rejected. Write the path into `cut` and set
+`status: "cut-ready"`.
+
+### K.6 — Approval gate
+```
+AskUserQuestion:
+"Kelompok K{N} ({ACT}, scene {X}-{Y}) sudah jadi potongan dengan narasi dan tempelan. Lanjut?"
+A) Setuju — lanjut kelompok berikutnya
+B) Perbaiki — sebutkan scene mana dan apa yang salah
+C) Ulang kelompok ini
+```
+A sets `status: "approved"` and `approved_at`. B and C set `status: "rework"` and reset only the
+fields whose work has to be redone — a fix never reaches another kelompok.
+
+When every kelompok is `approved`, and only then, run `/video-post --final`.
 
 ---
 
