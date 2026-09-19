@@ -33,6 +33,17 @@ export const MAX_DRIFT_S = 0.05;
 export const driftMessage =
   "speech-to-speech changed the duration, so lip-sync would no longer match";
 
+/**
+ * Where the intermediate wav/mp3 pieces go: the project's `.tmp/`, never a `.work/` folder
+ * beside the output. Added 2026-09-20 — the old `.work/` was one of nine stray folders a project
+ * had accumulated, and the folder contract (10-post-production-pipeline.md §2) now allows exactly
+ * one place for derived files. Override with GASPOL_TMP_DIR when the output is not under a
+ * project's `vo/`.
+ */
+export function tmpDirFor(outPath) {
+  return process.env.GASPOL_TMP_DIR ?? path.join(path.dirname(outPath), "..", ".tmp");
+}
+
 export const spansWarning =
   "converting the WHOLE track: every voice on it becomes the target voice, not just the " +
   "character you meant. If a second person speaks in this clip, pass --spans with that " +
@@ -208,7 +219,7 @@ export async function convert({
 
   log(`  ${spansWarning}`);
 
-  const workDir = path.join(path.dirname(outPath), ".work");
+  const workDir = tmpDirFor(outPath);
   const extracted = await extract(inputPath, path.join(workDir, `${path.basename(outPath, ".mp3")}.wav`));
 
   const sourceDuration = await durationOf(extracted);
@@ -315,7 +326,7 @@ export async function convertSpans({
   }
 
   const stem = path.basename(outPath, ".mp3");
-  const workDir = path.join(path.dirname(outPath), ".work");
+  const workDir = tmpDirFor(outPath);
   const bed = await extract(inputPath, path.join(workDir, `${stem}.bed.wav`));
 
   const bedDuration = await durationOf(bed);

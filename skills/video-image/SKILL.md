@@ -127,6 +127,15 @@ of referencing the file is the same Asset-First violation as Rule 10, applied to
 31. **(v2.2.0) NB2 Reference Uniqueness Filter HARD GATE (Phase 4A)** — Before generating any Phase 4A standalone asset, apply UNIQUENESS filter test: "Can a competent prompt writer describe this in 20 words and trust NB2 to render correctly?" YES → COMMON tier → SKIP, NB2 renders from text. NO → UNIQUE/AMBIGUOUS tier → GENERATE. COMMON examples to ALWAYS skip: generic phone-in-hand, kopi gelas, concrete pavement, plain office chair, ceiling fan, generic paper stack, plain wall, generic clipboard. UNIQUE examples to ALWAYS generate: faces, company logos, custom UI screens, industry-specific equipment (UHF RFID reader / fuel sensor / chassis ID plate), proprietary product hero shots, location landmarks. Combined filter: (UNIQUE/AMBIGUOUS) AND (recurring 2+ scenes OR critical-identity OR plot-anchor). Validator C2 enforces. See `global-promo-config.md` §26.
 32. **(v2.2.0) Max 5 Inline References HARD CAP (Phase 4B)** — Each Phase 4B scene prompt has MAX 5 inline references combined (faces + bodies + costumes + objects + environments + UI). REPLACES old "Max 3 identity locks per scene" rule. All inline with element described. Each filename max 1× per prompt. If >5 refs needed → split scene into 2 sub-scenes OR consolidate via composite asset (Tier 5+ per §18). Validator C3 enforces. See `global-promo-config.md` §26.4.
 
+23. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
+that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
+`.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
+copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
+subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
+to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,
+it replaces the folder — use `ffmpeg -vf scale`. Full contract:
+`reference/post-production/10-post-production-pipeline.md` §2.
+
 ---
 
 ## Workflow
@@ -281,7 +290,7 @@ After the asset library is approved (option A above), offer to render it through
         mcp__indusia-image-gen__generate_image(
           prompt=<full prompt body text>, model="nano-banana-2",
           aspect=<aspect>, resolution="2K", output_format="png",
-          output_dir="{output_folder}/.render-tmp", refs=[<resolved ref paths>])
+          output_dir="{output_folder}/.tmp", refs=[<resolved ref paths>])
       - ON success: move the returned local file to the prompt's `**Output →**`
         path (create parent directories first), then:
            python3 tools/renders.py {output_folder} record --json \
@@ -432,7 +441,7 @@ FOR each batch (ACT or sub-batch):
         - ELSE call `mcp__indusia-image-gen__generate_image(prompt=<full
           prompt body>, model="nano-banana-2", aspect=<aspect>,
           resolution="2K", output_format="png",
-          output_dir="{output_folder}/.render-tmp", refs=[<resolved ref
+          output_dir="{output_folder}/.tmp", refs=[<resolved ref
           paths>])`. Success → move the returned local file to the
           `**Output →**` path (create parents first), then
           `python3 tools/renders.py {output_folder} record --json '{...
