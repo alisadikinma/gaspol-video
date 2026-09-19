@@ -116,6 +116,82 @@ needed them are listed rather than silently dropped from the edit.
 
 ---
 
+## 8. Overlays over live action (v3.2.1)
+
+An overlay that decorates a real clip has two failure modes that a shot rendered in isolation never
+shows. Both cost a full re-render of the scene to discover.
+
+### An embedded clip is a COPY, and it goes stale
+
+An overlay that plays another clip inside itself — a picture-in-picture callback, a "what you just
+saw" bubble — reads a static file:
+
+```tsx
+<OffthreadVideo src={staticFile('video/s01.mp4')} muted />
+```
+
+`shots/public/video/s01.mp4` is a **copy**, made once. Re-rendering `clips/scene-01.mp4` does not
+touch it, and Remotion has no way to know. The overlay keeps playing the old take, silently, and the
+group ships with a corrected face in the main picture and the rejected face in the bubble.
+
+**Rule: a scene that is embedded in an overlay is never re-rendered alone.** Every re-render runs
+the whole chain:
+
+```bash
+# 1. which overlays embed a clip at all?
+grep -rl "staticFile('video/" shots/src
+
+# 2. rebuild the embedded copy from the NEW composited clip
+ffmpeg -i clips/_ov/scene-01.mp4 \
+  -filter_complex "[0:v]trim=0:5.3,setpts=PTS-STARTPTS,scale=960:540,\
+tpad=stop_mode=clone:stop_duration=1.8,fps=30[v]" \
+  -map "[v]" -an -c:v libx264 -crf 20 -pix_fmt yuv420p shots/public/video/s01.mp4
+
+# 3. re-render the overlay, re-composite the scene that uses it, re-cut the group
+```
+
+Trim the copy to the span that is worth replaying and clone the last frame to cover the rest of the
+bubble's life. `startFrom` pointing into a span the new, shorter clip no longer has renders black.
+
+### Never track a prop that a human hand is holding
+
+Registering an overlay to a moving object in a handheld shot does not work, and the effort spent
+proving that is not recoverable. What was tried, in order, on one phone screen:
+
+| Attempt | Result |
+|---|---|
+| Per-frame bright-blob tracker driving the overlay corners | Overlay jitters — "layarnya gerak-gerak" |
+| Static measured box, averaged over the clip | Fits at one moment, floats at every other |
+| Enlarging the box to cover tracking error | The clip's own screen glow leaks out around the edge |
+
+The fix is not a better tracker. **Stage the shot so the surface never faces camera** — turn the
+phone toward the actor's face — and put the content in a card in free screen space beside them. The
+card is legible, it holds still, and it survives the actor moving.
+
+Corollary: decide this at the KEYFRAME, not in post. A keyframe with the screen facing camera has
+already committed the scene to a problem post cannot solve.
+
+### Rendering when the workspace has no `tsconfig.json`
+
+```bash
+npx remotion render src/index.ts Ov02 out/Ov02.mov
+# Could not find a tsconfig.json file in your project. Did you delete it?
+```
+
+The CLI requires it; the programmatic bundler in the scaffold does not. **It exits non-zero and
+leaves the previous `out/*.mov` in place**, so a pipeline that does not check the exit code happily
+composites the stale overlay. Use the scaffold's own renderer, which also picks the right codec per
+shot:
+
+```bash
+node scripts/render-all.mjs Ov02      # one shot
+node scripts/render-all.mjs           # all of them
+```
+
+Then confirm the file's mtime actually moved before compositing it.
+
+---
+
 ## Style presets
 
 `brand.json` fixes the project's own palette (`background`, `ink`, `inkSoft`, `accent`, fonts) — see

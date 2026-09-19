@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   EM_DASH_MESSAGE,
   buildItems,
+  parseCastProfile,
   synthesize,
 } from "../../tools/gen_vo.mjs";
 
@@ -210,4 +211,36 @@ test("HTTP 429 is retried with backoff before giving up", async () => {
     assert.ok(attempts >= 3);
     assert.equal(result.items.length, 2);
   });
+});
+
+// --- parseCastProfile: two silent-failure regressions from catalog-4 (v3.2.1) ---
+
+test("parseCastProfile accepts a VOICE heading without the trailing colon", () => {
+  const md = [
+    "## Character 1: Narator (`cast-c1`)",
+    "",
+    "### VOICE",
+    "provider: elevenlabs",
+    "voice_env: ELEVENLABS_VOICE_C1",
+    "settings: stability=0.10, speed=1.12",
+    "",
+  ].join("\n");
+  const cast = parseCastProfile(md);
+  assert.equal(cast.c1?.voice_env, "ELEVENLABS_VOICE_C1");
+  assert.equal(cast.c1?.settings.speed, 1.12);
+});
+
+test("parseCastProfile takes the slot from the heading, not from a filename in the body", () => {
+  const md = [
+    "## Character 5: Kawan sopir (`cast-c5`)",
+    "",
+    "Wears the same jacket as `cast-c3-costume.png`.",
+    "",
+    "### VOICE:",
+    "voice_env: ELEVENLABS_VOICE_C5",
+    "",
+  ].join("\n");
+  const cast = parseCastProfile(md);
+  assert.equal(cast.c5?.voice_env, "ELEVENLABS_VOICE_C5");
+  assert.equal(cast.c3, undefined, "character 5 must not bind to slot c3");
 });

@@ -14,6 +14,19 @@ Read with `10-post-production-pipeline.md` (folder contract, `audio-plan.json` s
 One per cast member who speaks. Lives in `cast-profile.md`, written by the Phase 1 cast builder or
 added in Phase 5 when a character turns out to have a line.
 
+**Two shape rules the parser depends on** (v3.2.1 — both were real silent failures):
+
+1. **The slot comes from the block HEADING**, so every character heading names its slot:
+   `## Character 5: Kawan sopir (\`cast-c5\`)`. A heading without it falls back to the first
+   `cast-cN` string anywhere in the block — which, in a block mentioning
+   `cast-c3-costume.png`, bound character 5's line to character 3's voice. No error, just the
+   wrong voice.
+2. **`VOICE` sits alone on its own line**, with or without the colon. Anything else on that
+   line and the block is skipped — silently, for that character only.
+
+A profile that parses to zero voices now warns at load time (`cast-profile.md parsed to 0 voices`)
+instead of surfacing later as `cast c1 has no VOICE: block`.
+
 ```markdown
 VOICE:
   provider: elevenlabs
