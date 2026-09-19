@@ -92,6 +92,15 @@ NEVER load the storytelling files or the NB2 guide. Neither applies after the cl
 6. **Degradation is loud.** A missing binary or key costs one capability, says which, and the phase
    continues.
 
+7. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
+that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
+`.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
+copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
+subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
+to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,
+it replaces the folder — use `ffmpeg -vf scale`. Full contract:
+`reference/post-production/10-post-production-pipeline.md` §2.
+
 ---
 
 ## Kelompok mode — the seven steps

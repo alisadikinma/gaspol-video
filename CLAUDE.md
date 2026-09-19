@@ -603,8 +603,27 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.1.0
-**Last Updated:** 2026-09-13
+**Version:** 3.3.0
+**Last Updated:** 2026-09-20
+
+### v3.3.0 Changelog
+
+- **Folder contract is now enforceable, not implied.**
+  `reference/post-production/10-post-production-pipeline.md` §2 gained §2.1-§2.3: nine folders and
+  no others, variants distinguished by a filename suffix instead of a new subfolder, `.tmp/` for
+  every derived file, `_arsip/` for rejected paid artefacts. The same rule is a numbered Hard Rule
+  in `video-image`, `video-gen`, `video-explainer` and `video-post`. Written after a project
+  reached 25 folders — seven of preview JPEGs, seven of "temporary" copies nobody deleted, and
+  three differently named archives — and the user could no longer tell what was safe to delete.
+- **MCP renders land in `.tmp/`, not `.render-tmp/`.** One scratch folder, and it is the one the
+  contract already allows anyone to delete.
+- **`voice_changer.mjs` writes its intermediate wav/mp3 to the project's `.tmp/`**, not to a
+  `.work/` folder beside the output. `GASPOL_TMP_DIR` overrides it when the output is not under a
+  project's `vo/`.
+- **Never `sips --out <folder>/<file>`** — documented in the contract after sips twice replaced the
+  target FOLDER with a single image, destroying every preview in it. Use `ffmpeg -vf scale`.
+- **Version gates fixed.** `tests/consistency/*` still demanded 3.2.0 after the 3.2.1 release, so
+  `tests/run.sh` had been failing on `main`. Both gates now track this release.
 
 ### v3.1.0 Changelog
 

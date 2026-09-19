@@ -12,7 +12,7 @@ if [ "$got_name" != "$want_name" ]; then
   fail=1
 fi
 
-want_version="3.2.0"
+want_version="3.3.0"
 got_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/.claude-plugin/plugin.json")"
 if [ "$got_version" != "$want_version" ]; then
   echo "FAIL plugin version: got $got_version, want $want_version"

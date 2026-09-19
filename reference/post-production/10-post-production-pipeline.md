@@ -78,7 +78,62 @@ Everything Phase 6 reads and writes lives under the project's `{output_folder}`.
     subtitle-plan.json
     music-plan.json
   output/                Phase 6   kelompok-K{N}.mp4, master.mp4, master.srt, master-mixed.mp4
+  _arsip/                any phase  rejected or superseded paid artefacts, kept with their reason
+  .tmp/                  any phase  every derived file; safe to delete at any time
 ```
+
+### 2.1 These folders are the whole contract. Do not create others.
+
+Set 2026-09-20, after a project reached 25 folders: seven held preview JPEGs, seven held
+"temporary" copies nobody deleted, and rejects were spread across three differently named
+archives. The user could no longer tell which folder was safe to delete, which is the real cost
+— not the disk space.
+
+**A new folder needs the user's approval.** When you need somewhere to put a file, pick one of
+the folders above. If none fits, the file is almost certainly derived, so it belongs in `.tmp/`.
+
+**Variants are distinguished by a FILENAME SUFFIX inside the existing folder, never by a new
+subfolder:**
+
+| Instead of | Write |
+|---|---|
+| `keyframes/_up/S05.png` | `keyframes/S05-1920.png` |
+| `keyframes/_small/S05.jpg` | `.tmp/S05.jpg` |
+| `clips/_ov/scene-05-ov.mp4` | `.tmp/scene-05-ov.mp4` |
+| `clips/_final/scene-05.mp4` | `.tmp/scene-05-jadi.mp4` |
+| `clips/_cek/s05-4.0.jpg` | `.tmp/s05-4.0.jpg` |
+| `keyframes/_gen/DITOLAK-S07-....png` | `_arsip/keyframe-DITOLAK-S07-....png` |
+| `clips/_tidak-dipakai/scene-07-v1.mp4` | `_arsip/klip-scene-07-v1.mp4` |
+
+Suffixes already in use: `-1920` (upload copy), `-ov` (clip plus overlay), `-jadi` (clip plus
+overlay plus mixed audio), `-clean` (isolated dialogue), `-v2`/`-v3` (version).
+
+### 2.2 `.tmp/` and `shots/out/` are the only deletable folders
+
+Everything in them rebuilds with no API spend:
+
+```bash
+cd shots && node scripts/render-all.mjs     # overlays -> shots/out/
+python3 work/rakit_*.py                     # composite + audio mix -> .tmp/ and output/
+```
+
+So never leave the ONLY copy of anything in `.tmp/`. Anything that cost money — images from an
+image API, clips from a video platform, mp3s from ElevenLabs — belongs in `keyframes/`, `clips/`,
+`ref/`, `vo/`, or `_arsip/`.
+
+`_arsip/` holds paid artefacts that were rejected. Deleting one means paying again to compare
+against it later, so delete only when the user says to. Every archived name states the REASON it
+was rejected, which is what makes the archive worth keeping at all.
+
+### 2.3 Two mechanical rules that caused real damage
+
+- **MCP renders write to `.tmp/`.** `generate_image` and `generate_video` take `output_dir` — pass
+  `{output_folder}/.tmp`. Both create their own `image/` or `video/` subfolder underneath; as soon
+  as the file lands, move it to its permanent home under a readable name and remove that subfolder.
+  Never point `output_dir` at `keyframes/` or `clips/` directly.
+- **Never `sips --out <folder>/<file>`.** Twice on 2026-09-19 sips replaced the target FOLDER with
+  a single image file, destroying every preview inside it (`keyframes/_small`, then
+  `keyframes/_up`). Use `ffmpeg -i in.png -vf scale=1920:-2 out.png` for every resize.
 
 Naming rules that other tools depend on:
 

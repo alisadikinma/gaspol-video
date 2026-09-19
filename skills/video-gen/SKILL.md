@@ -91,6 +91,15 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or NB2-
 18. **Sequential scene dependency** — Scene N+1 start frame MUST reference Scene N end frame (`ref/scene-{NN-1}-end.png`) as upstream continuity anchor. Upload table MUST include previous scene output. No exceptions for sequential timeline scenes.
 19. **All AskUserQuestion interactions** — NEVER ask questions as plain text, ALWAYS use AskUserQuestion tool with selectable options
 
+20. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
+that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
+`.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
+copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
+subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
+to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,
+it replaces the folder — use `ffmpeg -vf scale`. Full contract:
+`reference/post-production/10-post-production-pipeline.md` §2.
+
 ---
 
 ## Workflow
@@ -421,7 +430,7 @@ FOR each batch (ACT or sub-batch):
         - call `mcp__indusia-video-gen__generate_video(prompt=<full VEO
           prompt>, model="veo-3.1-fast", resolution=<scene resolution>,
           duration=<duration_s>, aspect=<aspect>, mode_image=<mapped>,
-          output_dir="{output_folder}/.render-tmp", refs=[<absolute keyframe
+          output_dir="{output_folder}/.tmp", refs=[<absolute keyframe
           paths>])`.
         - Success → move the returned local file to
           `{output_folder}/clips/scene-{NN}.mp4` (create parents first), then
