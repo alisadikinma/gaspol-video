@@ -419,6 +419,37 @@ rendering. The page/word/highlight arithmetic moves into `captionPages.mjs`, whi
 imports directly; the component stays a thin renderer of what that module returns. Same reasoning
 as `tools/` being stdlib-only — the testable part must not need the heavy runtime.
 
+**`captionPages.mjs` MUST NOT import `@remotion/captions`** (decided 2026-09-20, after a first
+attempt did). This repo has no `node_modules` and deliberately no npm — `tests/run.sh` says
+*"no pytest and no npm here on purpose"*, and all 35 existing node tests run under bare
+`node --test`. A tested module that imports a package makes the suite unrunnable on a clean
+machine. The split is therefore:
+
+| Lives in | Does what | Tested by |
+|---|---|---|
+| `templates/remotion/lib/captionPages.mjs` | `toCaptionRecords(scene)` — validate words and spans, emit `Caption` records with their leading space. `partitionPages(pages, scene)` — map the library's pages back to per-word records carrying `highlight: true/false`. **Zero imports.** | `node --test`, no install needed |
+| `templates/remotion/Captions.template.tsx` | calls `createTikTokStyleCaptions()` between those two functions | the scaffolded workspace, where the dependency is installed |
+
+The `.tsx` is a template copied into a project's `shots/` workspace by `scaffold.mjs`; it is never
+executed by this repo's own suite, so its import of the library costs nothing here.
+
+**Two contrast thresholds, not one** (decided 2026-09-20, with measured numbers):
+
+| What | Pairing | Threshold | Why |
+|---|---|---|---|
+| Ordinary caption text | `ink` on `background` | **4.5:1** | the existing `MIN_CONTRAST_RATIO` in `burn_subs.py`, unchanged |
+| Text on the highlight box | the better of `ink` / `background`, against `accent` | **3:1** | WCAG AA's large-text threshold. Caption text here is never small: the floor is 32px and the active line renders far above it |
+
+`check_brand_contrast(brand)` measures `ink` vs `background` at 4.5, then picks whichever of `ink`
+and `background` scores higher against `accent` and requires 3:1 of it. The chosen token name goes
+into the plan as `style.highlight_text_token` (`"ink"` or `"background"`), so the component reads a
+decision rather than making one, and the same brand always renders the same way.
+
+Measured against the `brand.json` these projects actually ship — `ink` `#1A1A1A`, `background`
+`#FAF8F4`, `accent` `#6366F1`: `ink`/`background` 16.41, `background`/`accent` 4.21,
+`ink`/`accent` 3.90. So the highlight text is `background`, at 4.21 — over 3:1, and under the 4.5
+a single blanket threshold would have demanded. That case is the reason the split exists.
+
 **What this phase owes:**
 1. *Happy path* — plan JSON in, pages with per-word timings and highlight flags out, rendered by a
    composition that obeys the `Shot.template.tsx` rules.
@@ -426,10 +457,8 @@ as `tools/` being stdlib-only — the testable part must not need the heavy runt
    fall outside the word list.
 3. *Edge cases* — a page with one word; a highlight covering the whole page; a word with
    `end_ms <= start_ms`; more than three lines' worth of words on a page; empty `scenes`.
-4. *Tests* — failing node test first; plus a Python contrast test that runs
-   `burn_subs.check_contrast(brand["ink"], brand["background"])` and
-   `check_contrast(brand["ink"], brand["accent"])` so an unreadable highlight is refused before a
-   render is paid for.
+4. *Tests* — failing node test first; plus a Python contrast test covering both thresholds above,
+   so an unreadable caption or highlight is refused before a render is paid for.
 5. *Observability* — `captionPages.mjs` throws with the scene number and word index in the message,
    never a bare `undefined`.
 
@@ -458,11 +487,9 @@ space — omitting it merges the whole page into one run.
    `templates/remotion/scaffold.mjs`.
 9. Write `templates/remotion/Captions.template.tsx` to the design deliverable above, importing
    `brand.json` and `./lib/captionPages.mjs`.
-10. Write failing test `tests/py/test_caption_contrast.py` asserting a brand whose `ink` and
-    `accent` are too close raises `StyleError` via `burn_subs.check_contrast`. Expected error:
-    `ModuleNotFoundError: No module named 'tools.caption_contrast'` — or, if implemented as a
-    function inside `gen_captions.py`, `AttributeError: module 'tools.gen_captions' has no
-    attribute 'check_brand_contrast'`.
+10. Write failing test `tests/py/test_caption_contrast.py` for `check_brand_contrast(brand)`,
+    covering both thresholds and the returned `highlight_text_token`. Expected error:
+    `AttributeError: module 'tools.gen_captions' has no attribute 'check_brand_contrast'`.
 11. Run `bash tests/run.sh`, confirm it fails for that reason, then implement
     `check_brand_contrast(brand)` in `tools/gen_captions.py` and confirm pass.
 12. Commit: `feat(GV-7): kinetic caption composition and page math`
@@ -477,7 +504,9 @@ space — omitting it merges the whole page into one run.
 - [ ] `grep -nE 'useState|useEffect|setTimeout|Math\.random' templates/remotion/Captions.template.tsx`
       returns nothing
 - [ ] `compositionConfig.id` is `KineticCaptions`, PascalCase, no hyphen or underscore
-- [ ] Brand contrast below 4.5:1 is refused before rendering
+- [ ] `captionPages.mjs` has ZERO imports — `grep -nE '^import|require\(' templates/remotion/lib/captionPages.mjs` returns nothing
+- [ ] Caption text below 4.5:1 and highlight text below 3:1 are both refused before rendering
+- [ ] `work/caption-plan.json` carries `style.highlight_text_token`, so the component reads the choice rather than making it
 - [ ] No placeholder/TODO comments in new code
 
 ---
