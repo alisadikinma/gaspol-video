@@ -134,13 +134,14 @@ No placeholders anywhere. Every "No" row is built as a real, working integration
 |---|---|---|---|
 | A | keyword span scoring, pure functions | n/a (no UI) | unit + static |
 | B | `tools/gen_captions.py`, plan IO | n/a (no UI) | unit + static |
+| B2 | `align_to_script()` — script text, recognizer timing | n/a (no UI) | unit + static |
 | C | `Captions.template.tsx` + page math module | caption layout: 3-line stack, active line full opacity, others dimmed, highlight box grows from zero width — all tokens from `brand.json` | unit + node test + contrast check |
 | D | `TitleCard.template.tsx` + `Title Card` column | title card: accent eyebrow over display title, per-line rise+fade, 2.5s hold, side declared in the plan | unit + consistency contract |
 | E | `motion` field + ffmpeg filter | n/a (no UI) | unit + static |
 | F | `tools/plan_motion.py` | n/a (no UI) | unit + static |
 | G | docs sync, version 3.5.0 | n/a | full suite |
 
-Phases A→B→C are sequential. D depends on B and C. E and F are independent of A–D and may run in
+Phases A→B→B2→C are sequential. D depends on B and C. E and F are independent of A–D and may run in
 parallel with them. G is last.
 
 ---
@@ -305,6 +306,90 @@ yields one `number-unit` span covering `1 sampai 4 tahun`, not three spans.
 - [ ] Plan is built from `vo/vo-manifest.json` and `gen_subs` imports — no duplicated AssemblyAI code
 - [ ] Two consecutive runs produce byte-identical `scenes`
 - [ ] A scene with no timing source appears in `untimed`, never with guessed timings
+- [ ] No placeholder/TODO comments in new code
+
+---
+
+### Phase B2: align recognizer timings to script words
+
+**Estimated time:** 15 minutes
+
+**Files:**
+- Modify: `tools/gen_captions.py`
+- Test: `tests/py/test_gen_captions.py` (extend)
+
+**Why this phase exists.** Phase B wired the AssemblyAI branch to use the recognizer's own words —
+text and timing together. That breaks a contract stated in three places: this plan's Data
+Integration Map (*"Text never comes from the recognizer"*), the docstring of `tools/gen_subs.py`
+(*"caption text always comes from the script. Timing may come from a recognizer, the text never
+does"*), and Pass 4.1 of `skills/video-post/SKILL.md`. `gen_subs.py` never needed a per-word
+answer — it only borrows cue boundaries — so the plan never specified one. That omission is the
+defect this phase closes. It matters most exactly where it bites: platform-spoken dialogue is where
+a recognizer mishears product names and numbers, and those are the words the highlight rules single
+out for the biggest treatment on screen.
+
+**The contract, verbatim:**
+
+```python
+def align_to_script(asr_words, script_text):
+    """asr_words: [{"text", "start_ms", "end_ms"}] from the recognizer.
+    script_text: this scene's narration, as written in av-script.md.
+
+    Returns one record per SCRIPT word, in script order, shaped
+    [{"text", "start_ms", "end_ms"}]. `text` is ALWAYS the script's word,
+    never the recognizer's. Timing comes from the matched recognizer word;
+    an unmatched script word is given a timing linearly interpolated between
+    its nearest timed neighbours."""
+```
+
+Matching uses `difflib.SequenceMatcher` over both token lists normalised to lowercase with
+surrounding punctuation stripped. `difflib` is stdlib — no dependency is added, and the repo's
+stdlib-only rule holds.
+
+**What this phase owes:**
+1. *Happy path* — recognizer and script agree; every script word takes its matched timing.
+2. *Error paths* — empty `asr_words`; empty or whitespace-only `script_text`. Both raise
+   `CaptionPlanError` naming the scene.
+3. *Edge cases* — recognizer mishears one word (script word still displayed, timing kept); script
+   has a word the recognizer dropped (interpolated); recognizer heard a word the script does not
+   have (dropped entirely); unmatched words at the very start and at the very end (clamped to the
+   first and last recognizer timings, not extrapolated past them); zero words matched anywhere
+   (timings spread evenly across the recognizer's total span); punctuation-only token in the script.
+4. *Tests* — failing test first, then a covering case for every item above.
+5. *Observability* — the plan records `"aligned": true` on any scene whose words went through this
+   path, so a timing that looks odd is traceable to alignment rather than to the recognizer.
+
+**Steps:**
+1. Write failing test `test_asr_text_never_reaches_the_plan` asserting that for a scene whose
+   recognizer output says `"Sistem ANPR"` while the script says `"Sistem ANPR-nya"`, the written
+   plan's words carry the SCRIPT spelling and the recognizer's timings.
+   Expected error: `AttributeError: module 'tools.gen_captions' has no attribute 'align_to_script'`
+2. Run `bash tests/run.sh py`, confirm it fails for that reason.
+3. Implement `align_to_script()` and call it on the AssemblyAI branch in `build_caption_plan()`.
+4. Run `bash tests/run.sh py`, confirm pass.
+5. Add test: empty `asr_words` raises `CaptionPlanError` naming the scene.
+6. Add test: whitespace-only `script_text` raises `CaptionPlanError` naming the scene.
+7. Add test: a script word the recognizer dropped gets a timing strictly between its neighbours.
+8. Add test: a recognizer word absent from the script does not appear in the output at all.
+9. Add test: unmatched script words at the head and tail clamp to the first and last recognizer
+   timings — nothing is timed before the recognizer's first word or after its last.
+10. Add test: zero matches anywhere spreads timings evenly across the recognizer's span, and the
+    word count still equals the script's word count.
+11. Add test: a scene that went through alignment carries `"aligned": true`; a scene timed from
+    `vo-manifest.json` does not carry the key.
+12. Add test: the highlight spans are computed from the ALIGNED words, so a span's indices address
+    script words — assert a `number-unit` span lands on the script's number, not the recognizer's.
+13. Run `bash tests/run.sh`, confirm all three groups pass.
+14. Commit: `fix(GV-7): caption text always comes from the script, never the recognizer`
+
+**Verification:**
+- [ ] static: `python3 -m compileall -q tools` passes
+- [ ] lint: none configured in this repo — no linter check applies to this phase
+- [ ] unit: `bash tests/run.sh` passes
+- [ ] No recognizer-supplied string reaches `work/caption-plan.json` — every `text` value traces to
+      `av-script.md`
+- [ ] `difflib` is the only new import; no third-party dependency added
+- [ ] A scene aligned this way carries `"aligned": true`
 - [ ] No placeholder/TODO comments in new code
 
 ---
