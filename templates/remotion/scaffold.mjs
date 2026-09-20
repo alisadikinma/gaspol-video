@@ -33,6 +33,7 @@ const PACKAGE_JSON = {
     "@remotion/cli": "^4.0.0",
     "@remotion/bundler": "^4.0.0",
     "@remotion/renderer": "^4.0.0",
+    "@remotion/captions": "^4.0.0",
     remotion: "^4.0.0",
     react: "^18.3.1",
     "react-dom": "^18.3.1",

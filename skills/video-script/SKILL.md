@@ -203,6 +203,19 @@ This decision happens here, before Phase 4A, so the app screen is produced once 
 `tools/gen_app_screen.py` and referenced everywhere it appears — never redrawn by NB2, which cannot
 render legible UI text.
 
+### Title Card per Scene (v3.5.0 — MANDATORY)
+
+Every scene row in `scene-plan.md` also carries a `Title Card`, placed right after `Screen Source`:
+`—`, `left: <eyebrow> / <title>`, or `right: <eyebrow> / <title>`. Apply the assignment rule in
+`reference/script-to-scene-bridge.md` > "Title Card — a topic marker per scene". In short: a scene
+gets a card when it opens an ACT or changes topic, at most one per ACT, and the side is declared —
+never guessed — so the card never sits over a speaking face.
+
+A card holds for 2.5s from its scene's start (clamped to the scene's own length when shorter).
+`tools/gen_captions.py` reads this column and pushes any caption words that would start inside that
+window to the end of the hold, so the card and the kinetic captions never compete for the same
+reading order.
+
 #### Step 3.1: Auto-Calculate Scene Decomposition
 
 Follow `script-to-scene-bridge.md` Section 1:

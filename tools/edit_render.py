@@ -16,6 +16,7 @@ Stdlib only. Degrades loudly when ffmpeg is missing.
 
 import argparse
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -33,6 +34,12 @@ PAD_WARN_S = 1.0
 
 VALID_KINDS = ("clip", "shot")
 VALID_PAD_MODES = ("freeze", "black")
+
+VALID_MOTION_KINDS = ("punch-in", "punch-out", "none")
+
+# Beyond this, 1080p platform-generated clips go visibly soft, which costs more than a
+# still frame does.
+MAX_ZOOM = 1.12
 
 
 class PlanError(Exception):
@@ -140,6 +147,8 @@ def load_plan(plan_path, project, check_durations=True):
                 f"{where}: pad_end_s {pad}s is over {PAD_WARN_S}s — a freeze that long reads as a stall"
             )
 
+        _check_motion(seg.get("motion"), where)
+
         if check_durations:
             actual = _probe_duration(src_path)
             if actual is not None and out_s > actual + AV_TOLERANCE_S:
@@ -148,6 +157,70 @@ def load_plan(plan_path, project, check_durations=True):
                 )
 
     return plan
+
+
+def _check_motion(motion, where):
+    """Validate a segment's `motion` field. None (absent or JSON null) is fine — the
+    field is additive, an old plan without it keeps working. Raises PlanError naming
+    `where` (the segment) for anything that cannot be rendered as written."""
+    if motion is None:
+        return
+    if not isinstance(motion, dict):
+        raise PlanError(f"{where}: motion must be an object, got {motion!r}")
+
+    kind = motion.get("kind")
+    if kind not in VALID_MOTION_KINDS:
+        raise PlanError(
+            f"{where}: unknown motion kind {kind!r}, expected one of {', '.join(VALID_MOTION_KINDS)}"
+        )
+    if kind == "none":
+        return
+
+    try:
+        frm = float(motion["from"])
+        to = float(motion["to"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise PlanError(f"{where}: motion.from/to missing or not a number") from exc
+
+    if not math.isfinite(frm) or not math.isfinite(to):
+        raise PlanError(f"{where}: motion.from/to must be finite numbers (from={frm}, to={to})")
+    if not (1.0 <= frm <= MAX_ZOOM):
+        raise PlanError(f"{where}: motion.from {frm} must be between 1.0 and {MAX_ZOOM}")
+    if not (1.0 <= to <= MAX_ZOOM):
+        raise PlanError(f"{where}: motion.to {to} must be between 1.0 and {MAX_ZOOM}")
+    if kind == "punch-in" and not (to > frm):
+        raise PlanError(f"{where}: punch-in requires to > from (from={frm}, to={to})")
+    if kind == "punch-out" and not (to < frm):
+        raise PlanError(f"{where}: punch-out requires to < from (from={frm}, to={to})")
+
+
+def _motion_filter(motion, duration_s, width, height):
+    """The zoom filter for one segment, or None when there is no motion (absent, JSON
+    null, or `kind: none`) — in which case the caller adds nothing and the chain stays
+    byte-identical to what this tool renders today.
+
+    Deliberately not ffmpeg's frame-quantized pan/zoom filter: that one rounds pan
+    position to whole pixels, so a slow move stutters. An earlier version of this
+    function animated `crop`'s `w`/`h` with a `t` expression instead — ffmpeg refuses
+    that outright, because `crop` evaluates `w`/`h` ONCE, at filter-configuration time,
+    where `t` does not exist yet; only `x`/`y` are per-frame there. `scale` is the
+    filter that accepts `eval=frame`, so the zoom happens there and `crop` then takes a
+    fixed, centred window out of the enlarged frame. `ceil(.../2)*2` keeps every
+    intermediate dimension even, which yuv420p requires.
+    """
+    if not motion or motion.get("kind") == "none":
+        return None
+
+    frm = float(motion["from"])
+    to = float(motion["to"])
+    # Rounded so plain values like 1.0 -> 1.08 don't pick up float-subtraction noise
+    # (1.08 - 1.0 == 0.08000000000000007) in the emitted expression.
+    delta = round(to - frm, 6)
+    zoom = f"({frm}+({delta})*t/{duration_s})"
+    return (
+        f"scale=w='ceil({width}*{zoom}/2)*2':h='ceil({height}*{zoom}/2)*2':eval=frame,"
+        f"crop={width}:{height}"
+    )
 
 
 def build_commands(plan):
@@ -165,7 +238,11 @@ def build_commands(plan):
         pad = float(seg.get("pad_end_s", 0.0) or 0.0)
 
         vf = f"scale={width}:{height}:force_original_aspect_ratio=decrease," \
-             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,fps={plan.fps}"
+             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+        motion_filter = _motion_filter(seg.get("motion"), dur, width, height)
+        if motion_filter:
+            vf += "," + motion_filter
+        vf += f",fps={plan.fps}"
         if pad:
             # tpad holds the final frame (freeze) or appends black; audio is padded with
             # silence either way so the two streams stay the same length.

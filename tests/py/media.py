@@ -56,3 +56,33 @@ def duration_of(path, stream="v:0"):
     if not out or out[0] in ("", "N/A"):
         return None
     return float(out[0])
+
+
+def extract_frame(video_path, out_png, at_s=None, from_end_s=None):
+    """One frame, as a PNG. `at_s` seeks from the start; `from_end_s` seeks backward
+    from the end (use this for "the last frame" — seeking to the exact duration is
+    unreliable across containers)."""
+    args = [FFMPEG, "-y", "-v", "error"]
+    if from_end_s is not None:
+        args += ["-sseof", f"-{from_end_s}"]
+    else:
+        args += ["-ss", str(at_s if at_s is not None else 0)]
+    args += ["-i", str(video_path), "-frames:v", "1", str(out_png)]
+    _run(args)
+    return str(out_png)
+
+
+def psnr(image_a, image_b):
+    """Average PSNR (dB) between two same-size images, via ffmpeg's own `psnr` filter.
+    High means near-identical; low means the picture genuinely changed."""
+    proc = subprocess.run(
+        [FFMPEG, "-v", "info", "-i", str(image_a), "-i", str(image_b),
+         "-lavfi", "psnr", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    for line in proc.stderr.splitlines():
+        if "average:" in line:
+            for token in line.split():
+                if token.startswith("average:"):
+                    return float(token.split(":", 1)[1])
+    raise RuntimeError(f"psnr: no average found in ffmpeg output:\n{proc.stderr[-800:]}")
