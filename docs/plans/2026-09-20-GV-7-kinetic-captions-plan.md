@@ -618,12 +618,28 @@ same validate-before-ffmpeg pass that already exists.
 where `F` is `from`, `T` is `to`, `D` is the segment duration, `W`/`H` the output size:
 
 ```
-scale=iw*2:ih*2,crop=w='iw/2/(F+(T-F)*t/D)':h='ih/2/(F+(T-F)*t/D)':x='(iw-ow)/2':y='(ih-oh)/2',scale=W:H
+scale=w='ceil(W*(F+(T-F)*t/D)/2)*2':h='ceil(H*(F+(T-F)*t/D)/2)*2':eval=frame,crop=W:H
 ```
 
-The 2x upscale is what buys sub-pixel motion; it costs one 4K intermediate per segment at 1080p
-output, which is the price of not using `zoompan`. A segment with no motion keeps today's chain
-character for character.
+**Corrected 2026-09-20 after the first version was rejected by ffmpeg.** The original plan animated
+`crop`'s `w`/`h` with a `t` expression. ffmpeg refuses it:
+
+```
+Error when evaluating the expression 'ih/2/(1.0+(0.08)*t/2.0)'
+Failed to configure input pad on Parsed_crop_3
+```
+
+`crop` evaluates `w` and `h` ONCE, when the filter is configured, where `t` does not yet exist;
+only `x` and `y` are per-frame. `scale` is the filter that takes `eval=frame`, so the zoom happens
+there and `crop` takes a fixed centred window out of the enlarged frame. The `ceil(.../2)*2` keeps
+every intermediate dimension even, which `yuv420p` requires.
+
+Verified by rendering, not by reading: a 2s `testsrc` at 1920x1080 through this chain, compared
+against the same source. PSNR of the first frame (zoom 1.00) is **49.94** — identical but for
+encoder noise. PSNR of the last frame (zoom 1.08) is **6.82** — the picture genuinely moved. A dead
+zoom would leave both numbers high.
+
+A segment with no motion keeps today's chain character for character.
 
 **What this phase owes:**
 1. *Happy path* — a `punch-in` segment renders with the crop expression above.
@@ -633,7 +649,12 @@ character for character.
    (motion applies to the trimmed body, `tpad` still appends after); a zero-length segment; the
    field present but `null`.
 4. *Tests* — failing test first; a covering case for each; plus a regression test that a plan with
-   no `motion` produces a filter string identical to today's.
+   no `motion` produces a filter string identical to today's. **And one test that actually RUNS
+   ffmpeg**, added 2026-09-20 after string-only tests passed a filter ffmpeg rejects outright: it
+   renders a short synthetic clip through the motion chain and measures that the last frame differs
+   from the source while the first does not. It carries the repo's existing `@requires_ffmpeg`
+   guard, so a machine without ffmpeg skips it rather than failing. A filter that only has to match
+   a string is not tested.
 5. *Observability* — `--print` already exists on this tool and now shows the motion filter inline,
    so what ffmpeg will run is readable before it runs.
 
@@ -657,8 +678,15 @@ character for character.
 10. Add test: `motion` present alongside `pad_end_s` — the chain contains both the crop expression
     and `tpad`, in that order.
 11. Add test: `"motion": null` is treated as absent, not as malformed.
-12. Run `bash tests/run.sh`, confirm pass.
-13. Commit: `feat(GV-7): animated zoom via motion field in edit-plan`
+12. Write failing test `test_motion_actually_zooms_the_picture`, guarded by the repo's existing
+    `@requires_ffmpeg`: render a 2s synthetic clip through a `punch-in` segment, extract the first
+    and last frames, and assert the last frame's PSNR against the source is far lower than the
+    first's. Expected error before the filter is fixed: ffmpeg exits non-zero with
+    `Error when evaluating the expression`.
+13. Run `bash tests/run.sh py`, confirm it fails for that reason, then confirm it passes once the
+    `scale=...:eval=frame` chain is in place.
+14. Run `bash tests/run.sh`, confirm all three groups pass.
+15. Commit: `feat(GV-7): animated zoom via motion field in edit-plan`
 
 **Verification:**
 - [ ] static: `python3 -m compileall -q tools` passes
@@ -666,6 +694,7 @@ character for character.
 - [ ] unit: `bash tests/run.sh` passes
 - [ ] A plan with no `motion` field renders the byte-identical filter chain it renders today
 - [ ] `zoompan` appears nowhere in `tools/edit_render.py`
+- [ ] The motion chain has been RUN through ffmpeg, not only string-matched — the render test passes where ffmpeg exists and skips where it does not
 - [ ] Every invalid `motion` raises `PlanError` before ffmpeg is invoked
 - [ ] No placeholder/TODO comments in new code
 
