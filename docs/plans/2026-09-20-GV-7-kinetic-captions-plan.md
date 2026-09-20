@@ -151,6 +151,7 @@ parallel with them. G is last.
 
 **Files:**
 - Create: `tools/caption_keywords.py`
+- Modify: `CLAUDE.md` (Architecture table row for the new tool)
 - Test: `tests/py/test_caption_keywords.py`
 
 **What this phase owes (completeness ladder):**
@@ -198,8 +199,11 @@ yields one `number-unit` span covering `1 sampai 4 tahun`, not three spans.
    returned, no overlap in the output.
 8. Add test: a word record missing `"text"` raises `CaptionKeywordError` naming the index.
 9. Add test: span ending on the final word is returned with `end_word == len(words) - 1`.
-10. Run `bash tests/run.sh py`, confirm all pass.
-11. Commit: `feat(GV-7): keyword span scoring for kinetic captions`
+10. Add a `tools/caption_keywords.py` row to the `CLAUDE.md` Architecture table —
+    `tests/consistency/tools-index.sh` requires every `tools/*.py` basename to appear there, so the
+    suite is red until it does. Each phase lists its OWN tool; Phase G does not do this in bulk.
+11. Run `bash tests/run.sh`, confirm all three groups pass.
+12. Commit: `feat(GV-7): keyword span scoring for kinetic captions`
 
 **Verification:**
 - [ ] static: `python3 -m compileall -q tools` passes
@@ -217,6 +221,7 @@ yields one `number-unit` span covering `1 sampai 4 tahun`, not three spans.
 
 **Files:**
 - Create: `tools/gen_captions.py`
+- Modify: `CLAUDE.md` (Architecture table row for the new tool)
 - Test: `tests/py/test_gen_captions.py`
 
 **What this phase owes:**
@@ -288,8 +293,10 @@ yields one `number-unit` span covering `1 sampai 4 tahun`, not three spans.
    (`max(1, 3 // 4) == 1`).
 10. Add test: missing `vo/vo-manifest.json` exits non-zero with a message naming the file.
 11. Add test: a manifest that is not valid JSON raises with the filename in the message.
-12. Run `bash tests/run.sh py`, confirm all pass.
-13. Commit: `feat(GV-7): caption plan builder with reusable, deterministic output`
+12. Add a `tools/gen_captions.py` row to the `CLAUDE.md` Architecture table, for the same reason
+    as Phase A step 10.
+13. Run `bash tests/run.sh`, confirm all three groups pass.
+14. Commit: `feat(GV-7): caption plan builder with reusable, deterministic output`
 
 **Verification:**
 - [ ] static: `python3 -m compileall -q tools` passes
@@ -556,6 +563,7 @@ character for character.
 
 **Files:**
 - Create: `tools/plan_motion.py`
+- Modify: `CLAUDE.md` (Architecture table row for the new tool)
 - Test: `tests/py/test_plan_motion.py`
 
 **Why a tool and not a skill instruction:** Pass 2 authors `work/edit-plan.json` by hand today. A
@@ -601,8 +609,10 @@ same movement.
 10. Add test: an empty segment list writes an unchanged plan and exits 0.
 11. Add test: `out_s <= in_s` raises naming the segment index.
 12. Add test: running twice is a no-op — the second run reports zero changes.
-13. Run `bash tests/run.sh`, confirm pass.
-14. Commit: `feat(GV-7): automatic motion planning for static shots`
+13. Add a `tools/plan_motion.py` row to the `CLAUDE.md` Architecture table, for the same reason as
+    Phase A step 10.
+14. Run `bash tests/run.sh`, confirm all three groups pass.
+15. Commit: `feat(GV-7): automatic motion planning for static shots`
 
 **Verification:**
 - [ ] static: `python3 -m compileall -q tools` passes
@@ -624,8 +634,6 @@ same movement.
   `gen_captions.py` and composites the caption track)
 - Modify: `skills/video-explainer/SKILL.md` (the two new compositions exist and how they are
   rendered)
-- Modify: `CLAUDE.md` (Architecture table gains `gen_captions.py`, `caption_keywords.py`,
-  `plan_motion.py` — required by `tests/consistency/tools-index.sh`)
 - Modify: `README.md` (v3.5.0 line, feature bullets, changelog section)
 - Modify: `.claude-plugin/plugin.json` (`"version": "3.5.0"`)
 - Modify: `tests/consistency/tools-index.sh` (`'"version": "3.5.0"'`)
@@ -673,11 +681,11 @@ python3 tools/composite.py overlay {master} {shot}.mov --at {at_s} --out-s {out_
    `tests/consistency/plugin-identity.sh` to `3.5.0`. The gate now demands a version the repo
    does not carry and names three tools `CLAUDE.md` does not list.
    Expected error: `FAIL plugin.json version is not 3.5.0`
-2. Run `bash tests/run.sh consistency`, confirm it fails for that reason and names
-   `tools/gen_captions.py`, `tools/caption_keywords.py` and `tools/plan_motion.py` as unlisted.
+2. Run `bash tests/run.sh consistency`, confirm it fails for that reason. The three new tools are
+   already listed in `CLAUDE.md` — each phase added its own row as it created the tool — so the
+   version needle is the only thing red here.
 3. Bump `.claude-plugin/plugin.json` to `3.5.0`.
-4. Add the three tools to the `CLAUDE.md` Architecture table.
-5. Run `bash tests/run.sh consistency`, confirm pass.
+4. Run `bash tests/run.sh consistency`, confirm pass.
 7. Write the Pass 2 and Pass 4.1 wiring into `skills/video-post/SKILL.md`, including the
    degradation table.
 8. Write the two new compositions into `skills/video-explainer/SKILL.md`.

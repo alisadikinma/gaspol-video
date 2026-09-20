@@ -62,6 +62,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/composite_logo.py`, `tools/thumb_scrim.py` | Deterministic thumbnail post-process — real logo paste, headline scrim (needs Pillow via `_venv.py`) |
 | `tools/yt_stats.py` | Pulls YouTube Data/Analytics stats into `packaging/calibration.json` (needs the venv + an OAuth client) |
 | `tools/burn_subs.py`, `tools/edit_render.py`, `tools/gen_sfx.py`, `tools/gen_subs.py`, `tools/mix_music.py`, `tools/mix_sfx.py`, `tools/probe_clips.py` | Existing stdlib-only Phase 6 tools (assembly, SFX, subtitles, music mix, clip QA) |
+| `tools/caption_keywords.py` | Scores key phrases in a narration line (number+unit, brand term, acronym, reversal word) for kinetic-caption highlighting |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
 | `templates/remotion/lib/{brand.ts,kit.tsx,browser.tsx,screencast.tsx}` | Generic Remotion components ported from `claude-youtube-editor`, brand tokens only from the project's `brand.json` |
 | `templates/remotion/scripts/{gen-registry,render-all,qa-frames,render-stills}.mjs` | Registry generation, render, QA-still and mock-screen-still scripts copied into every scaffolded workspace |
