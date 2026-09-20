@@ -200,9 +200,13 @@ def _motion_filter(motion, duration_s, width, height):
     byte-identical to what this tool renders today.
 
     Deliberately not ffmpeg's frame-quantized pan/zoom filter: that one rounds pan
-    position to whole pixels, so a slow move stutters. Instead: upscale 2x (buys
-    sub-pixel motion), `crop` with a `t` expression that walks from `from` to `to`
-    over the segment's duration, then scale back down.
+    position to whole pixels, so a slow move stutters. An earlier version of this
+    function animated `crop`'s `w`/`h` with a `t` expression instead — ffmpeg refuses
+    that outright, because `crop` evaluates `w`/`h` ONCE, at filter-configuration time,
+    where `t` does not exist yet; only `x`/`y` are per-frame there. `scale` is the
+    filter that accepts `eval=frame`, so the zoom happens there and `crop` then takes a
+    fixed, centred window out of the enlarged frame. `ceil(.../2)*2` keeps every
+    intermediate dimension even, which yuv420p requires.
     """
     if not motion or motion.get("kind") == "none":
         return None
@@ -212,11 +216,10 @@ def _motion_filter(motion, duration_s, width, height):
     # Rounded so plain values like 1.0 -> 1.08 don't pick up float-subtraction noise
     # (1.08 - 1.0 == 0.08000000000000007) in the emitted expression.
     delta = round(to - frm, 6)
-    denom = f"({frm}+({delta})*t/{duration_s})"
+    zoom = f"({frm}+({delta})*t/{duration_s})"
     return (
-        f"scale=iw*2:ih*2,"
-        f"crop=w='iw/2/{denom}':h='ih/2/{denom}':x='(iw-ow)/2':y='(ih-oh)/2',"
-        f"scale={width}:{height}"
+        f"scale=w='ceil({width}*{zoom}/2)*2':h='ceil({height}*{zoom}/2)*2':eval=frame,"
+        f"crop={width}:{height}"
     )
 
 
