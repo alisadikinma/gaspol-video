@@ -1,8 +1,32 @@
 # gaspol-video
 
-**v3.1.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production and packaging.
+**v3.4.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
 
 Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
+
+> **v3.4.0 — the plugin asks whether the shot is possible, not just whether the prompt is compliant.**
+> Nine defect classes measured on a real film — an impossible fuel filler, duplicated gates and
+> nozzles, an upside-down phone, an arrival framed exactly like a departure, two characters reading
+> as one person, overlays that cannot attach, broken pairs, a story claim that never closed, and
+> narration longer than its cut — all of them found by the client AFTER the render was paid for, and
+> all of them passing the existing compliance checks. Every Phase 4B and Phase 5 prompt now carries a
+> seven-question `PLAUSIBILITY:` block, the script passes a flow gate, and the reviewer runs checks
+> K1-K7 and C12. New `tools/track_screen.py` finds a screen's four corners by fitting its edges, and
+> `templates/remotion/lib/quad-screen.tsx` maps a panel onto them by homography, which is what a
+> panel on an off-axis monitor actually needs. Two defects became scripts instead of prose:
+> `check_vo_duration.py` and `check_overlay_strings.py`. See [v3.4.0 Changelog](#v340-changelog).
+
+> **v3.3.0 — folder contract.** Nine folders per project and no others; variants are distinguished
+> by a filename suffix, derived files live in `.tmp/`, rejected paid artefacts in `_arsip/` with the
+> reason in the name. Written after a project reached 25 folders and nobody could tell which were
+> safe to delete. See [v3.3.0 Changelog](#v330-changelog).
+
+> **v3.2.0 / v3.2.1 — the kelompok is the unit of delivery, and rejects stop repeating.** A Phase 5
+> batch (one ACT, max 5 scenes) is now carried all the way to a reviewable cut — VO, clips, voice
+> change, Remotion, kelompok cut, approval — before the next batch starts, so narration length and
+> overlay text are checked while a fix is still cheap. 3.2.1 adds the reject loop: after the SECOND
+> reject with the same defect, stop re-prompting and inspect the keyframe, the identity ref, then the
+> physics. See [v3.2.0 Changelog](#v320-changelog).
 
 > **v3.1.0 — the plugin can render, not just prompt.** Phase 4 and Phase 5 now offer to render the
 > approved batch in-session through the `indusia-image-gen` (`nano-banana-2`) and
@@ -149,6 +173,7 @@ Run any phase independently:
 | Voice | ElevenLabs `eleven_multilingual_v2` (TTS) and `eleven_multilingual_sts_v2` (voice changing) |
 | Caption Timing | AssemblyAI. Caption TEXT always comes from the script, never from the recognizer |
 | Assembly and Mix | ffmpeg — concat, sidechain duck, loudnorm, burned subtitles |
+| Screen-Attached Overlays | `tools/track_screen.py` (four-corner tracking) + CSS `matrix3d` homography in `QuadScreenTracked` |
 
 ## Key Features
 
@@ -161,13 +186,19 @@ Run any phase independently:
 - **Asset-First Production with Uniqueness Filter (v2.2.0+)** — recurring elements (2+ scenes) auto-detected and generated as standalone assets BUT filtered by uniqueness criterion (UNIQUE → generate, COMMON generic items → skip and render from text). Dependency graph and tier system. Max 5 inline references per Phase 4B prompt enforced.
 - **Film Directing Guide** — 180° rule, gaze direction, actor blocking, vocal performance direction, natural acting methodology, visual continuity supervision
 - **Reference Image Validation Gate** — Phase 3.5 hard block with 5 ref categories, cultural location research (5 facts per location), batch NB2 prompt generation for missing refs
-- **24 Reference Documents** — storytelling psychology, cinematography lookup, hook vault (100 hooks), CTA frameworks, directing grammar, platform adaptation, Seedance 2.0 production guide, and more
+- **37 Reference Documents** — storytelling psychology, cinematography lookup, hook vault (100 hooks), CTA frameworks, directing grammar, platform adaptation, Seedance 2.0 production guide, the physical plausibility gate, and more
 - **Scene Auto-Calculation** — optimal scene count from script beats with VEO mode mapping
 - **Dual Video Platform Support** — VEO 3.1 (primary) + Seedance 2.0 (alt) with platform-specific prompt generation, camera libraries, and audio specs
 - **Seedance 2.0 Integration** — native 2K resolution, @ reference system (9 images + 3 videos + 3 audio), dual-branch AV generation, 3-Angle Rule identity lock, 10+ lip-sync languages including Indonesian, timestamp-based multi-shot storyboarding
 - **Extension Strategy** — VEO Extend (up to ~148s chains) or Seedance @Video extend (unlimited chains, drift ~20th hop)
 - **"Last Frame Secret"** — seamless scene transitions by feeding Clip A's final frame into Clip B's NB2 start frame
 - **Image Review Before Video** — per-scene collaborative review where AI reads actual keyframe images (multimodal), compares with NB2 prompts, and brainstorms VEO approach with user before generating video prompts
+- **Physical Plausibility Gate (v3.4.0)** — seven questions answered per prompt (mechanism, count, flow, facing, pair, people, overlay surface), each answer also present in the prompt text. Catches impossible mechanisms, duplicated objects, flipped devices and unreadable direction before the render is paid for
+- **Flow Gate on the script (v3.4.0)** — a measurement claim must close its loop (reading before, event, reading after, resulting number), every scene answers "what changed?", and an object that is carried is visible in frame
+- **Screen-accurate overlays (v3.4.0)** — `track_screen.py` fits each screen edge to a line and intersects them for four per-frame corners; `QuadScreenTracked` maps the panel on by homography. Refuses to track a surface under 120px wide and tells you to use a floating card instead
+- **Per-Kelompok Delivery (v3.2.0)** — a batch of at most 5 scenes reaches a finished, narrated cut before the next batch starts, instead of rendering every clip and discovering audio problems at the end
+- **Reject Loop (v3.2.1)** — the second identical reject stops the prompting and sends you to the input: keyframe, identity ref, requested physics. Rejects are archived with the reason in the filename, so `ls _arsip/` reads as a defect histogram
+- **Folder Contract (v3.3.0)** — nine folders, no new ones; `.tmp/` for anything rebuildable, `_arsip/` for paid rejects
 - **Cross-File Validation** — unified validator with 5 targets: script, image, video, refs, all
 
 ## Storytelling Philosophy
@@ -175,6 +206,89 @@ Run any phase independently:
 > Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.
 
 The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
+
+## v3.4.0 Changelog
+
+**Physical Plausibility Gate.** New `reference/image-video-gen/10-physical-plausibility-gate.md`
+records nine defect classes measured on one production. Every one was found by the client after the
+render was paid for, and every one passed checks A-J: the prompts were compliant, the objects were
+impossible.
+
+| Class | What happened |
+|---|---|
+| Impossible mechanism | A fuel filler drawn on the SIDE of a truck tank (a full tank would spill); a closed cap on a tank being filled |
+| Duplicated objects | Two boom barriers and two RFID antennas at one gate; a nozzle that became two at 3.5s; a telephone handset that reappeared on a stapler |
+| Wrong orientation | A phone upside down, then screen face-down; a proof photo shot from the wrong side |
+| Unreadable direction | A truck arriving framed exactly like the truck leaving — the viewer cannot tell a return from a departure |
+| Characters read as one person | A male admin, back to camera, read as the protagonist from another angle. Rejected once, then repeated |
+| Overlay cannot attach | A panel mapped to an upright rectangle while the screen was a trapezoid (left edge 524px, right edge 375px); a guard-post screen measuring 60x45px |
+| Continuity break across a pair | The same sensor drawn with a different body; an evening clip drifting back to midday while its card says 16:05 |
+| Story logic hole | "Parts leave the store" with empty hands; a fuel sensor that never produced a consumption number |
+| Sound/picture mismatch | A number spoken at 6.34s while its text finished appearing at 6.8s; a 6.87s line cut into a 6.0s clip |
+
+- **Seven-question `PLAUSIBILITY:` block** on every Phase 4B keyframe and Phase 5 platform prompt:
+  MECHANISM, COUNT, FLOW, FACING, PAIR, PEOPLE, OVERLAY SURFACE. Each answer must also appear in the
+  prompt text — an answer only in the block is a note to nobody. `video-image` Rules 35-36,
+  `video-gen` Rules 21-22, `video-explainer` Rules 9-10.
+- **Flow gate on the script.** `video-script` gained four rules: close the loop (a measurement claim
+  needs reading-before, event, reading-after and a resulting number), every scene answers "what
+  changed?", a carried object is visible in frame, and repeated locations are recorded as PAIRS with
+  identical-vs-differ columns.
+- **Post-render frame audit.** Three frames per clip (≈1s, mid, 0.5s before the end) checked for
+  count, facing, mechanism, teleporting objects, direction and light drift. Count/facing/mechanism
+  failures re-render; a light-only drift is graded in assembly, not re-bought.
+- **Validator checks K1-K7 and C12** in `video-prompt-reviewer`.
+- **`tools/track_screen.py`** — four-corner screen tracking. Flood fill from a seed inside the
+  screen, each edge fitted by least squares over its middle 20-80%, the four lines intersected,
+  corners smoothed with an EMA, QA frames written with the corners drawn. Exits 2 when the screen is
+  under 120px wide (use a floating card) or when the fill covers less than 85% of the fitted quad
+  (the threshold is too high). Replaces four ad-hoc measuring attempts that each shipped a visibly
+  wrong panel: a bounding box on a trapezoid, corners taken as extreme points, a brightness
+  threshold of 210 that left the dim half of the screen full of holes, and corners measured once and
+  reused while the camera drifted.
+- **`templates/remotion/lib/quad-screen.tsx`** — `QuadScreen` and `QuadScreenTracked` map a panel
+  onto four (moving) corners by homography, expressed as CSS `matrix3d`.
+- **`tools/check_vo_duration.py`** fails when narration does not fit its cut, or when a cut runs on
+  in silence past a tolerance. **`tools/check_overlay_strings.py`** reads the rendered Remotion
+  components and fails on any on-screen string missing from the script's approved list, expanding
+  `X 1 of 6` … `X 6 of 6` series.
+
+## v3.3.0 Changelog
+
+- **Folder contract, enforceable rather than implied.** Nine folders per project — `ref/`
+  `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/` `.tmp/` — and no others without
+  the user's approval. Variants are distinguished by a filename suffix, never a new subfolder.
+  Written after a project reached 25 folders: seven of preview JPEGs, seven of "temporary" copies
+  nobody deleted, three differently named archives, and a user who could no longer tell what was
+  safe to delete. `reference/post-production/10-post-production-pipeline.md` §2.1-§2.3, plus a
+  numbered Hard Rule in `video-image`, `video-gen`, `video-explainer` and `video-post`.
+- **MCP renders land in `{output_folder}/.tmp`**, not `.render-tmp/`. `voice_changer.mjs` writes its
+  intermediates to the project's `.tmp/` (overridable with `GASPOL_TMP_DIR`), not to `vo/.work/`.
+- **Never `sips --out <folder>/<file>`** — it replaced the target FOLDER with a single image twice,
+  destroying every preview in it. Use `ffmpeg -vf scale`.
+
+## v3.2.0 Changelog
+
+- **The kelompok is the unit of delivery.** The Phase 5 batch (one ACT, at most 5 scenes) is carried
+  to a reviewable cut before the next batch starts: VO, clips, voice change, Remotion, kelompok cut,
+  approval. Previously every clip was finished first and Phase 6 started afterwards, so narration
+  length, overlay text and lip sync were only checked once all clips existed — and a fix meant
+  re-rendering clips already approved on picture alone. Passes 3-5 stay global and run once in
+  `/video-post --final` over the approved cuts. `work/kelompok.json` records the state per batch.
+
+### v3.2.1
+
+- **The reject loop.** After the SECOND reject carrying the same defect, stop prompting and inspect
+  the input in order: keyframe, identity ref, requested physics, then the prompt. Five revision
+  rounds on a real film spent nine video renders rediscovering four defects that were visible in
+  their source stills. Rejects are archived with the reason in the filename, so `ls _arsip/` reads
+  as a defect histogram. A regenerated keyframe invalidates its clip, voice change, composites and
+  cut.
+- **Three-angle face references** — a front-only reference survived five renders as "not similar at
+  all". Plus the 10 MB per-image API cap, and a keyframe inspection checklist: count the hands,
+  check every prop's state, reject anything the script did not ask for.
+- **"Motion VEO Will Not Do"** in the VEO guide: liquid transfer in a wide shot, fine hand
+  manipulation, a screen face-on in a handheld shot, one object doing two contradictory things.
 
 ## v3.1.0 Changelog
 
@@ -378,16 +492,20 @@ reference/
   creator-profile-system.md         # Creator/brand profile setup
   script-to-scene-bridge.md         # Script → scene → prompts bridge
   storytelling_script_gen/           # 12 storytelling & script reference files
-  image-video-gen/                  # 9 image & video production reference files
+  image-video-gen/                  # 13 image & video production reference files (incl. 10-physical-plausibility-gate.md)
   post-production/                  # 9 post-production & packaging reference files (incl. 18-screencast.md)
-tools/                              # 19 CLI tools: 17 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
+tools/                              # 22 CLI tools: 20 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
   _venv.py, setup.sh                # Dependency guard + venv builder for the 4 tools below that need libs
   gen_app_screen.py                 # capture (Playwright) / mock (Remotion renderStill) app screens
   composite_logo.py, thumb_scrim.py # Deterministic thumbnail post-process (needs Pillow)
   yt_stats.py                       # YouTube stats into packaging calibration (needs the venv + OAuth)
   renders.py                        # Render ledger shared by the Phase 4/5 render offers
+  track_screen.py                   # Four screen corners per frame, with QA frames and a width floor
+  check_vo_duration.py              # Fails when narration does not fit its cut, or the cut runs on silent
+  check_overlay_strings.py          # Fails on any on-screen string missing from the script's approved list
   gen_music.py, verify_render.py, clean_voice.py, make_stems.py  # stdlib + ffmpeg + one HTTPS call each
 templates/remotion/                 # Shot/screen templates, brand tokens, workspace scaffolder, QA scripts
+  lib/quad-screen.tsx               # QuadScreen / QuadScreenTracked — homography panel attachment
 media/sfx/library/palette.json      # SFX recipes. Clips generated per install, never committed
 media/music/library/palette.json    # Music moods mapped to the six tones
 docs/evals/                         # Routing fixtures and the Voice Changer probe measurements
