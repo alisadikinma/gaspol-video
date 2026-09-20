@@ -330,7 +330,20 @@ than the audio over it, regenerate when the gap is large. A pad above 1.0s is wa
 long freeze reads as a stall. **Never speed-ramp to fit** — it changes the motion the model produced
 and drags the audio with it.
 
-### 2.3 Print, audit, render
+### 2.3 Automatic motion (GV-7)
+
+```bash
+python3 tools/plan_motion.py {output_folder}
+```
+
+After the edit plan is authored and before it is rendered: fills the `motion` field on every
+static segment that would otherwise hold still for more than five seconds — a long segment
+becomes alternating punch-in/punch-out beats, a shorter one gets a single slow punch-in. A
+segment already carrying a hand-written `motion`, and any `kind: "shot"` segment (a Remotion
+shot already animates itself), are left exactly as they are. The report names every segment it
+changed and every one it skipped, and why.
+
+### 2.4 Print, audit, render
 
 ```bash
 python3 tools/edit_render.py {output_folder} --print   # the segment sheet + every ffmpeg command
@@ -423,8 +436,7 @@ Both are fail-soft. A caption or music failure warns and still ships the video.
 ### 4.1 Subtitles
 
 ```bash
-python3 tools/gen_subs.py {output_folder}          # cues + output/master.srt
-python3 tools/burn_subs.py {output_folder}         # burn them in
+python3 tools/gen_subs.py {output_folder}          # cues + output/master.srt, for the YouTube sidecar
 ```
 
 Caption text comes from the script, always. A recognizer supplies timing only, and only for dialogue
@@ -437,7 +449,47 @@ is listed as untimed rather than given invented timings.
 The `no subtitles` negative stays in every platform prompt and does not conflict — that stops the
 model drawing text into the picture. An em dash in a caption is correct; the ban covers spoken text.
 
-**Title card caption hold (GV-7).** A scene whose `scene-plan.md` Title Card column is not `—` holds
+**Kinetic captions and title cards (GV-7).** `output/master.srt` above stays — YouTube still needs
+that sidecar. What changes is what gets BURNED into the picture. When Node and the Remotion
+workspace are available, this word-by-word track ships instead of a plain burned-in line:
+
+```bash
+python3 tools/gen_captions.py {output_folder}      # work/caption-plan.json: words, highlights, title cards
+```
+
+Then, per scene that has an entry in `work/caption-plan.json`'s `scenes` or `title_cards`:
+
+1. Scaffold the workspace first, if this project has none yet (`/video-explainer` Step 4.5.1):
+   `node templates/remotion/scaffold.mjs {output_folder}`.
+2. Copy `templates/remotion/Captions.template.tsx` (or `TitleCard.template.tsx` for a scene in
+   `title_cards`) into `shots/src/shots/`. Edit its `SCENE`/`STYLE` (or `CARD`) constants from that
+   scene's entry in the plan, and `durationInFrames` to the scene's last word `end_ms` (or the
+   title card's hold) in frames. `compositionConfig.id` stays exactly `KineticCaptions` /
+   `TitleCard` — do not rename it.
+3. Render and composite over the master, then repeat for the next scene, each time feeding the
+   previous composite's output back in as `{master}`:
+
+```bash
+cd {output_folder}/shots
+node scripts/gen-registry.mjs
+node scripts/render-all.mjs KineticCaptions        # or TitleCard
+cd {output_folder}
+python3 tools/composite.py overlay {master} {shot}.mov --at {at_s} --out-s {out_s} -o {out}
+```
+
+For a scene's kinetic caption track, `{at_s}` is that scene's `offset_s` and `{out_s}` spans its
+last word. For a title card, `{at_s}` is the scene's own start and `{out_s}` is its
+`captions_held_until_s` (2.5, or the scene's own length when shorter) — see
+`templates/remotion/TitleCard.template.tsx`'s own header for this exact form.
+
+**No Node or no Remotion workspace:** fall back to the plain burned-in path instead — warn and
+still ship the video, exit 0:
+
+```bash
+python3 tools/burn_subs.py {output_folder}         # burn output/master.srt's plain text in
+```
+
+**Title card caption hold.** A scene whose `scene-plan.md` Title Card column is not `—` holds
 its captions for 2.5s from the scene's start, clamped to the scene's own length when the scene is
 shorter. `tools/gen_captions.py` records this as `captions_held_until_s` in
 `work/caption-plan.json` and pushes any caption words that would start inside that window to the end
@@ -466,6 +518,11 @@ with a cue makes both mushy.
 | Line too long for one screen | Split into consecutive cues, never squeezed or clipped |
 | No music direction in the script | Pass does nothing and says so |
 | Track fails to load or mix | **Warn and ship the voice-only master.** Exit 0. |
+| Node or Remotion unavailable | Kinetic track skipped; SRT burn-in still ships the video. Warn, exit 0 |
+| Scene has no timing source | Listed in `untimed`, as today. Timings are never invented |
+| `brand.json` missing a needed token | Refuse and name the token. No fallback palette |
+| Brand contrast below 4.5:1 | Refuse, via the existing `check_contrast()` |
+| Old `edit-plan.json` with no `motion` | Renders as today |
 
 ---
 

@@ -195,6 +195,24 @@ When this run was scoped to a kelompok, set that kelompok's `remotion` field to 
 `work/kelompok.json` and return to `/video-gen` step 5.1b — the kelompok cut (K.5) is next, not the
 next kelompok's shots.
 
+## Kinetic captions and title cards (GV-7)
+
+Two more compositions live beside `Shot.template.tsx` in `templates/remotion/`, in the same
+workspace this skill scaffolds: `Captions.template.tsx` (`compositionConfig.id: 'KineticCaptions'`)
+and `TitleCard.template.tsx` (`compositionConfig.id: 'TitleCard'`). They render and QA the same
+way as any shot here — `node scripts/gen-registry.mjs` then `node scripts/render-all.mjs
+KineticCaptions` (or `TitleCard`) from `{output_folder}/shots/` — and follow the same non-negotiable
+rules: frame-based animation only, strictly increasing `interpolate` ranges, `Easing.bezier` called
+directly, colours and fonts from `brand.json` only.
+
+They are not built here, though. `KineticCaptions` draws a word-by-word caption page with one
+highlighted key phrase, timed from `work/caption-plan.json`; `TitleCard` draws an eyebrow-plus-title
+card at a topic boundary, timed from `scene-plan.md`'s `Title Card` column. Both numbers come from
+Phase 6, not Phase 4.5 — `/video-post` Pass 4.1 owns building `work/caption-plan.json`
+(`python3 tools/gen_captions.py {output_folder}`), authoring each scene's copy of these two
+templates, rendering them, and compositing them over the master with `tools/composite.py overlay`.
+See `skills/video-post/SKILL.md` Pass 4.1 for that workflow.
+
 ## Quality Gates
 
 - [ ] Every `explainer` scene has a rendered shot; no `live-action` scene has one

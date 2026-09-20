@@ -1,8 +1,20 @@
 # gaspol-video
 
-**v3.4.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
+**v3.5.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
 
 Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
+
+> **v3.5.0 — captions that reveal word by word, title cards, and shots that no longer hold still.**
+> `tools/gen_captions.py` builds a per-scene caption plan from timings this plugin already has —
+> ElevenLabs word timings, or AssemblyAI aligned back onto the script so caption text always traces
+> to `av-script.md`, never to the recognizer — and scores one highlighted key phrase per page.
+> `Captions.template.tsx` renders it as a kinetic word-by-word reveal; `TitleCard.template.tsx` draws
+> an eyebrow-plus-title card at a topic boundary and holds captions clear of it for 2.5s. A shot that
+> would otherwise hold still for more than five seconds now gets automatic zoom —
+> `tools/plan_motion.py` fills `work/edit-plan.json`'s new `motion` field, `tools/edit_render.py`
+> renders it with `scale=...:eval=frame,crop` (not `zoompan`, which rounds pan position to whole
+> pixels and stutters). No Node or no Remotion workspace falls back to the plain burned-in SRT the
+> plugin already had. See [v3.5.0 Changelog](#v350-changelog).
 
 > **v3.4.0 — the plugin asks whether the shot is possible, not just whether the prompt is compliant.**
 > Nine defect classes measured on a real film — an impossible fuel filler, duplicated gates and
@@ -200,12 +212,65 @@ Run any phase independently:
 - **Reject Loop (v3.2.1)** — the second identical reject stops the prompting and sends you to the input: keyframe, identity ref, requested physics. Rejects are archived with the reason in the filename, so `ls _arsip/` reads as a defect histogram
 - **Folder Contract (v3.3.0)** — nine folders, no new ones; `.tmp/` for anything rebuildable, `_arsip/` for paid rejects
 - **Cross-File Validation** — unified validator with 5 targets: script, image, video, refs, all
+- **Kinetic Captions (v3.5.0)** — word-by-word reveal with one highlighted key phrase per page, built from timings this plugin already has (ElevenLabs word timings, or AssemblyAI aligned back onto the script so caption text always comes from `av-script.md`). Falls back to the plain burned-in SRT when Node or the Remotion workspace is unavailable
+- **Title Cards (v3.5.0)** — an eyebrow-plus-title card at a topic boundary, declared on the left or right third in `scene-plan.md` so it never covers a speaking face, holding captions clear of it for 2.5s
+- **Automatic Shot Motion (v3.5.0)** — any static segment over five seconds gets alternating punch-in/punch-out zoom beats from `tools/plan_motion.py`, rendered with a per-frame `scale`+`crop` chain (not `zoompan`, which stutters on a slow move); a hand-written `motion` is never overwritten
 
 ## Storytelling Philosophy
 
 > Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.
 
 The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
+
+## v3.5.0 Changelog
+
+**Kinetic captions, title cards, and automatic shot motion (GV-7).** Word timings already existed
+in `vo/vo-manifest.json`; nothing here invents data — Remotion draws the text, ffmpeg does the zoom.
+
+- **`tools/caption_keywords.py`** scores candidate highlight spans in a scene's word list —
+  number+unit, a brand term from `gen_subs.derive_keyterms()`, an acronym, or a reversal word —
+  and returns the non-overlapping, highest-scoring spans with the rule and score that picked them.
+- **`tools/gen_captions.py`** builds `work/caption-plan.json`: per-scene words and highlights from
+  `vo/vo-manifest.json`, or from AssemblyAI for platform-spoken dialogue. `align_to_script()` keeps
+  the contract every caption tool in this plugin already states — caption TEXT always comes from
+  `av-script.md`, timing may come from a recognizer, the text never does — by matching the
+  recognizer's words onto the script's own words with `difflib.SequenceMatcher` and interpolating
+  timing for anything the recognizer missed. Reusable and deterministic: re-running on unchanged
+  inputs reuses the existing plan and exits 0; `--force` regenerates it byte-identical apart from
+  `generated_at`. Also parses `scene-plan.md`'s new `Title Card` column and computes
+  `captions_held_until_s` so a title card and the kinetic captions never compete for the same
+  reading order.
+- **`Captions.template.tsx`** (`KineticCaptions`) renders a stack of up to three caption lines: the
+  line being spoken at full opacity, others dimmed, each word appearing at its own timing, a
+  highlighted span boxed in `accent` that grows from zero width. Its page/word/highlight arithmetic
+  lives in **`captionPages.mjs`**, which has zero imports on purpose — this repo has no
+  `node_modules` and deliberately no npm, so the tested part of a Remotion composition still runs
+  under bare `node --test`.
+- **`TitleCard.template.tsx`** (`TitleCard`) draws an accent eyebrow over a display title, declared
+  `left` or `right` in `scene-plan.md` so a card never covers a speaking face, with a 2.5s hold.
+- **Two contrast thresholds**, not one: ordinary caption text (`ink` on `background`) still needs
+  `burn_subs.py`'s existing 4.5:1; a highlight box's own text only needs WCAG AA's large-text floor,
+  3:1, since caption text here is never smaller than 32px. `check_brand_contrast(brand)` measures
+  both and writes the winning token into `style.highlight_text_token`, so the component reads a
+  decision instead of making one.
+- **`work/edit-plan.json` gains a `motion` field** (`{"kind": "punch-in", "from": 1.0, "to": 1.08}`,
+  `punch-in`/`punch-out`/`none`, `1.0`-`1.12`) and `tools/edit_render.py` renders it with
+  `scale=...:eval=frame` then a fixed `crop` — not `zoompan`, which rounds pan position to whole
+  pixels and stutters on a slow move, and not an animated `crop`, which ffmpeg refuses to configure
+  with a `t` expression on `w`/`h`. Verified by rendering a synthetic clip and measuring PSNR, not
+  by string-matching the filter.
+- **`tools/plan_motion.py`** fills that field automatically: a segment over 5.0s splits into
+  `ceil(duration / 5.0)` alternating punch-in/punch-out beats as separate segments; 5.0s or under
+  gets one slow punch-in. A hand-written `motion`, and any `kind: "shot"` segment (a Remotion shot
+  already animates itself), are left exactly as they are — running the tool twice reports zero
+  changes on the second run.
+- **Wired into `/video-post`.** Pass 2 runs `plan_motion.py` after the edit plan is authored and
+  before it renders. Pass 4.1 runs `gen_captions.py` alongside the unchanged `gen_subs.py` SRT
+  sidecar (YouTube still needs it), renders `KineticCaptions`/`TitleCard` per scene through the
+  Remotion workspace, and composites each over the master with `tools/composite.py overlay`. No
+  Node or no Remotion workspace falls back to the plain burned-in SRT path this plugin already had.
+- **`@remotion/captions`** (`createTikTokStyleCaptions()`) is the one new dependency, added to
+  `templates/remotion/scaffold.mjs`; every `tools/` file stays stdlib-only.
 
 ## v3.4.0 Changelog
 
