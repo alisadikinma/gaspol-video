@@ -26,6 +26,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Run as `python3 tools/gen_captions.py <project>` the way every SKILL.md does, and only tools/
+# is on sys.path — the repo root is not, so `from tools...` below would die with
+# ModuleNotFoundError. Same line as thumb_scrim.py, verify_render.py and three others.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from tools.gen_subs import derive_keyterms, transcribe_assemblyai
 from tools.caption_keywords import score_spans
 from tools.burn_subs import check_contrast, StyleError, _luminance

@@ -30,6 +30,11 @@ import re
 import sys
 from pathlib import Path
 
+# Run as `python3 tools/plan_motion.py <project>` the way every SKILL.md does, and only tools/
+# is on sys.path — the repo root is not, so `from tools...` below would die with
+# ModuleNotFoundError. Same line as thumb_scrim.py, verify_render.py and three others.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from tools.edit_render import MAX_ZOOM, VALID_MOTION_KINDS
 
 # Beyond this, a segment is split into beats rather than given a single slow move.
