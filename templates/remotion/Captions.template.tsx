@@ -51,6 +51,10 @@ export const compositionConfig = {
   height: 1080,
   fps: 30,
   durationInFrames: 150,      // set to ceil(last word's end_ms / 1000 * fps) for this scene
+  // Placed with `composite.py overlay`, which refuses a shot without a real alpha
+  // channel. Without this the render is opaque and blacks out the picture it was
+  // meant to sit on. See reference/post-production/12-remotion-explainer.md.
+  transparent: true,
 };
 
 // Legibility floors from global-promo-config.md §29.5 / work/caption-plan.json `style`.
