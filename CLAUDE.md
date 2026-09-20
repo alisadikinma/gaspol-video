@@ -603,8 +603,38 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.3.0
+**Version:** 3.4.0
 **Last Updated:** 2026-09-20
+
+### v3.4.0 Changelog
+
+- **Physical Plausibility Gate.** New `reference/image-video-gen/10-physical-plausibility-gate.md`
+  documents nine defect classes measured in one production, all of them found by the client AFTER
+  the render was paid for, and all of them passing the existing compliance checks: impossible
+  mechanisms (a fuel filler on the side of a tank), duplicated objects (two barriers, two
+  antennas, two nozzles), wrong orientation (a phone upside down), unreadable direction (a truck
+  arriving framed exactly like the truck leaving), two characters reading as one person, overlays
+  that cannot attach, broken pairs, story-logic holes, and sound/picture mismatch. Every Phase 4B
+  and Phase 5 prompt now carries a seven-question `PLAUSIBILITY:` block (MECHANISM, COUNT, FLOW,
+  FACING, PAIR, PEOPLE, OVERLAY SURFACE), each answer also expressed in the prompt text.
+  `video-image` Rules 35-36, `video-gen` Rules 21-22, validator checks K1-K7.
+- **Flow Gate on the script.** `video-script` gained three rules: close the loop (a measurement
+  claim needs before-reading, event, after-reading and a resulting number), every scene answers
+  "what changed?", and an object that is taken or carried is visible in frame. Scene pairs are
+  recorded in `scene-plan.md` with identical-vs-differ columns. Validator check C12.
+- **`tools/track_screen.py`** — four-corner screen tracking for overlays. Flood fill from a seed
+  inside the screen, each edge fitted to a line by least squares over its middle 20-80%, the four
+  lines intersected, corners smoothed with an EMA, QA frames written with the corners drawn. It
+  refuses (exit 2) when the screen is under 120px wide, or when the fill covers less than 85% of
+  the fitted quad. Replaces four ad-hoc measuring attempts that each shipped a visibly wrong
+  panel.
+- **`templates/remotion/lib/quad-screen.tsx`** — `QuadScreenTracked` maps a panel onto four moving
+  corners by homography (CSS `matrix3d`). A screen seen off-axis is a trapezoid, so box plus
+  rotation always overhangs one corner.
+- **Two machine checks instead of prose.** `tools/check_vo_duration.py` fails when narration does
+  not fit its cut, or when a cut runs on in silence; `tools/check_overlay_strings.py` reads the
+  rendered Remotion components and fails on any on-screen string missing from the script's
+  approved list, expanding `X 1 of 6` … `X 6 of 6` series.
 
 ### v3.3.0 Changelog
 

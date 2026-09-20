@@ -71,6 +71,21 @@ coded shot.
    title-safe margin, all at 1080p.
 7. **A shot carries no audio.** The narration is already playing underneath.
 
+9. **(v3.4.0) A panel on a screen is attached by homography, never by a box.** An overlay that
+   sits on a monitor or phone inside a live-action clip uses `QuadScreenTracked`
+   (`templates/remotion/lib/quad-screen.tsx`), fed by corner tracks from
+   `python3 tools/track_screen.py <clip> work/track-scene-NN.json --seed x,y --qa .tmp/qa-NN`.
+   A screen seen off-axis is a trapezoid, not a rotated rectangle (measured on one monitor: left
+   edge 524px, right edge 375px), so box-plus-rotation always overhangs a corner. Corners are read
+   from fitted edge lines, never from extreme points and never eyeballed, and the QA frames are
+   looked at before the overlay is rendered.
+
+10. **(v3.4.0) Decide tracked-panel vs floating card from a measurement, not from taste.** Frontal
+   and ≥300px wide → tracked. Oblique >15° or 120-300px → tracked only if the corners are
+   measurable. Under 120px wide, or a screen that faces away from the camera → floating card. A
+   guard-post monitor measured 60x45px in a 1920x1080 frame; a panel tracked onto a monitor facing
+   the actor rendered behind the device. `track_screen.py` exits 2 below the width floor.
+
 8. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
 `.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
@@ -191,6 +206,9 @@ next kelompok's shots.
 - [ ] Cue times trace to `vo-manifest.json` where narration exists
 - [ ] No shot carries its own audio track
 - [ ] Shot ids recorded in `scene-plan.md`
+- [ ] **(v3.4.0)** Screen-attached panels use `QuadScreenTracked` with a `track_screen.py` track, and the QA frames were inspected
+- [ ] **(v3.4.0)** Every surface under 120px wide, or facing away from camera, became a floating card instead of a tracked panel
+- [ ] **(v3.4.0)** On-screen strings pass `python3 tools/check_overlay_strings.py shots/src --from-markdown av-script.md --heading "Blok 4"`
 
 ## Degradation
 

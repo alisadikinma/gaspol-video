@@ -75,6 +75,14 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 
 ---
 
+16. **(v3.4.0) Close the loop.** Any claim that the system measures something must be dramatised as a full transaction: reading before, the event, reading after, and the resulting number on screen. A sensor that reads but never yields a figure is a dangling claim — the audience is told a capability and shown no proof. Measured case: a fuel story that showed a tank sensor and a refuelling stop but never a consumption number, and a truck that left the yard and never came back. Reflowed into: initial litres, departure timestamp, arrival timestamp, final litres, difference.
+
+17. **(v3.4.0) Every scene answers "what changed?"** Each row of `scene-plan.md` must be able to state, in one sentence, what is different from the scene before it. "Nothing" means the scene is decoration: cut it or merge it.
+
+18. **(v3.4.0) Show the object.** If a character takes, carries, delivers or removes something, the thing is visible in frame in that scene. A clerk walking out of the store empty-handed while the narration says parts left the store proves the opposite of the claim.
+
+19. **(v3.4.0) Record scene pairs.** Any location, object or instrument shown twice (departure/return, before/after, empty/full) is recorded in `scene-plan.md` as a pair, with two columns: what must be IDENTICAL (hardware, reference image) and what must DIFFER (camera side, travel direction, light). A pair whose only difference is the overlay text reads as the same moment repeated. Validator C12 enforces.
+
 ## Workflow
 
 ### Phase 2: SCRIPT GENERATION (Output: av-script.md)
@@ -477,6 +485,10 @@ B) Mau review manifest lagi
 ## Quality Gates
 
 ### Script Quality Gate (Phase 2)
+- [ ] **(v3.4.0) Loop closure** — every measurement claim has before-reading, event, after-reading and a resulting number
+- [ ] **(v3.4.0) "What changed?"** answerable in one sentence for every scene
+- [ ] **(v3.4.0) Objects visible** wherever the script says something is taken, carried or delivered
+- [ ] **(v3.4.0) Scene pairs recorded** with identical-vs-differ columns
 - [ ] All 7 beats present in arc
 - [ ] No forbidden words
 - [ ] Every feature has human consequence

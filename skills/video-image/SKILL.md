@@ -27,6 +27,7 @@ These files must exist in the output folder:
 ## Reference Files (Read On-Demand)
 
 ### Always Read First
+- `reference/image-video-gen/10-physical-plausibility-gate.md` — the plausibility gate (Rules 35-36), nine defect classes and the seven questions
 | Task | Read |
 |------|------|
 | ANY generation | `reference/global-promo-config.md` (ALWAYS FIRST) |
@@ -125,6 +126,10 @@ of referencing the file is the same Asset-First violation as Rule 10, applied to
 29. **Multi-POV environment spatial context** — When a scene's upload table has 2+ `env-*` references of the SAME location from DIFFERENT viewpoints (e.g., entry, exit, side, interior, exterior), the prompt MUST include a `SPATIAL CONTEXT` block immediately after the opening line. This block: (a) explicitly states all references show the SAME location from DIFFERENT camera angles, (b) maps each ref to the specific zone/element it depicts, (c) specifies the CAMERA POSITION for this scene relative to the reference angles, (d) clarifies which ref provides PRIMARY layout vs which provide DETAIL for specific zones. Without this block, NB2 may misinterpret multi-POV refs as separate locations or attempt to literally reproduce all angles simultaneously.
 30. **NEVER proceed without user approval** — every phase ends with approval gate
 31. **(v2.2.0) NB2 Reference Uniqueness Filter HARD GATE (Phase 4A)** — Before generating any Phase 4A standalone asset, apply UNIQUENESS filter test: "Can a competent prompt writer describe this in 20 words and trust NB2 to render correctly?" YES → COMMON tier → SKIP, NB2 renders from text. NO → UNIQUE/AMBIGUOUS tier → GENERATE. COMMON examples to ALWAYS skip: generic phone-in-hand, kopi gelas, concrete pavement, plain office chair, ceiling fan, generic paper stack, plain wall, generic clipboard. UNIQUE examples to ALWAYS generate: faces, company logos, custom UI screens, industry-specific equipment (UHF RFID reader / fuel sensor / chassis ID plate), proprietary product hero shots, location landmarks. Combined filter: (UNIQUE/AMBIGUOUS) AND (recurring 2+ scenes OR critical-identity OR plot-anchor). Validator C2 enforces. See `global-promo-config.md` §26.
+35. **(v3.4.0) Physical Plausibility Block — every Phase 4B prompt.** Before the prompt text, the document carries a `PLAUSIBILITY:` block answering seven questions in one line each: MECHANISM (what the object is in the real world, which part opens or moves, what state it is in now), COUNT (an explicit number for every story-critical object), FLOW (where liquid/power/load goes and what contains it), FACING (which way each device, screen, lens and vehicle points, relative to camera AND to its user), PAIR (the scene this one pairs with: what is IDENTICAL, what must DIFFER), PEOPLE (who is in frame and the two visible axes keeping each distinct), OVERLAY SURFACE (target surface, size in px at delivery resolution, frontal or oblique). Each answer must also be visible in the prompt text itself — an answer only in the block is a note to nobody. Unanswered question = FAIL, not a default. Validator K1-K7 enforces. See `reference/image-video-gen/10-physical-plausibility-gate.md`.
+
+36. **(v3.4.0) Overlay surface is decided before the clip is rendered.** Measure the intended screen in the keyframe, in delivery pixels. Frontal and ≥300px wide → tracked panel. Oblique >15° or 120-300px → tracked only if the four corners are measurable, otherwise floating card. Under 120px, or facing away from camera → floating card, always. Corners come from `python3 tools/track_screen.py <clip> <out.json> --seed x,y --qa <dir>`, never from a bounding box and never from extreme points; the panel is attached with `QuadScreenTracked` (`templates/remotion/lib/quad-screen.tsx`), which maps it by homography onto four moving corners. Look at the QA frames before rendering the overlay.
+
 32. **(v2.2.0) Max 5 Inline References HARD CAP (Phase 4B)** — Each Phase 4B scene prompt has MAX 5 inline references combined (faces + bodies + costumes + objects + environments + UI). REPLACES old "Max 3 identity locks per scene" rule. All inline with element described. Each filename max 1× per prompt. If >5 refs needed → split scene into 2 sub-scenes OR consolidate via composite asset (Tier 5+ per §18). Validator C3 enforces. See `global-promo-config.md` §26.4.
 
 23. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
@@ -501,6 +506,13 @@ After ALL batches are generated and approved:
 - [ ] Phase 3.5 assets audited — no duplicate generation
 
 ### Scene Keyframe Quality Gate (Phase 4B)
+- [ ] **(v3.4.0) PLAUSIBILITY block present and complete** — all seven answers, each one also expressed in the prompt text (Rule 35)
+- [ ] **(v3.4.0) Count lock** — every story-critical object has an explicit count AND a negative naming its duplicate
+- [ ] **(v3.4.0) Facing stated** — every screen, lens, nozzle and vehicle says which way it points, relative to camera and to its user
+- [ ] **(v3.4.0) Mechanism state stated** — openings, caps, barriers and couplings say WHERE they are and whether they are open or closed right now
+- [ ] **(v3.4.0) Paired scene declared** — what is identical, what must differ, and how the difference reads without text
+- [ ] **(v3.4.0) Two axes of separation** between any two same-gender, same-build characters in one frame
+- [ ] **(v3.4.0) Overlay surface measured** in px and classified tracked-panel vs floating card (Rule 36)
 - [ ] NB2 aspect ratio triple enforcement (first line, TECHNICAL, last line)
 - [ ] CFG 5-7, Denoise 0.35-0.45
 - [ ] Start/End frames share same lighting Kelvin
