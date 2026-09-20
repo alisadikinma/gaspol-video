@@ -1,6 +1,6 @@
 ---
 name: video-prompt-reviewer
-description: Independent validator for gaspol-video batches. Reviews NB2 image prompts, VEO/Seedance/Kling video prompts, and post-production plans against cast-profile.md and scene-plan.md (checks A-J, C1-C11 — C7-C10 cover Phase 6 outputs). Returns PASS/FAIL with line-level feedback. Use after each Phase 4B/5 batch.
+description: Independent validator for gaspol-video batches. Reviews NB2 image prompts, VEO/Seedance/Kling video prompts, and post-production plans against cast-profile.md and scene-plan.md (checks A-K, C1-C12 — C7-C10 cover Phase 6 outputs, K1-K7 cover physical plausibility). Returns PASS/FAIL with line-level feedback. Use after each Phase 4B/5 batch.
 model: opus
 ---
 
@@ -91,6 +91,55 @@ For EACH prompt in the batch, run ALL checks below. Report PASS or FAIL per chec
 - [ ] SPATIAL CONTEXT block specifies camera position for THIS scene relative to reference angles
 - [ ] PRIMARY layout ref identified (widest/most comprehensive view listed first)
 - [ ] Upload table Purpose column includes POV label (e.g., "entry view", "side view", "EXIT side detail")
+
+### K. Physical Plausibility (Phase 4B keyframe prompts and Phase 5 platform prompts — v3.4.0)
+
+**Source:** `reference/image-video-gen/10-physical-plausibility-gate.md`
+
+Every defect this check exists for was found by the client after the render was paid for, and
+every one of them passed checks A-J: the prompts were compliant, the objects were impossible.
+Read the prompt as an engineer would, not as a proofreader.
+
+- [ ] **K1. MECHANISM** — the prompt states where the opening/hinge/coupling is, what state it is
+      in right now, and what holds it. "Refuelling a tank" without "cap open on its chain, nozzle
+      inserted into the opening on TOP of the tank" is a FAIL. Ask the domain question: why is the
+      real thing built that way? (A side filler cannot fill a tank to the top.)
+- [ ] **K2. COUNT** — every story-critical object has an explicit number AND a negative naming its
+      duplicate. FAIL if a gate, antenna, sensor, nozzle or hose is mentioned without a count.
+- [ ] **K3. FLOW** — for any liquid, load or power shown in motion, the prompt says where it goes
+      and what contains it; or the flow is not shown and the mechanism is proven another way
+      (indicator, instrument reading, close insert).
+- [ ] **K4. FACING** — every screen, lens, nozzle and vehicle states which way it points, relative
+      to the camera AND to its user. FAIL on "phone in hand" with no screen direction.
+- [ ] **K5. PAIR** — if this scene shares a location, object or instrument with another scene, the
+      prompt names the pair, what must be IDENTICAL (naming the shared reference image) and what
+      must DIFFER. FAIL if the only declared difference is the overlay text, or if two paired
+      shots have the same camera side and the same travel direction.
+- [ ] **K6. PEOPLE** — any two same-gender, same-build people in one frame are separated on TWO
+      visible axes that survive a back view (headwear, uniform colour, build, hair, posture).
+      FAIL if one of them could read as the protagonist seen from another angle.
+- [ ] **K7. OVERLAY SURFACE** — the prompt (or its PLAUSIBILITY block) states the intended overlay
+      surface, its size in delivery pixels, and whether it is frontal or oblique; and the chosen
+      treatment follows the rule — under 120px wide, or facing away from camera, means floating
+      card, not a tracked panel.
+
+Report FAIL with the scene id, the question that has no answer, and the sentence that should have
+carried it. "Add a count" is not enough: name the object.
+
+### C12. Flow Closure (Phase 2 script + Phase 3 scene-plan — v3.4.0)
+
+**Source:** `reference/image-video-gen/10-physical-plausibility-gate.md` §Flow Gate
+
+- [ ] Every claim that the product measures something is dramatised as a closed loop: reading
+      before → event → reading after → the resulting number visible on screen. A measurement with
+      no resulting figure is a FAIL (name the claim and the missing number).
+- [ ] Every scene can answer "what changed since the previous scene?" in one sentence. A scene
+      that cannot is reported as decoration, with a recommendation to cut or merge.
+- [ ] Wherever the script says something is taken, carried, delivered or removed, the object is
+      visible in that scene's description.
+- [ ] `scene-plan.md` records every repeated location/object/instrument as a PAIR, with what is
+      identical and what must differ. Missing pair rows for an obvious pair (departure/return,
+      before/after, empty/full) is a FAIL.
 
 ### C1. BODY 1 Pain Coverage (Phase 2 script only — v2.2.0+)
 **Source:** `global-promo-config.md` §25 BODY 1 Completeness Rule

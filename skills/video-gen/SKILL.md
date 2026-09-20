@@ -29,6 +29,7 @@ These files must exist in the output folder:
 ## Reference Files (Read On-Demand)
 
 ### Always Read First
+- `reference/image-video-gen/10-physical-plausibility-gate.md` — plausibility in motion (Rules 21-22) and the post-render frame audit
 | Task | Read |
 |------|------|
 | ANY generation | `reference/global-promo-config.md` (ALWAYS FIRST) |
@@ -90,6 +91,10 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or NB2-
 17. **Narrative arc consistency** — Connected scenes MUST include `NARRATIVE CONTEXT:` block naming connections, visual breadcrumbs, cause-effect chains, shared environment refs. See `script-to-scene-bridge.md` Section 7C.
 18. **Sequential scene dependency** — Scene N+1 start frame MUST reference Scene N end frame (`ref/scene-{NN-1}-end.png`) as upstream continuity anchor. Upload table MUST include previous scene output. No exceptions for sequential timeline scenes.
 19. **All AskUserQuestion interactions** — NEVER ask questions as plain text, ALWAYS use AskUserQuestion tool with selectable options
+
+21. **(v3.4.0) Plausibility carries into motion.** The keyframe's `PLAUSIBILITY:` block (video-image Rule 35) is restated in the platform prompt, because motion is where the model duplicates things. Every platform prompt states: the count of each story-critical object and a negative naming its duplicate (`exactly one nozzle; no second nozzle`), the facing of each device and vehicle, the mechanism state that must hold for the whole clip (`the nozzle stays in the filler opening for the entire shot`), and `no object appears, disappears or moves between shots` where a table or desk is in frame. Measured failures: a nozzle that became two at 3.5s, a telephone handset that teleported onto a stapler, a doubled boom barrier and a doubled RFID antenna. See `reference/image-video-gen/10-physical-plausibility-gate.md`.
+
+22. **(v3.4.0) Post-render frame audit before the clip is promoted.** Sample three frames of every rendered clip — about 1s, mid-clip, and 0.5s before the end — and LOOK at them. Check: count holds in all three, facing holds, mechanism holds, nothing appeared or vanished, direction still reads against the paired scene, and the light still matches the time of day the overlay claims. Count/facing/mechanism failures are re-rendered. A light-only drift is fixed with a colour grade in assembly, not with credits — platform models pull an evening keyframe back toward midday in the second half of a clip.
 
 20. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
@@ -556,6 +561,9 @@ Present final production package summary:
 - [ ] Total duration within target range
 
 ### Cross-Cutting Quality Gate (Phase 5)
+- [ ] **(v3.4.0) Count/facing/mechanism locks** restated in every platform prompt, each with its negative (Rule 21)
+- [ ] **(v3.4.0) Three-frame audit done per rendered clip**, and the frames were actually looked at (Rule 22)
+- [ ] **(v3.4.0) Paired scenes still read apart** — same gate/object shot twice differs in camera side or travel direction, not only in overlay text
 - [ ] **Scene Logic Realism 9-point** — each prompt passes: environment accuracy, behavior realism, data consistency, uniform ranks, explicit negatives, ref photos, timeline/shift, prop/object scale accuracy, domain context populated
 - [ ] **Narrative arc consistency** — every prompt has `NARRATIVE CONTEXT:` block with connections, breadcrumbs, cause-effect
 - [ ] **Visual breadcrumbs** — at least 1 shared visual element between adjacent scenes
