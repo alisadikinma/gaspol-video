@@ -264,6 +264,89 @@ class GenCaptionsTest(unittest.TestCase):
         self.assertEqual(highlight["end_word"], 2)
         self.assertEqual(scene31["words"][highlight["start_word"]]["text"], "lima")
 
+    # -- Phase D: Title Card column + caption hold ---------------------------
+
+    def _title_card_scene(self, scene_num=21, dur_s=5.0, cell="left: Grafik Depresiasi / Mobil Listrik",
+                           word_count=10, word_ms=500):
+        words = []
+        t = 0
+        for i in range(word_count):
+            words.append({"text": f"kata{i}", "start_ms": t, "end_ms": t + word_ms})
+            t += word_ms
+        audio_plan = {
+            "scenes": [{"scene": scene_num, "audio_source": "elevenlabs", "layers": [
+                {"kind": "narration", "at_s": 0.0, "dur_s": dur_s,
+                 "out": f"vo/scene-{scene_num}-narr.mp3", "text": "narasi contoh untuk scene ini"}]}]
+        }
+        manifest = {"items": [{"id": f"scene-{scene_num}-narr", "file": f"vo/scene-{scene_num}-narr.mp3",
+                                "scene": scene_num, "words": words}]}
+        (self.project / "work" / "audio-plan.json").write_text(json.dumps(audio_plan))
+        (self.project / "vo" / "vo-manifest.json").write_text(json.dumps(manifest))
+        (self.project / "scene-plan.md").write_text(
+            "| # | Title Card |\n|---|---|\n" + f"| {scene_num} | {cell} |\n"
+        )
+        return scene_num
+
+    def test_title_card_holds_captions(self):
+        scene_num = self._title_card_scene()
+        plan = gen_captions.build_caption_plan(self.project)
+        scene = [s for s in plan["scenes"] if s["scene"] == scene_num][0]
+        self.assertEqual(scene["captions_held_until_s"], 2.5)
+        self.assertGreaterEqual(scene["words"][0]["start_ms"], 2500)
+
+    def test_title_card_cell_without_slash_raises_naming_scene(self):
+        scene_num = self._title_card_scene(cell="left: Judul Tanpa Garis Miring")
+        with self.assertRaises(gen_captions.CaptionPlanError) as ctx:
+            gen_captions.build_caption_plan(self.project)
+        self.assertIn(str(scene_num), str(ctx.exception))
+
+    def test_title_card_unknown_side_raises_naming_allowed_values(self):
+        self._title_card_scene(cell="center: Eyebrow / Judul")
+        with self.assertRaises(gen_captions.CaptionPlanError) as ctx:
+            gen_captions.build_caption_plan(self.project)
+        msg = str(ctx.exception)
+        self.assertIn("left", msg)
+        self.assertIn("right", msg)
+
+    def test_title_card_holds_only_scenes_own_length_when_shorter(self):
+        scene_num = self._title_card_scene(dur_s=1.2, word_count=4, word_ms=300)
+        plan = gen_captions.build_caption_plan(self.project)
+        scene = [s for s in plan["scenes"] if s["scene"] == scene_num][0]
+        self.assertEqual(scene["captions_held_until_s"], 1.2)
+
+    def test_dash_title_card_cell_has_no_hold_key(self):
+        scene_num = self._title_card_scene(cell="—")
+        plan = gen_captions.build_caption_plan(self.project)
+        scene = [s for s in plan["scenes"] if s["scene"] == scene_num][0]
+        self.assertNotIn("captions_held_until_s", scene)
+        self.assertEqual(plan.get("title_cards", []), [])
+
+    def test_card_only_scene_recorded_without_captions(self):
+        (self.project / "scene-plan.md").write_text(
+            "| # | Title Card |\n|---|---|\n| 99 | right: Sebelum / Sesudah |\n"
+        )
+        plan = gen_captions.build_caption_plan(self.project)
+        self.assertFalse([s for s in plan["scenes"] if s["scene"] == 99])
+        cards = {c["scene"]: c for c in plan["title_cards"]}
+        self.assertEqual(cards[99]["side"], "right")
+        self.assertEqual(cards[99]["eyebrow"], "Sebelum")
+        self.assertEqual(cards[99]["title"], "Sesudah")
+
+    def test_empty_eyebrow_is_accepted(self):
+        scene_num = self._title_card_scene(cell="left: / Hanya Judul")
+        plan = gen_captions.build_caption_plan(self.project)
+        cards = {c["scene"]: c for c in plan["title_cards"]}
+        self.assertEqual(cards[scene_num]["eyebrow"], "")
+        self.assertEqual(cards[scene_num]["title"], "Hanya Judul")
+
+    def test_card_at_scene_start_t_zero_holds_from_zero(self):
+        # The card sits on the very first scene, at t=0 — same clamp logic applies.
+        scene_num = self._title_card_scene(scene_num=1, dur_s=5.0)
+        plan = gen_captions.build_caption_plan(self.project)
+        scene = [s for s in plan["scenes"] if s["scene"] == scene_num][0]
+        self.assertEqual(scene["captions_held_until_s"], 2.5)
+        self.assertGreaterEqual(scene["words"][0]["start_ms"], 2500)
+
 
 if __name__ == "__main__":
     unittest.main()

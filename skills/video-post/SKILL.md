@@ -437,6 +437,13 @@ is listed as untimed rather than given invented timings.
 The `no subtitles` negative stays in every platform prompt and does not conflict — that stops the
 model drawing text into the picture. An em dash in a caption is correct; the ban covers spoken text.
 
+**Title card caption hold (GV-7).** A scene whose `scene-plan.md` Title Card column is not `—` holds
+its captions for 2.5s from the scene's start, clamped to the scene's own length when the scene is
+shorter. `tools/gen_captions.py` records this as `captions_held_until_s` in
+`work/caption-plan.json` and pushes any caption words that would start inside that window to the end
+of the hold — a page already running when the card begins is left alone. The card and the kinetic
+captions never compete for the same reading order.
+
 ### 4.2 Music
 
 ```bash

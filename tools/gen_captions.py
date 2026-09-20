@@ -47,6 +47,13 @@ DEFAULT_STYLE = {
 # page split happens in the Remotion component (captionPages.mjs, Phase C).
 WORDS_PER_PAGE = 6
 
+# A title card holds for this many seconds from its scene's start, clamped to the
+# scene's own length when the scene is shorter (Phase D). Matches
+# templates/remotion/TitleCard.template.tsx's HOLD_S.
+TITLE_CARD_HOLD_S = 2.5
+
+_TITLE_CARD_SIDES = ("left", "right")
+
 
 class CaptionPlanError(Exception):
     """The caption plan cannot be built as asked."""
@@ -97,6 +104,79 @@ def _apply_caps(highlights, num_words):
         used_pages.add(page)
     kept.sort(key=lambda h: h["start_word"])
     return kept
+
+
+def _read_scene_plan_title_cards(project):
+    """Parse scene-plan.md's `Title Card` column, keyed by scene number.
+
+    Returns {scene_num: raw_cell_text}. A project with no scene-plan.md yet, or a
+    scene-plan.md whose table has no `Title Card` column, yields an empty dict —
+    title cards are optional, most scenes never carry one."""
+    path = Path(project) / "scene-plan.md"
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        return {}
+
+    cards = {}
+    header = None
+    num_idx = 0
+    title_idx = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not (stripped.startswith("|") and stripped.endswith("|")):
+            continue
+        cells = [c.strip() for c in stripped[1:-1].split("|")]
+        if header is None:
+            if "Title Card" in cells:
+                header = cells
+                title_idx = cells.index("Title Card")
+                num_idx = cells.index("#") if "#" in cells else 0
+            continue
+        if title_idx is None or title_idx >= len(cells):
+            continue
+        # Markdown separator row (|---|:---:|...) — every cell is only -, : or space.
+        if all(c == "" or set(c) <= set("-: ") for c in cells):
+            continue
+        try:
+            scene_num = int(cells[num_idx])
+        except (ValueError, IndexError):
+            continue
+        cards[scene_num] = cells[title_idx]
+    return cards
+
+
+def _parse_title_card_cell(cell, scene_num):
+    """cell: the scene-plan.md `Title Card` column value for one scene.
+
+    Returns None for '—' (no card on this scene). Returns
+    {"side", "eyebrow", "title"} for a valid card. Raises CaptionPlanError naming
+    the scene and the allowed values for anything else — the side is declared,
+    never guessed."""
+    cell = cell.strip()
+    if cell == "—":
+        return None
+
+    allowed = ", ".join(_TITLE_CARD_SIDES)
+    if ":" not in cell:
+        raise CaptionPlanError(
+            f"scene {scene_num}: malformed Title Card cell {cell!r} — expected "
+            f"'—', or '<side>: <eyebrow> / <title>' where <side> is one of {allowed}"
+        )
+    side, _, rest = cell.partition(":")
+    side = side.strip()
+    if side not in _TITLE_CARD_SIDES:
+        raise CaptionPlanError(
+            f"scene {scene_num}: unknown Title Card side {side!r} — "
+            f"allowed values are {allowed}"
+        )
+    if "/" not in rest:
+        raise CaptionPlanError(
+            f"scene {scene_num}: malformed Title Card cell {cell!r} — expected "
+            f"'{side}: <eyebrow> / <title>'"
+        )
+    eyebrow, _, title = rest.partition("/")
+    return {"side": side, "eyebrow": eyebrow.strip(), "title": title.strip()}
 
 
 # Punctuation stripped from BOTH ends of a token before alignment comparison —
@@ -229,7 +309,8 @@ def check_brand_contrast(brand):
     return token
 
 
-def build_caption_plan(project, style=None, api_key=None, keyterms=None, brand=None):
+def build_caption_plan(project, style=None, api_key=None, keyterms=None, brand=None,
+                        title_cards=None):
     """Read vo/vo-manifest.json + work/audio-plan.json, score highlight spans, and
     return the work/caption-plan.json payload (not yet written to disk — see main()).
 
@@ -237,7 +318,15 @@ def build_caption_plan(project, style=None, api_key=None, keyterms=None, brand=N
     When given, check_brand_contrast(brand) runs and its winning token name is written
     into style.highlight_text_token — Captions.template.tsx reads that decision rather
     than making it. When no brand is given (no Remotion workspace scaffolded yet), the
-    key is simply absent; nothing is guessed."""
+    key is simply absent; nothing is guessed.
+
+    `title_cards` is {scene_num: raw_cell_text} from scene-plan.md's `Title Card`
+    column (see _read_scene_plan_title_cards()); when not given it is read from
+    `project/scene-plan.md` directly. Every non-'—' cell is validated up front — a
+    malformed cell raises even for a scene with no narration/dialogue at all, so a
+    typo in scene-plan.md is caught before any caption work is paid for. Every valid
+    card, whether or not its scene has captions, is recorded in the plan's top-level
+    `title_cards` list (Phase D)."""
     project = Path(project)
     style = {**DEFAULT_STYLE, **(style or {})}
     if brand is not None:
@@ -248,6 +337,17 @@ def build_caption_plan(project, style=None, api_key=None, keyterms=None, brand=N
 
     audio_plan = _read_audio_plan(project / "work" / "audio-plan.json")
     kw = keyterms if keyterms is not None else derive_keyterms(project)
+
+    raw_title_cards = (title_cards if title_cards is not None
+                        else _read_scene_plan_title_cards(project))
+    cards_by_scene = {}
+    title_cards_out = []
+    for scene_num, cell in sorted(raw_title_cards.items()):
+        card = _parse_title_card_cell(cell, scene_num)
+        if card is None:
+            continue
+        cards_by_scene[scene_num] = card
+        title_cards_out.append({"scene": scene_num, **card})
 
     scenes_out = []
     untimed = []
@@ -292,17 +392,40 @@ def build_caption_plan(project, style=None, api_key=None, keyterms=None, brand=N
             highlights = score_spans(words, keyterms=kw)
             highlights = _apply_caps(highlights, len(words))
 
+            out_words = [{"text": w["text"], "start_ms": w["start_ms"], "end_ms": w["end_ms"]}
+                         for w in words]
+
             scene_record = {
                 "scene": scene_num,
                 "vo_item_id": item_id,
                 "offset_s": offset_s,
                 "timing_source": source,
-                "words": [{"text": w["text"], "start_ms": w["start_ms"], "end_ms": w["end_ms"]}
-                          for w in words],
+                "words": out_words,
                 "highlights": highlights,
             }
             if aligned:
                 scene_record["aligned"] = True
+
+            card = cards_by_scene.get(scene_num)
+            if card is not None:
+                # A title card holds for TITLE_CARD_HOLD_S from the scene's start,
+                # clamped to the scene's own length when the scene is shorter. Any
+                # caption words that would start inside that window are pushed to
+                # its end — a page already running when the card begins (i.e. one
+                # whose first word already starts at or after the hold) is left
+                # alone. See reference/script-to-scene-bridge.md > "Title Card".
+                scene_duration_s = layer.get("dur_s")
+                if not scene_duration_s:
+                    scene_duration_s = out_words[-1]["end_ms"] / 1000.0
+                hold_s = min(TITLE_CARD_HOLD_S, float(scene_duration_s))
+                hold_ms = hold_s * 1000.0
+                shift_ms = max(0.0, hold_ms - out_words[0]["start_ms"])
+                if shift_ms > 0:
+                    for w in out_words:
+                        w["start_ms"] += shift_ms
+                        w["end_ms"] += shift_ms
+                scene_record["captions_held_until_s"] = hold_s
+
             scenes_out.append(scene_record)
 
     return {
@@ -311,6 +434,7 @@ def build_caption_plan(project, style=None, api_key=None, keyterms=None, brand=N
         "style": style,
         "scenes": scenes_out,
         "untimed": untimed,
+        "title_cards": title_cards_out,
     }
 
 

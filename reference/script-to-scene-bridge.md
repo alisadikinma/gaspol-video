@@ -194,15 +194,15 @@ See reference/image-video-gen/08-kling-production-guide.md for full specs and 5-
 
 ## Scene Breakdown
 
-| # | Beat | Duration | Render Path | Screen Source | VEO Mode | Extend? | Resolution | Scene Type | Dialogue? |
-|---|------|----------|-------------|----------------|----------|---------|------------|------------|-----------|
-| 1 | Pattern Interrupt | 4s | live-action | none | Frame | No | 1080p | B-Roll | No |
-| 2 | Hook | 6s | live-action | none | Frame | No | 1080p | Presenter | Yes (lip sync) |
-| 3 | Foreshadow | 8s | live-action | none | Frame | No | 720p | Presenter | Yes (lip sync) |
-| 4 | Agitate | 15s | live-action | none | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
-| 5 | Guide 1 | 5s | explainer | mock | — | No | 720p | B-Roll | VO only |
-| 6 | Guide 2 | 15s | live-action | none | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
-| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... |
+| # | Beat | Duration | Render Path | Screen Source | Title Card | VEO Mode | Extend? | Resolution | Scene Type | Dialogue? |
+|---|------|----------|-------------|----------------|------------|----------|---------|------------|------------|-----------|
+| 1 | Pattern Interrupt | 4s | live-action | none | left: Sebelum / Sistem Manual | Frame | No | 1080p | B-Roll | No |
+| 2 | Hook | 6s | live-action | none | — | Frame | No | 1080p | Presenter | Yes (lip sync) |
+| 3 | Foreshadow | 8s | live-action | none | — | Frame | No | 720p | Presenter | Yes (lip sync) |
+| 4 | Agitate | 15s | live-action | none | — | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
+| 5 | Guide 1 | 5s | explainer | mock | — | — | No | 720p | B-Roll | VO only |
+| 6 | Guide 2 | 15s | live-action | none | right: Sesudah / Sistem ANPR | Ingredients+Ext | 1x | 720p | Presenter | Yes (lip sync) |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... |
 
 ### Render Path — which engine builds this scene (v3.0.0)
 
@@ -253,6 +253,37 @@ before Phase 4A spends any NB2 credits.
 readable product UI gets `capture` or `mock`; every other scene gets `none`. Decide this at Phase 3,
 before Phase 4A spends credits — the resulting `ui-*.png` files are produced by `gen_app_screen.py`,
 never by an NB2 prompt (see `video-image/SKILL.md` Rule 34).
+
+### Title Card — a topic marker per scene (v3.5.0)
+
+Every scene row in `scene-plan.md` also carries a `Title Card`, placed right after `Screen Source`:
+`—` (no card, the default), `left: <eyebrow> / <title>`, or `right: <eyebrow> / <title>`.
+
+| Value | Meaning |
+|---|---|
+| `—` | no card on this scene — most scenes |
+| `left: <eyebrow> / <title>` | card on the left third |
+| `right: <eyebrow> / <title>` | card on the right third |
+
+**Assignment rule — apply to every scene in Phase 3:**
+
+```
+A scene gets a Title Card when it opens an ACT or changes topic. At most one card per ACT.
+A card on consecutive scenes is a defect, not a style.
+Declare the side that keeps the card off any speaking face in that scene — never guess it.
+```
+
+**Why the side is declared, not computed.** Nothing at Phase 3 can see the actual frame
+composition — that only exists once Phase 4B keyframes are generated. Guessing the side risks a
+card sitting directly over a presenter's face; declaring it costs one word per scene and removes
+the risk entirely.
+
+**The overlap rule with captions.** A card holds for 2.5s from its scene's start, clamped to the
+scene's own length when the scene is shorter. `tools/gen_captions.py` reads this column and pushes
+any caption words that would start inside that window to the end of the hold — a page already
+running when the card begins is left alone. Two large text blocks at once give the eye no reading
+order. See `skills/video-post/SKILL.md` Pass 4.1 for the runnable form of this rule and
+`captions_held_until_s` in `work/caption-plan.json`.
 
 ## Extension Chain Map
 
