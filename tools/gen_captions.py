@@ -18,6 +18,7 @@ Stdlib only.
 """
 
 import argparse
+import difflib
 import json
 import math
 import os
@@ -91,6 +92,91 @@ def _apply_caps(highlights, num_words):
     return kept
 
 
+# Punctuation stripped from BOTH ends of a token before alignment comparison —
+# surrounding punctuation only, so an interior hyphen ("ANPR-nya") survives.
+_ALIGN_PUNCT = ".,;:!?()[]{}\"'’‘"
+
+
+def _align_norm(text):
+    return text.strip(_ALIGN_PUNCT).lower()
+
+
+def align_to_script(asr_words, script_text):
+    """asr_words: [{"text", "start_ms", "end_ms"}] from the recognizer.
+    script_text: this scene's narration, as written in av-script.md.
+
+    Returns one record per SCRIPT word, in script order, shaped
+    [{"text", "start_ms", "end_ms"}]. `text` is ALWAYS the script's word,
+    never the recognizer's. Timing comes from the matched recognizer word;
+    an unmatched script word is given a timing linearly interpolated between
+    its nearest timed neighbours."""
+    if not asr_words:
+        raise CaptionPlanError("align_to_script: no recognizer words to align against")
+    script_words = script_text.split()
+    if not script_words:
+        raise CaptionPlanError("align_to_script: script_text has no words to align")
+
+    script_norms = [_align_norm(w) for w in script_words]
+    asr_norms = [_align_norm(w["text"]) for w in asr_words]
+
+    matcher = difflib.SequenceMatcher(None, script_norms, asr_norms, autojunk=False)
+    anchors = {}
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag != "equal":
+            continue
+        for offset in range(i2 - i1):
+            si = i1 + offset
+            aw = asr_words[j1 + offset]
+            anchors[si] = (aw["start_ms"], aw["end_ms"])
+
+    n = len(script_words)
+    first_ms = asr_words[0]["start_ms"]
+    last_ms = asr_words[-1]["end_ms"]
+
+    times = [None] * n
+
+    if not anchors:
+        # Zero matches anywhere: spread the script's words evenly across the
+        # recognizer's whole span. Never before its first word, never after its last.
+        span = last_ms - first_ms
+        slice_dur = span / n
+        for i in range(n):
+            times[i] = (first_ms + slice_dur * i, first_ms + slice_dur * (i + 1))
+    else:
+        anchor_indices = sorted(anchors)
+        first_anchor = anchor_indices[0]
+        last_anchor = anchor_indices[-1]
+        head_clamp = (asr_words[0]["start_ms"], asr_words[0]["end_ms"])
+        tail_clamp = (asr_words[-1]["start_ms"], asr_words[-1]["end_ms"])
+        for i in range(n):
+            if i in anchors:
+                times[i] = anchors[i]
+            elif i < first_anchor:
+                # Leading unmatched run: clamp to the recognizer's first timing,
+                # never extrapolated to before it.
+                times[i] = head_clamp
+            elif i > last_anchor:
+                # Trailing unmatched run: clamp to the recognizer's last timing,
+                # never extrapolated past it.
+                times[i] = tail_clamp
+            else:
+                # Interior gap: linearly interpolate between the two nearest
+                # timed neighbours, strictly inside their span.
+                prev_idx = max(a for a in anchor_indices if a < i)
+                next_idx = min(a for a in anchor_indices if a > i)
+                gap_start = anchors[prev_idx][1]
+                gap_end = anchors[next_idx][0]
+                run_start = prev_idx + 1
+                run_len = next_idx - run_start
+                pos = i - run_start
+                slice_dur = (gap_end - gap_start) / (run_len + 1)
+                times[i] = (gap_start + slice_dur * (pos + 0.5),
+                            gap_start + slice_dur * (pos + 1.5))
+
+    return [{"text": script_words[i], "start_ms": times[i][0], "end_ms": times[i][1]}
+            for i in range(n)]
+
+
 def build_caption_plan(project, style=None, api_key=None, keyterms=None):
     """Read vo/vo-manifest.json + work/audio-plan.json, score highlight spans, and
     return the work/caption-plan.json payload (not yet written to disk — see main())."""
@@ -116,12 +202,24 @@ def build_caption_plan(project, style=None, api_key=None, keyterms=None):
 
             words = words_by_id.get(item_id)
             source = "elevenlabs"
+            aligned = False
             if not words:
                 if api_key:
                     audio_path = project / layer.get("out", "")
                     asr = transcribe_assemblyai(audio_path, api_key, keyterms=kw)
-                    words = asr.get("words")
-                    source = "assemblyai"
+                    asr_words = asr.get("words")
+                    if asr_words:
+                        # The recognizer's own words never survive into the plan —
+                        # only its timing does. See tools/gen_subs.py's module
+                        # docstring for the rule this enforces.
+                        try:
+                            words = align_to_script(asr_words, layer.get("text", ""))
+                        except CaptionPlanError as exc:
+                            raise CaptionPlanError(f"scene {scene_num}: {exc}") from exc
+                        source = "assemblyai"
+                        aligned = True
+                    else:
+                        words = None
                 else:
                     words = None
 
@@ -134,7 +232,7 @@ def build_caption_plan(project, style=None, api_key=None, keyterms=None):
             highlights = score_spans(words, keyterms=kw)
             highlights = _apply_caps(highlights, len(words))
 
-            scenes_out.append({
+            scene_record = {
                 "scene": scene_num,
                 "vo_item_id": item_id,
                 "offset_s": offset_s,
@@ -142,7 +240,10 @@ def build_caption_plan(project, style=None, api_key=None, keyterms=None):
                 "words": [{"text": w["text"], "start_ms": w["start_ms"], "end_ms": w["end_ms"]}
                           for w in words],
                 "highlights": highlights,
-            })
+            }
+            if aligned:
+                scene_record["aligned"] = True
+            scenes_out.append(scene_record)
 
     return {
         "version": 1,
