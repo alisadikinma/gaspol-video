@@ -28,6 +28,13 @@ from pathlib import Path
 
 from tools.gen_subs import derive_keyterms, transcribe_assemblyai
 from tools.caption_keywords import score_spans
+from tools.burn_subs import check_contrast, StyleError, _luminance
+
+# WCAG AA's large-text threshold, not burn_subs.MIN_CONTRAST_RATIO (4.5) — the text
+# drawn on a kinetic-caption highlight box is never small (the floor is 32px and the
+# active line renders far above it), so the looser large-text floor is the correct
+# standard here, not a re-derivation of burn_subs' own 4.5 rule.
+HIGHLIGHT_TEXT_MIN_CONTRAST_RATIO = 3.0
 
 DEFAULT_STYLE = {
     "combine_tokens_within_ms": 400,
@@ -177,11 +184,64 @@ def align_to_script(asr_words, script_text):
             for i in range(n)]
 
 
-def build_caption_plan(project, style=None, api_key=None, keyterms=None):
+def _contrast_ratio(foreground, background):
+    """The WCAG contrast ratio of two hex colours, with no pass/fail threshold baked
+    in — burn_subs.check_contrast() always enforces its own 4.5 floor, so it cannot
+    answer "does this clear 3:1" for a colour pair that legitimately sits between 3
+    and 4.5. Reuses burn_subs._luminance() (the actual WCAG gamma-correction maths);
+    only the ratio combination — the two-line formula from the WCAG spec, not a
+    re-derivation of the luminance calculation — is repeated here."""
+    lighter, darker = sorted((_luminance(foreground), _luminance(background)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def check_brand_contrast(brand):
+    """Refuse a brand whose caption text would be unreadable before a kinetic-caption
+    render is paid for, and decide which token draws readably on the highlight box.
+
+    Two thresholds, not one:
+      * ordinary caption text — `ink` on `background` — must clear
+        burn_subs.MIN_CONTRAST_RATIO (4.5:1). Enforced via burn_subs.check_contrast(),
+        no WCAG maths duplicated for this pairing.
+      * the highlight box's own text — whichever of `ink` or `background` reads
+        better against `accent` — only needs WCAG AA's large-text floor (3:1), since
+        caption text here is never smaller than 32px.
+
+    Returns the winning token name ("ink" or "background") so the caller can write it
+    into work/caption-plan.json's `style.highlight_text_token`, and the component
+    reads that decision instead of making its own. Raises burn_subs.StyleError when
+    either threshold is not met."""
+    check_contrast(brand["ink"], brand["background"])
+
+    ink_ratio = _contrast_ratio(brand["ink"], brand["accent"])
+    background_ratio = _contrast_ratio(brand["background"], brand["accent"])
+    if ink_ratio >= background_ratio:
+        token, ratio = "ink", ink_ratio
+    else:
+        token, ratio = "background", background_ratio
+
+    if ratio < HIGHLIGHT_TEXT_MIN_CONTRAST_RATIO:
+        raise StyleError(
+            f"highlight box text is unreadable against accent {brand['accent']}: "
+            f"ink scores {ink_ratio:.2f}:1, background scores {background_ratio:.2f}:1, "
+            f"neither reaches {HIGHLIGHT_TEXT_MIN_CONTRAST_RATIO}:1"
+        )
+    return token
+
+
+def build_caption_plan(project, style=None, api_key=None, keyterms=None, brand=None):
     """Read vo/vo-manifest.json + work/audio-plan.json, score highlight spans, and
-    return the work/caption-plan.json payload (not yet written to disk — see main())."""
+    return the work/caption-plan.json payload (not yet written to disk — see main()).
+
+    `brand` is the project's brand.json dict, when one exists yet (see _read_brand()).
+    When given, check_brand_contrast(brand) runs and its winning token name is written
+    into style.highlight_text_token — Captions.template.tsx reads that decision rather
+    than making it. When no brand is given (no Remotion workspace scaffolded yet), the
+    key is simply absent; nothing is guessed."""
     project = Path(project)
     style = {**DEFAULT_STYLE, **(style or {})}
+    if brand is not None:
+        style["highlight_text_token"] = check_brand_contrast(brand)
 
     manifest = _read_manifest(project / "vo" / "vo-manifest.json")
     words_by_id = {item["id"]: item.get("words", []) for item in manifest.get("items", [])}
@@ -266,6 +326,23 @@ def format_sheet(plan):
     return "\n".join(lines)
 
 
+def _read_brand(project):
+    """The scaffolded Remotion workspace's brand.json, if one exists yet — see
+    templates/remotion/scaffold.mjs, which writes it to shots/src/shots/brand.json.
+    Kinetic captions don't require an explainer shot to already exist in the project,
+    so a missing file is a normal case, not an error: build_caption_plan() simply
+    leaves style.highlight_text_token unset rather than guessing a palette."""
+    path = Path(project) / "shots" / "src" / "shots" / "brand.json"
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise CaptionPlanError(f"{path.name} is not valid JSON: {exc.msg}") from exc
+
+
 def _load_env():
     env = dict(os.environ)
     try:
@@ -297,8 +374,9 @@ def main(argv=None):
     api_key = env.get("ASSEMBLYAI_API_KEY")
 
     try:
-        plan = build_caption_plan(project, api_key=api_key)
-    except CaptionPlanError as exc:
+        brand = _read_brand(project)
+        plan = build_caption_plan(project, api_key=api_key, brand=brand)
+    except (CaptionPlanError, StyleError) as exc:
         print(f"gen_captions: {exc}", file=sys.stderr)
         return 1
 
