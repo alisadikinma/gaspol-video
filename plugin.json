@@ -1,0 +1,13 @@
+{
+  "name": "gaspol-video",
+  "displayName": "Gaspol Video",
+  "version": "3.5.0",
+  "description": "End-to-end AI video production pipeline: brainstorm, script, image prompts (NB2), video prompts (VEO/Seedance/Kling), Remotion shots, and post-production.",
+  "author": {
+    "name": "Ali Sadikin",
+    "url": "https://github.com/alisadikinma"
+  },
+  "homepage": "https://github.com/alisadikinma/gaspol-video",
+  "repository": "https://github.com/alisadikinma/gaspol-video",
+  "license": "MIT"
+}
