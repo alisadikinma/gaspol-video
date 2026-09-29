@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -334,7 +334,10 @@ test("a tagged layer is synthesized in chunks and joined with exact silence", as
     assert.equal(words[1].start_ms, 1500);
     assert.equal(result.items[0].chars, "Satu. Dua.".length);
     assert.equal((await readFile(path.join(dir, "vo", "scene-01-narr.mp3"))).toString(), "mp3");
-    await assert.rejects(stat(path.join(dir, ".tmp", "scene-01-narr-chunk-1.mp3")), "chunk files are cleaned up");
+    const tmp = await readdir(path.join(dir, ".tmp"));
+    assert.equal(tmp.filter((f) => /^vocache-[0-9a-f]{16}\.mp3$/.test(f)).length, 2, "speech chunks stay as the cache");
+    assert.equal(tmp.filter((f) => /^vocache-[0-9a-f]{16}\.json$/.test(f)).length, 2);
+    assert.equal(tmp.filter((f) => f.endsWith(".pcm")).length, 0, "decode PCM is cleaned up");
   });
 });
 
@@ -389,7 +392,8 @@ test("an ffmpeg decode failure surfaces stderr and keeps the chunk files", async
       }),
       (err) => err.message.includes("Invalid data found") && err.message.includes(".tmp"),
     );
-    assert.ok((await stat(path.join(dir, ".tmp", "scene-01-narr-chunk-1.mp3"))).isFile());
+    const kept = (await readdir(path.join(dir, ".tmp"))).filter((f) => /^vocache-.*\.mp3$/.test(f));
+    assert.equal(kept.length, 1, "the paid chunk survives the failed decode");
   });
 });
 
@@ -425,5 +429,149 @@ test("a layer that is only a tag is refused, and an out-of-range tag sends nothi
       /outside 0\.2-5s/,
     );
     assert.equal(calls.length, 0);
+  });
+});
+
+async function runTwice(plan, second = {}, execImpl = fakeExec()) {
+  return withTmp(async (dir) => {
+    const calls = [];
+    const logs = [];
+    const run = (extra = {}) => synthesize({
+      plan, cast: CAST, projectDir: dir, env: ENV, fetchImpl: fakeFetch(calls),
+      execImpl, log: (line) => logs.push(line), ...extra,
+    });
+    const first = await run();
+    const afterFirst = calls.length;
+    const again = await run(second);
+    return { first, again, afterFirst, total: calls.length, logs, dir, calls };
+  });
+}
+
+test("an unchanged untagged layer is reused: zero requests, same manifest entry", async () => {
+  const r = await runTwice(tagPlan("Tiap truk antre 42 menit."));
+  assert.equal(r.afterFirst, 1);
+  assert.equal(r.total, 1);
+  assert.ok(r.logs.includes("  scene-01-narr: reused (unchanged)"));
+  assert.deepEqual(r.again.items, r.first.items);
+});
+
+test("changed text, changed settings, or a missing mp3 each cost exactly one request", async () => {
+  const changedText = await runTwice(tagPlan("Tiap truk antre 42 menit."),
+    { plan: tagPlan("Tiap truk antre 43 menit.") });
+  assert.equal(changedText.total - changedText.afterFirst, 1);
+
+  const changedSettings = await runTwice(tagPlan("Tiap truk antre 42 menit."),
+    { cast: { ...CAST, c1: { ...CAST.c1, settings: { ...CAST.c1.settings, stability: 0.4 } } } });
+  assert.equal(changedSettings.total - changedSettings.afterFirst, 1);
+
+  await withTmp(async (dir) => {
+    const calls = [];
+    const run = () => synthesize({
+      plan: tagPlan("Halo."), cast: CAST, projectDir: dir, env: ENV,
+      fetchImpl: fakeFetch(calls), execImpl: fakeExec(), log: () => {},
+    });
+    await run();
+    await rm(path.join(dir, "vo", "scene-01-narr.mp3"));
+    await run();
+    assert.equal(calls.length, 2, "a manifest entry whose file is gone is regenerated");
+  });
+});
+
+test("a changed voice id behind the same env name invalidates the reuse", async () => {
+  await withTmp(async (dir) => {
+    const calls = [];
+    const run = (env) => synthesize({
+      plan: tagPlan("Halo."), cast: CAST, projectDir: dir, env,
+      fetchImpl: fakeFetch(calls), execImpl: fakeExec(), log: () => {},
+    });
+    await run(ENV);
+    await run({ ...ENV, ELEVENLABS_VOICE_C1: "another-voice" });
+    assert.equal(calls.length, 2);
+  });
+});
+
+test("force: true bypasses reuse and dry-run reports what it would do", async () => {
+  const forced = await runTwice(tagPlan("Halo."), { force: true });
+  assert.equal(forced.total, 2);
+  assert.ok(!forced.logs.some((line) => line.includes("reused")));
+
+  await withTmp(async (dir) => {
+    const logs = [];
+    const args = { plan: tagPlan("Halo."), cast: CAST, projectDir: dir, env: ENV,
+      fetchImpl: fakeFetch([]), execImpl: fakeExec(), log: (line) => logs.push(line) };
+    await synthesize({ ...args, dryRun: true });
+    await synthesize(args);
+    await synthesize({ ...args, dryRun: true });
+    await synthesize({ ...args, dryRun: true, force: true });
+    const dry = logs.filter((line) => line.includes("would "));
+    assert.match(dry[0], /would generate scene-01-narr/);
+    assert.match(dry[1], /would reuse scene-01-narr \(unchanged\)/);
+    assert.match(dry[2], /would generate scene-01-narr/);
+  });
+});
+
+test("a tagged layer run twice makes zero requests the second time", async () => {
+  const r = await runTwice(tagPlan("Satu. [pause: 1s] Dua."));
+  assert.equal(r.afterFirst, 2);
+  assert.equal(r.total, 2);
+  assert.deepEqual(r.again.items, r.first.items);
+});
+
+test("only the pause length changed: zero speech requests, output rebuilt, offsets follow", async () => {
+  await withTmp(async (dir) => {
+    const calls = [];
+    const exec = [];
+    const run = (text) => synthesize({
+      plan: tagPlan(text), cast: CAST, projectDir: dir, env: ENV,
+      fetchImpl: fakeFetch(calls), execImpl: fakeExec(exec), log: () => {},
+    });
+    await run("Satu. [pause: 1s] Dua.");
+    exec.length = 0;
+    const again = await run("Satu. [pause: 2s] Dua.");
+    assert.equal(calls.length, 2, "no new speech request");
+    assert.equal(again.items[0].words[1].start_ms, 2500);
+    const encode = exec.find((e) => e.args.includes("libmp3lame"));
+    assert.equal(encode.pcmBytes, (22050 + 88200 + 22050) * 2);
+  });
+});
+
+test("one chunk text changed: exactly one request, the neighbour comes from cache", async () => {
+  await withTmp(async (dir) => {
+    const calls = [];
+    const run = (text) => synthesize({
+      plan: tagPlan(text), cast: CAST, projectDir: dir, env: ENV,
+      fetchImpl: fakeFetch(calls), execImpl: fakeExec(), log: () => {},
+    });
+    await run("Satu. [pause: 1s] Dua.");
+    calls.length = 0;
+    await run("Satu. [pause: 1s] Tiga.");
+    assert.deepEqual(calls.map((c) => c.body.text), ["Tiga."]);
+    assert.deepEqual(calls[0].body.previous_request_ids ?? [], [], "a cached chunk does not chain");
+  });
+});
+
+test("--force re-requests every chunk of a tagged layer", async () => {
+  const r = await runTwice(tagPlan("Satu. [pause: 1s] Dua."), { force: true });
+  assert.equal(r.total, 4);
+});
+
+test("the voice id and API key reach neither the manifest nor the cache, which is flat", async () => {
+  await withTmp(async (dir) => {
+    await synthesize({
+      plan: tagPlan("Satu. [pause: 1s] Dua."), cast: CAST, projectDir: dir,
+      env: { ...ENV, ELEVENLABS_API_KEY: "secret-key", ELEVENLABS_VOICE_C1: "voiceid123" },
+      fetchImpl: fakeFetch([]), execImpl: fakeExec(), log: () => {},
+    });
+    const files = [path.join(dir, "vo", "vo-manifest.json")];
+    const tmp = await readdir(path.join(dir, ".tmp"), { withFileTypes: true });
+    assert.ok(tmp.every((entry) => entry.isFile()), "no subfolders in .tmp");
+    for (const entry of tmp.filter((e) => e.name.endsWith(".json"))) files.push(path.join(dir, ".tmp", entry.name));
+    assert.equal(files.length, 3);
+    for (const file of files) {
+      const raw = await readFile(file, "utf8");
+      assert.ok(!raw.includes("secret-key") && !raw.includes("voiceid123"), `${file} leaks a credential`);
+    }
+    const cache = JSON.parse(await readFile(files[1], "utf8"));
+    assert.ok(cache.alignment && cache.request_id);
   });
 });

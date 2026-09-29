@@ -118,7 +118,19 @@ How the silence is made, and why it is exact:
   and needs nothing beyond the API. Without ffmpeg a tagged layer fails with a message saying so.
 - `chars` counts the spoken text without the tags. Captions, subtitles and P6 read the text with
   the tags removed, so a viewer never sees one.
-- A failed chunk keeps its files in `.tmp/` and says so; a good run deletes them.
+- A speech chunk is kept in `.tmp/` as `vocache-<fingerprint>.mp3` + `.json` (flat, no subfolders);
+  the decode PCM is deleted after the encode, and a failed run says which files it kept.
+
+### 3.2 Reuse
+
+Nothing already generated is requested twice. A layer whose text, cast voice, model and settings
+are unchanged is carried over from the previous `vo-manifest.json` (log: `reused (unchanged)`),
+provided its mp3 still exists. Inside a tagged layer, each speech chunk is cached in `.tmp/` by
+its own fingerprint, so changing only a pause length, or one sentence, re-requests nothing or one
+chunk, and the mp3 is rebuilt from the cached audio. The fingerprint holds a hash of the voice id,
+so a different voice behind the same env name regenerates; the id and the API key are never
+written to the manifest or the cache. Deleting `.tmp/` only costs re-requests. `--force` bypasses
+both levels; `--dry-run` reports `would reuse` or `would generate` per layer.
 
 ---
 

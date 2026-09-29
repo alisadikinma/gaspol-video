@@ -277,6 +277,9 @@ subtitles and P6 strip the tags before they read the text.
 
 `gen_vo.mjs` stitches consecutive requests so prosody carries across scenes, and writes
 `vo-manifest.json` with measured durations and word timings — the input for pass 2 and pass 4.
+An unchanged layer (same text, voice, model, settings) is reused from the previous manifest and a
+pause-tagged layer reuses its cached speech chunks, so a re-run costs nothing for what did not
+change; add `--force` to regenerate everything.
 
 **`--spans` is MANDATORY whenever the scene has more than one speaker.** Speech-to-speech converts
 whatever audio you hand it, so a whole-track conversion rewrites every voice in the clip, including
