@@ -683,6 +683,86 @@ Exact content to add:
 
 ---
 
+### Phase K2: qa_frames matches real project naming (added 2026-09-29)
+
+**Estimated time:** 15 minutes
+
+Found while preparing Phase L on a real project (`catalog-4`): `video-prompts.md` headings are
+`### S01 — …`, `### S01b — …`, and clips are `clips/scene-01.mp4`, `scene-01b.mp4`,
+`scene-01c.mp4`. `qa_frames.py` only matched `### Scene N` and parsed an int, so no PLAUSIBILITY
+block was ever found and `01`/`01b`/`01c` collapsed into one scene.
+
+**Contract:**
+- Scene id is a string: digits with leading zeros stripped then re-padded to 2, plus an optional
+  lowercase letter suffix — `scene-01b.mp4` → `01b`, `scene-5.mp4` → `05`. One helper
+  `scene_id(text)` used everywhere (clip names, `--scenes`, headings, section parsing).
+- `--scenes` accepts `1,1b,03a` (normalised by the same helper).
+- `find_plausibility(markdown, sid)` matches a heading `^#{2,4}\s+(?:Scene\s+|S)0*<num><suffix>(?![0-9a-z])`
+  case-insensitive — so `### S01b — …` and `### Scene 1` both match their ids and `S01` never
+  matches `S01b`.
+- Sheet `.tmp/qa-scene-01b.jpg`, section heading `## Scene 01b`; `--check` parses the same.
+  Existing `## Scene 05` sheets keep working (id `05`).
+
+**Files:** Modify `tools/qa_frames.py`; Test `tests/py/test_qa_frames.py`.
+
+**Steps:**
+1. Write failing test for `qa_frames.scene_id` over `scene-01b.mp4`→`01b`, `scene-5.mp4`→`05`, `1b`→`01b`, `03A`→`03a`, and `find_plausibility` finding `### S01b — …` for `01b` but not for `01`. Expected error: `AttributeError: module 'tools.qa_frames' has no attribute 'scene_id'`.
+2. Run `python3 -m unittest tests.py.test_qa_frames`, confirm.
+3. Implement `scene_id` and the heading match.
+4. Write failing tests: three clips `scene-01`, `scene-01b`, `scene-01c` produce three sheets and three sections; `--scenes 1b` selects only `01b`; `--check` on a sheet with `## Scene 01b` sections passes when all PASS. Run, see RED, implement.
+5. Run `bash tests/run.sh`, all green. Commit: `fix(GV-8): qa_frames understands S01b headings and lettered clip names`
+
+**Verification:**
+- [ ] static: `python3 -m py_compile tools/*.py && for f in tools/*.mjs; do node --check "$f" || exit 1; done` passes
+- [ ] unit: `bash tests/run.sh` passes
+- [ ] Lettered clips never collapse into one scene (test)
+- [ ] No placeholder/TODO comments in new code
+
+---
+
+### Phase K3: gen_vo reuses what it already generated (added 2026-09-29)
+
+**Estimated time:** 15 minutes
+
+Ali, 2026-09-29: a generated asset must be reusable, never re-generated (and re-billed) when
+nothing about it changed — including pause-tagged layers.
+
+**Contract:**
+- Item fingerprint `fp = sha256(JSON.stringify({text: item.text, voice_env, voice_id_sha:
+  sha256(voiceId), model, settings}))`. The voice id itself is never written anywhere; only a
+  hash of it, so a changed voice behind the same env name still invalidates.
+- `vo-manifest.json` items gain `fingerprint`. On a run, when the previous manifest has an item
+  with the same `id`, the same `fingerprint`, and its `file` exists → reuse: no request, the old
+  manifest entry is carried over unchanged, log `  <id>: reused (unchanged)`.
+- Speech chunks of a tagged layer are cached flat in `<project>/.tmp/vocache-<chunkfp16>.mp3` and
+  `.json` (the chunk's `alignment` and `request_id`), `chunkfp = sha256({text: chunkText,
+  voice_env, voice_id_sha, model, settings})`. A layer whose pause lengths changed but whose
+  speech chunks did not is rebuilt from cache with zero requests. A cache miss requests that
+  chunk only. The cache is disposable (`.tmp/`); deleting it only costs re-requests.
+- Reused chunks do not feed `previous_request_ids` (old request ids may have expired);
+  freshly requested chunks keep chaining as today.
+- `--force` bypasses both reuse levels. `--dry-run` reports `would reuse` / `would generate`.
+- The chunk files are no longer deleted after encode (they ARE the cache); the per-layer decode
+  PCM files still are.
+
+**Files:** Modify `tools/gen_vo.mjs`; Test `tests/node/gen_vo.test.mjs`.
+
+**Steps:**
+1. Write failing test for reuse: run `synthesize` twice on the same untagged plan with a fake fetch that counts calls; second run makes 0 calls, logs `reused (unchanged)`, and writes a manifest equal to the first (modulo `generated_at`). Expected error: `AssertionError: 0 !== 1` (second run requests again).
+2. Run `node --test tests/node/gen_vo.test.mjs`, confirm.
+3. Implement item fingerprint + manifest carry-over.
+4. Write failing tests: changed text → 1 call; changed settings → 1 call; missing mp3 file → 1 call; `force: true` → calls again; tagged layer run twice → 0 calls second time; tagged layer with only the pause length changed → 0 speech requests, output rebuilt, word offsets reflect the new pause; one chunk text changed → exactly 1 request; voice id value never appears in manifest or cache json. Run, see RED, implement chunk cache.
+5. Run `bash tests/run.sh`, all green. Commit: `feat(GV-8): gen_vo reuses unchanged narration and cached pause chunks`
+
+**Verification:**
+- [ ] static: `python3 -m py_compile tools/*.py && for f in tools/*.mjs; do node --check "$f" || exit 1; done` passes
+- [ ] unit: `bash tests/run.sh` passes
+- [ ] Second identical run makes zero API requests (test)
+- [ ] Security: voice id and API key never written to manifest or cache (test)
+- [ ] No placeholder/TODO comments in new code
+
+---
+
 ### Phase L: real-run evidence (billable — ask before each run)
 
 **Estimated time:** 15 minutes
@@ -696,7 +776,7 @@ proves the real endpoints.
 **Steps:**
 1. Write failing test for `tests/consistency/gv8-contract.sh` requires the three eval files to exist and each to contain a `## Result` heading. Expected error: `FAIL docs/evals/gen-music-video-run.md missing`.
 2. Run, confirm.
-3. **Ask the user (AskUserQuestion) which real project folder to use and approve the ElevenLabs spend** for (a) one `gen_music.py video` run and (b) one `gen_vo.mjs` run of a single tagged layer. No approval → record `## Result` as `NOT RUN — no approval (<date>)` and list it under the ledger's `## Utang terbuka`. Never fake a result.
+3. **Ask the user (AskUserQuestion) which real project folder to use and approve the ElevenLabs spend** for (a) one `gen_music.py video` run and (b) one `gen_vo.mjs` run of a single tagged layer, then the SAME command again — the second run must make 0 requests and log `reused (unchanged)`. No approval → record `## Result` as `NOT RUN — no approval (<date>)` and list it under the ledger's `## Utang terbuka`. Never fake a result.
 4. `qa_frames.py` needs no spend: run it on an existing rendered project, judge one sheet, run `--check`, record output.
 5. Record commands, exit codes, measured numbers (bed duration vs master, pause length measured with ffprobe/silencedetect vs requested), and anything surprising.
 6. Run `bash tests/run.sh`, all green. Commit: `docs(GV-8): real-run evidence for video-to-music, pause tags and frame QA`
