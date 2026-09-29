@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from unittest.mock import patch
 
@@ -61,6 +62,12 @@ class GenCaptionsTest(unittest.TestCase):
         (self.project / "vo" / "vo-manifest.json").write_text(json.dumps(VO_MANIFEST))
         (self.project / "strategic-brief.md").write_text("# Brief\n\nProduct: **INDUSIA Gate**\n")
         (self.project / "cast-profile.md").write_text("## cast-c1 — Ali Sadikin\n")
+        # main() reads `.env` from the working directory. In a checkout that has a real
+        # ASSEMBLYAI_API_KEY there, the untimed dialogue layer went to AssemblyAI with an
+        # audio file the fixture never wrote. Tests never see real keys.
+        no_env = mock.patch.object(gen_captions, "_load_env", return_value={})
+        no_env.start()
+        self.addCleanup(no_env.stop)
 
     def tearDown(self):
         self.tmp.cleanup()
