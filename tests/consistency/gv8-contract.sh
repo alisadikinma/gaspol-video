@@ -29,5 +29,7 @@ need reference/post-production/10-post-production-pipeline.md 'visual-qa.md' 'li
 need reference/post-production/10-post-production-pipeline.md '4A | 4B | 5 | 6' 'document phase 6 in the renders.json schema'
 need reference/post-production/11-voice-cast-and-vo.md '[pause:' 'document the [pause: tag'
 need reference/image-video-gen/10-physical-plausibility-gate.md 'qa_frames.py' 'name qa_frames.py'
+need skills/video-image/SKILL.md 'asset_library.py' 'name asset_library.py'
+need reference/image-video-gen/01-nb2-image-generation.md 'asset_library.py' 'name asset_library.py'
 
 exit $fail
