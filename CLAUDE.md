@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 20 CLI tools (18 Python + 2 Node, 4 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 36 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 26 CLI tools (24 Python + 2 Node, 4 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 36 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -650,7 +650,7 @@ All configurable values live in `reference/global-promo-config.md` — single so
 - **Docs.** `reference/post-production/11-voice-cast-and-vo.md` (pause tags),
   `13-ffmpeg-edit.md` (dissolves and handles) and `17-music-bed.md` (video bed, fallback) carry the
   detail; `video-post`, `video-gen`, `video-script`, `video-validate` and both agents point at it.
-- **Tool count:** 20 CLI tools (18 Python + 2 Node), up from 19. Excluded on purpose: TwelveLabs
+- **Tool count:** 26 CLI tools (24 Python + 2 Node) — counted from `tools/`; earlier releases stopped updating this number at 19 while `check_vo_duration.py`, `check_overlay_strings.py`, `track_screen.py`, `caption_keywords.py`, `gen_captions.py` and `plan_motion.py` landed. Excluded on purpose: TwelveLabs
   analysis, Sonilo, other render adapters, slide/zoom transitions, transitions outside act
   changes.
 
