@@ -286,7 +286,7 @@ from `load_plan()` for every segment. `None`/absent = fine. Refusals (each a `Pl
 - Test: `tests/py/test_edit_render.py`
 
 **Steps:**
-1. Write failing test: a plan whose segment 1 carries `transition_in` must raise `PlanError` mentioning `first segment`. Expected error: `AssertionError: PlanError not raised`.
+1. Write failing test for a plan whose segment 1 carries `transition_in` must raise `PlanError` mentioning `first segment`. Expected error: `AssertionError: PlanError not raised`.
 2. Run `python3 -m unittest tests.py.test_edit_render`, confirm that failure.
 3. Implement constants + `_check_transition` + call from `load_plan`.
 4. Add failing tests for each remaining refusal (unknown kind, 0.1, 1.5, `"x"`, NaN, previous padded, insufficient handle with a 2.0s `make_clip` source and `out_s: 2.0`, `dur_s` ≥ segment length) plus one accepting case (4.0s source, `out_s: 3.0`, `dur_s: 0.5`). Run, see failures, fix until green.
@@ -325,7 +325,7 @@ applicable, single-process CLI.
 - Test: `tests/py/test_edit_render.py`
 
 **Steps:**
-1. Write failing test: capture `build_commands` output for a 3-segment plan with no transitions and assert it equals a frozen expected list (build it from the current code before changing anything, then paste the literal). Then a second test: segment 2 carries `transition_in` 0.5s, assert segment 1's command has `-t 2.5` for a planned 2.0s segment. Expected error on the second: `AssertionError: '2.0' != '2.5'`.
+1. Write failing test for capture `build_commands` output for a 3-segment plan with no transitions and assert it equals a frozen expected list (build it from the current code before changing anything, then paste the literal). Then a second test: segment 2 carries `transition_in` 0.5s, assert segment 1's command has `-t 2.5` for a planned 2.0s segment. Expected error on the second: `AssertionError: '2.0' != '2.5'`.
 2. Run, confirm the regression test passes and the new one fails.
 3. Implement handle extension + group merge commands.
 4. Write failing `@requires_ffmpeg` render test: three 3.0s `make_clip` sources, plan segments `0.0-2.0`, `0.0-2.0` with `transition_in` 0.5, `0.0-2.0`; assert master `duration_of(out, "v:0")` and `"a:0"` both within 0.04s of 6.0, and the A/V gate passes. Add a frame check with `extract_frame` + `psnr`: at t=2.2s the frame differs from both pure-source frames (it is a blend).
@@ -449,7 +449,7 @@ name (refuse that `--clip` with a message), duplicate scene from ledger and `--c
 - Test: `tests/py/test_qa_frames.py`
 
 **Steps:**
-1. Write failing test: sheet with one empty verdict → `main([project, "--check"])` returns 1 and prints `V15 FAIL`. Expected error: `AssertionError: 0 != 1` (or argparse error for the unknown flag).
+1. Write failing test for sheet with one empty verdict → `main([project, "--check"])` returns 1 and prints `V15 FAIL`. Expected error: `AssertionError: 0 != 1` (or argparse error for the unknown flag).
 2. Run, confirm.
 3. Implement `check()`.
 4. Add failing tests for: FAIL cell → 1; malformed cell `"ok"` → 1; hash mismatch → 1; all PASS → 0; PASS + one UNSURE → 0 with NOTE printed; missing section for a listed clip → 1. Implement until green.
@@ -559,13 +559,13 @@ Functions:
 - Test: `tests/py/test_gen_music.py`, `tests/py/test_renders.py`
 
 **Steps:**
-0. Write failing test in `tests/py/test_renders.py`: `renders.main([project, "record", "--json", '{"file":"output/music.mp3","phase":"6","status":"done"}'])` returns 0. Expected error: `AssertionError: 1 != 0` (`invalid phase '6'`). Add `"6"` to `_RENDER_PHASES`, see it pass.
-1. Write failing test: fake sender raising `HTTPError(403)` → `main_video([project, "--master", …], sender=fake)` returns 3 and prints `FALLBACK palette: HTTP 403`. Expected error: `TypeError: main_video() got an unexpected keyword argument 'sender'` (the sender is the injected seam, default `_request_music`-style `urllib` call).
-2. Run, confirm.
-3. Implement `run_video_music(project, …, sender, env, log)` and the exit-code mapping.
-4. Add failing tests: success writes file + ledger `done` entry; second run with same master is `up-to-date` and the fake sender is not called; changed master bytes → sender called again; `--force` → called; no key → 3 with no sender call and no ledger entry; 700s master (fake probe) → 3 before proxy; tiny response → 3 with a `failed` entry; `--dry-run` → 0, no sender call. Implement until green.
-5. Run `bash tests/run.sh`, all green.
-6. Commit: `feat(GV-8): gen_music video sends, reuses unchanged results, falls back to the palette`
+1. Write failing test for phase 6 in `tests/py/test_renders.py`: `renders.main([project, "record", "--json", '{"file":"output/music.mp3","phase":"6","status":"done"}'])` returns 0. Expected error: `AssertionError: 1 != 0` (`invalid phase '6'`). Add `"6"` to `_RENDER_PHASES`, see it pass.
+2. Write failing test for fake sender raising `HTTPError(403)` → `main_video([project, "--master", …], sender=fake)` returns 3 and prints `FALLBACK palette: HTTP 403`. Expected error: `TypeError: main_video() got an unexpected keyword argument 'sender'` (the sender is the injected seam, default `_request_music`-style `urllib` call).
+3. Run, confirm.
+4. Implement `run_video_music(project, …, sender, env, log)` and the exit-code mapping.
+5. Add failing tests: success writes file + ledger `done` entry; second run with same master is `up-to-date` and the fake sender is not called; changed master bytes → sender called again; `--force` → called; no key → 3 with no sender call and no ledger entry; 700s master (fake probe) → 3 before proxy; tiny response → 3 with a `failed` entry; `--dry-run` → 0, no sender call. Implement until green.
+6. Run `bash tests/run.sh`, all green.
+7. Commit: `feat(GV-8): gen_music video sends, reuses unchanged results, falls back to the palette`
 
 **Verification:**
 - [ ] static: `python3 -m py_compile tools/*.py && for f in tools/*.mjs; do node --check "$f" || exit 1; done` passes
@@ -617,7 +617,7 @@ Exact content to add:
 `skills/video-script/SKILL.md` contains `[pause:`; `agents/video-prompt-reviewer.md` contains `V16`.
 
 **Steps:**
-1. Write failing test `tests/consistency/gv8-contract.sh` as specified. Expected error: `FAIL skills/video-gen/SKILL.md does not name qa_frames.py` (and the other FAIL lines), exit 1.
+1. Write failing test for the skill contract, `tests/consistency/gv8-contract.sh` as specified. Expected error: `FAIL skills/video-gen/SKILL.md does not name qa_frames.py` (and the other FAIL lines), exit 1.
 2. Run `bash tests/run.sh consistency`, confirm it fails.
 3. Edit the six files with the content above.
 4. Run `bash tests/run.sh`, all green.
@@ -644,7 +644,7 @@ Exact content to add:
 - Test: extend `tests/consistency/gv8-contract.sh`
 
 **Steps:**
-1. Write failing test: extend `gv8-contract.sh` to require `transition_in` in `13-ffmpeg-edit.md`, `bed_source` in `17-music-bed.md` and in `10-post-production-pipeline.md`, `[pause:` in `11-voice-cast-and-vo.md`, `qa_frames.py` in `10-physical-plausibility-gate.md`. Expected error: FAIL lines naming each file, exit 1.
+1. Write failing test for extend `gv8-contract.sh` to require `transition_in` in `13-ffmpeg-edit.md`, `bed_source` in `17-music-bed.md` and in `10-post-production-pipeline.md`, `[pause:` in `11-voice-cast-and-vo.md`, `qa_frames.py` in `10-physical-plausibility-gate.md`. Expected error: FAIL lines naming each file, exit 1.
 2. Run `bash tests/run.sh consistency`, confirm.
 3. Write the reference sections.
 4. Run `bash tests/run.sh`, all green (including `renders-schema-once.sh`, which requires the renders.json schema to be documented in exactly one place — only edit §3.8, never restate it).
@@ -669,7 +669,7 @@ Exact content to add:
 - Modify: `README.md` if it lists tools or the version (check with `grep -n "3.5.0\|gen_music" README.md`)
 
 **Steps:**
-1. Write failing test: bump the pins in `tools-index.sh` and `plugin-identity.sh` to `3.6.0` and add `qa_frames` + `video-to-music` to `tools-index.sh`'s NOTICE needle list. Expected error: `FAIL plugin.json version is not 3.6.0`, `FAIL NOTICE does not mention qa_frames`.
+1. Write failing test for bump the pins in `tools-index.sh` and `plugin-identity.sh` to `3.6.0` and add `qa_frames` + `video-to-music` to `tools-index.sh`'s NOTICE needle list. Expected error: `FAIL plugin.json version is not 3.6.0`, `FAIL NOTICE does not mention qa_frames`.
 2. Run `bash tests/run.sh consistency`, confirm.
 3. Edit plugin.json, CLAUDE.md, NOTICE, README.
 4. Run `bash tests/run.sh`, all green.
@@ -694,7 +694,7 @@ proves the real endpoints.
 - Create: `docs/evals/gen-music-video-run.md`, `docs/evals/pause-tags-run.md`, `docs/evals/qa-frames-run.md`
 
 **Steps:**
-1. Write failing test: `tests/consistency/gv8-contract.sh` requires the three eval files to exist and each to contain a `## Result` heading. Expected error: `FAIL docs/evals/gen-music-video-run.md missing`.
+1. Write failing test for `tests/consistency/gv8-contract.sh` requires the three eval files to exist and each to contain a `## Result` heading. Expected error: `FAIL docs/evals/gen-music-video-run.md missing`.
 2. Run, confirm.
 3. **Ask the user (AskUserQuestion) which real project folder to use and approve the ElevenLabs spend** for (a) one `gen_music.py video` run and (b) one `gen_vo.mjs` run of a single tagged layer. No approval → record `## Result` as `NOT RUN — no approval (<date>)` and list it under the ledger's `## Utang terbuka`. Never fake a result.
 4. `qa_frames.py` needs no spend: run it on an existing rendered project, judge one sheet, run `--check`, record output.
