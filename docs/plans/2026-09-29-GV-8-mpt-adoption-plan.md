@@ -763,6 +763,121 @@ nothing about it changed — including pause-tagged layers.
 
 ---
 
+### Phase K4: the SFX and music library survives plugin updates (added 2026-09-29)
+
+**Estimated time:** 15 minutes
+
+Ali, 2026-09-29: every general asset must be reusable. Measured: generated SFX clips and music
+tracks live inside the versioned plugin cache
+(`~/.claude/plugins/cache/gaspol-one/gaspol-video/3.5.0/media/sfx/library/clips` holds 10 clips,
+`.../music/library/tracks` 3 tracks; the 3.1.0-3.4.0 dirs hold none). A plugin update starts a
+new version dir, so every clip would be regenerated and re-billed. The venv already solved the
+same problem by living at `${GASPOL_VIDEO_HOME:-~/.gaspol-video}`.
+
+**Contract:**
+- New stdlib module `tools/asset_home.py`:
+  - `home()` → `Path(os.environ.get("GASPOL_VIDEO_HOME") or "~/.gaspol-video").expanduser()`
+  - `library(kind)` → `home()/"library"/kind` for kind ∈ `sfx | music | images`, created on demand
+  - `recipes(kind)` → the plugin's `media/<kind>/library/palette.json` (resolved from
+    `Path(__file__).resolve().parent.parent`), unchanged location
+  - `adopt(kind, log)` → when `library(kind)/catalog.json` is missing or empty, copy (never move)
+    clips/tracks and merge catalog entries by `id` from every
+    `~/.claude/plugins/cache/*/gaspol-video/*/media/<kind>/library/` and from the plugin's own
+    `media/<kind>/library/`; newest file mtime wins on id collision; logs
+    `adopted N <kind> file(s) from <dir>`; returns the count. Idempotent.
+  - `--help` CLI with `where` (prints the three library dirs) and `adopt [--kind K]`.
+- `gen_sfx.py` / `gen_music.py`: `--library` default becomes `asset_home.library(kind)`; the
+  palette is read from `--recipes` (default `asset_home.recipes(kind)`), so recipes stay in the
+  plugin and outputs go home. `adopt()` runs first on every non-`--dry-run` invocation.
+  An explicit `--library DIR` keeps today's behaviour (palette read from DIR when DIR has one).
+- `mix_sfx.py` / `make_stems.py`: when the plan has no `catalog`, use
+  `asset_home.library("sfx")/"catalog.json"` (absolute). A plan that names a catalog is
+  unchanged.
+- `mix_music.py` / `make_stems.py`: a segment `track` of the form `library:<id>` resolves to
+  `asset_home.library("music")/"tracks"/<id>.mp3`; absolute and project-relative paths unchanged.
+- Skills/references: `video-post` pass 3/4 and `14-sfx-design.md` / `17-music-bed.md` name the
+  new location and the `library:<id>` form; `.env.example` documents `GASPOL_VIDEO_HOME`
+  (already used by the venv) as also holding the library.
+
+**Files:** Create `tools/asset_home.py`, `tests/py/test_asset_home.py`; Modify `tools/gen_sfx.py`,
+`tools/gen_music.py`, `tools/mix_sfx.py`, `tools/mix_music.py`, `tools/make_stems.py`,
+`skills/video-post/SKILL.md`, `reference/post-production/14-sfx-design.md`,
+`reference/post-production/17-music-bed.md`, `.env.example`, `CLAUDE.md` (architecture row),
+their tests.
+
+**Steps:**
+1. Write failing test for `asset_home.library("sfx")` honouring `GASPOL_VIDEO_HOME` (tmp dir) and creating the directory. Expected error: `ImportError: cannot import name 'asset_home' from 'tools'`.
+2. Run `python3 -m unittest tests.py.test_asset_home`, confirm.
+3. Implement `home`, `library`, `recipes`.
+4. Write failing tests for `adopt`: two fake cache version dirs with overlapping ids (newest mtime wins), copy not move (source still present), idempotent second call adopts 0, empty sources adopt 0. Run, see RED, implement.
+5. Write failing tests: `gen_sfx`/`gen_music` default library resolves home and palette from recipes (use `--dry-run` and a tmp `GASPOL_VIDEO_HOME`); `mix_sfx` with no `catalog` key reads the home catalog; `mix_music` resolves `library:<id>`; explicit `--library` keeps old behaviour. Run, see RED, implement.
+6. Update the skill/reference/.env.example/CLAUDE.md lines; run `bash tests/run.sh` (tools-index needs `asset_home.py` in CLAUDE.md; tools-cli needs `--help`), all green.
+7. Commit: `feat(GV-8): SFX and music library lives in GASPOL_VIDEO_HOME and survives plugin updates`
+
+**Verification:**
+- [ ] static: `python3 -m py_compile tools/*.py && for f in tools/*.mjs; do node --check "$f" || exit 1; done` passes
+- [ ] unit: `bash tests/run.sh` passes
+- [ ] Adoption copies, never moves; running twice adopts nothing the second time (test)
+- [ ] Plans that name an explicit catalog/track path behave exactly as before (test)
+- [ ] No placeholder/TODO comments in new code
+
+---
+
+### Phase K5: cross-project library for generic images (added 2026-09-29)
+
+**Estimated time:** 15 minutes
+
+Ali, 2026-09-29: generic assets (not faces, logos, UI, products, costumes or real locations)
+should be generated once and reused across projects.
+
+**Contract:** new stdlib tool `tools/asset_library.py`, store `asset_home.library("images")`:
+`catalog.json` `{"images": [{id, file, prompt_sha256, model, aspect, tags: [], description,
+source_project, added_at}]}`, files stored as `<id>.png` (id = first 16 hex of prompt_sha256 +
+`-` + aspect with `:` → `x`). `prompt_sha256` uses `renders.prompt_sha256` (same normalisation as
+the render ledger).
+
+```
+python3 tools/asset_library.py find --prompt-file P --aspect 16:9     # prints the path, exit 0; exit 1 when absent
+python3 tools/asset_library.py add  --file F --prompt-file P --aspect 16:9 --model nano-banana-2
+                                    --tags gudang,forklift --description "..." [--project DIR]
+python3 tools/asset_library.py list [--tag T]                          # id, aspect, tags, description
+python3 tools/asset_library.py use  --id ID --to <project>/ref/<name>.png   # copy, refuses to overwrite without --force
+```
+
+- `add` refuses (exit 2, message naming the match) when the prompt text contains any of
+  `cast-`, `brand-`, `ui-`, `product-`, `costume-`, `env-`, `Maintain exact facial identity`, or
+  a `scene-NN-` continuity ref — those assets are project-specific by definition. It refuses a
+  file that is not a PNG/JPEG (magic bytes) and an aspect not in `16:9 | 9:16 | 1:1 | 4:3 | 3:4`.
+  Adding an existing id replaces the entry only with `--force`.
+- `find` is exact: same normalised prompt AND same aspect. No fuzzy auto-reuse.
+- `list --tag` is the human-in-the-loop path: the skill shows candidates and the user picks.
+- `video-image` skill, Phase 4A render offer: before rendering an asset whose prompt passes the
+  `add` guard, run `find`; a hit → `use` into `ref/` and record it in `renders.json` as
+  `status: "done"`, `model: "library"`, no render. After a successful render of such an asset,
+  offer (one line) to `add` it. Rule text states that faces/logos/UI/products/costumes/locations
+  are never library assets.
+
+**Files:** Create `tools/asset_library.py`, `tests/py/test_asset_library.py`; Modify
+`skills/video-image/SKILL.md`, `reference/image-video-gen/01-nb2-image-generation.md` (one
+subsection), `CLAUDE.md` (architecture row), `tests/consistency/gv8-contract.sh`.
+
+**Steps:**
+1. Write failing test for `add` then `find` round-trip with a tmp `GASPOL_VIDEO_HOME` and a tiny real PNG. Expected error: `ImportError: cannot import name 'asset_library' from 'tools'`.
+2. Run `python3 -m unittest tests.py.test_asset_library`, confirm.
+3. Implement catalog load/save (atomic), `add`, `find`.
+4. Write failing tests: each guard word refused; non-image refused; bad aspect refused; same prompt different aspect → `find` misses; whitespace-only prompt change → `find` hits (normalisation); `use` copies and refuses overwrite without `--force`; `list --tag` filters; duplicate add without `--force` refused. Run, see RED, implement.
+5. Extend `gv8-contract.sh` (video-image names `asset_library.py`), write the skill/reference text, run `bash tests/run.sh`, all green.
+6. Commit: `feat(GV-8): cross-project library for generic images`
+
+**Verification:**
+- [ ] static: `python3 -m py_compile tools/*.py && for f in tools/*.mjs; do node --check "$f" || exit 1; done` passes
+- [ ] unit: `bash tests/run.sh` passes
+- [ ] Project-specific prompts can never enter the library (test per guard word)
+- [ ] Reuse is exact-match only; tag search never auto-applies
+- [ ] No placeholder/TODO comments in new code
+
+---
+
 ### Phase L: real-run evidence (billable — ask before each run)
 
 **Estimated time:** 15 minutes
