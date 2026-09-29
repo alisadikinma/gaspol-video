@@ -18,6 +18,7 @@ Stdlib only. Needs ffmpeg and ffprobe.
 
 import argparse
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -50,9 +51,11 @@ def frame_times(duration_s, fps):
     frame = 1.0 / fps
     if not duration_s or duration_s < frame:
         raise ValueError(f"clip is shorter than one frame ({duration_s}s)")
-    last = max(0.0, duration_s - frame)
+    # Half a frame INSIDE the last frame, rounded DOWN: the last frame starts at D - 1/fps,
+    # and a seek past that start writes nothing (8.0s at 24fps: frame starts 7.9583, 7.96 fails).
+    last = max(0.0, math.floor((duration_s - 1.5 * frame) * 100 + 1e-9) / 100)
     return [round(t, 2) for t in
-            (0.0, duration_s * 0.25, duration_s * 0.5, duration_s * 0.75, last)]
+            (0.0, duration_s * 0.25, duration_s * 0.5, duration_s * 0.75)] + [last]
 
 
 _ID_RE = re.compile(r"(\d+)([a-z]?)")

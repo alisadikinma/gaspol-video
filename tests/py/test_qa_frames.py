@@ -12,7 +12,13 @@ from tools import qa_frames
 
 class FrameTimesTest(unittest.TestCase):
     def test_five_timestamps_last_is_one_frame_before_the_end(self):
-        self.assertEqual(qa_frames.frame_times(8.0, 25), [0.0, 2.0, 4.0, 6.0, 7.96])
+        self.assertEqual(qa_frames.frame_times(8.0, 25), [0.0, 2.0, 4.0, 6.0, 7.94])
+
+    def test_last_timestamp_is_inside_the_last_frame_at_24fps(self):
+        # A VEO clip is 8.0s at 24fps: 192 frames, the last one STARTS at 7.9583s. Asking
+        # ffmpeg for 7.96 (round-half-up of D - 1/fps) lands past it and writes nothing.
+        last = qa_frames.frame_times(8.0, 24)[-1]
+        self.assertLess(last, 8.0 - 1.0 / 24)
 
     def test_clip_shorter_than_one_frame_is_refused(self):
         with self.assertRaises(ValueError):
@@ -245,6 +251,21 @@ class MainExtractionTest(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertTrue((project / ".tmp" / "qa-scene-04.jpg").exists())
             self.assertFalse((project / ".tmp" / "qa-scene-03.jpg").exists())
+
+
+@media.requires_ffmpeg
+class RealClipFrameRateTest(unittest.TestCase):
+    def test_eight_second_clip_at_24fps_gets_a_sheet(self):
+        # Found on a real catalog-4 run: every VEO clip failed with "Nothing was written into
+        # output file" at the last timestamp, so no sheet was made at all.
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "clips").mkdir()
+            media.make_clip(project / "clips" / "scene-01.mp4", seconds=8.0, fps=24)
+            write_ledger(project, [ledger_entry(1, "clips/scene-01.mp4")])
+            code, out, err = run_main([str(project)])
+            self.assertEqual(code, 0, err + out)
+            self.assertTrue((project / ".tmp" / "qa-scene-01.jpg").exists())
 
 
 @media.requires_ffmpeg
