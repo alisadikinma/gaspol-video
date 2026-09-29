@@ -14,8 +14,9 @@ Schema (`music-plan.json`) in `10-post-production-pipeline.md`. Values in `globa
 ```
 av-script.md per-scene music direction
    +  video tone (global-promo-config.md §13)
-        -> mood id in media/music/library/palette.json
-              -> a track in media/music/library/tracks/
+        -> mood id in media/music/library/palette.json (recipes, in the plugin)
+              -> a track in ${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/music/tracks/
+                 (a plan names it "library:<mood-id>")
 ```
 
 | Tone | Mood |
@@ -57,8 +58,9 @@ skipped and never re-billed unless `--force`. Each track is loudness-normalised 
 `palette.json`'s `defaults.target_lufs`, clamped so the peak never crosses `defaults.ceiling_dbfs` —
 the resulting `catalog.json` (`{output_folder}` independent, lives in the library) records
 `loudness_lufs` and `peak_dbfs` per track so `mix_music.py`'s own `gain_to_sit_under()` measurement
-starts from a known level. `catalog.json` is gitignored, same as the tracks — it is regenerated
-data, not a reviewable artefact.
+starts from a known level. The tracks and `catalog.json` live in the home library, not the plugin,
+so a plugin update never loses or re-bills them; `tools/asset_home.py adopt` copies what earlier
+plugin versions generated. They are never committed — regenerated data, not a reviewable artefact.
 
 Missing `ELEVENLABS_API_KEY` degrades loudly: the tool exits 1 naming which moods it could not make
 and says to supply a licensed track by hand instead. A missing `palette.json` (wrong working

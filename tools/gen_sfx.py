@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Grow the shared SFX library from palette.json recipes.
 
-    python3 tools/gen_sfx.py [--library DIR] [--only id1,id2] [--force] [--dry-run] [--renorm]
+    python3 tools/gen_sfx.py [--library DIR] [--recipes FILE] [--only id1,id2] [--force]
+                             [--dry-run] [--renorm]
+
+Clips are written to `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/sfx` so a plugin update never
+loses them; recipes are read from the plugin's `media/sfx/library/palette.json`. An explicit
+`--library DIR` keeps the old behaviour: clips go to DIR and the palette is read from DIR.
+Earlier plugin versions' clips are copied into the home library on the first real run.
 
 The library is the durable asset; each video is one draw from it. Recipes are written to be
 GENERIC on purpose (`whoosh-soft`, not `whoosh-for-the-pelindo-video`) so the next project
@@ -23,6 +29,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools import asset_home  # noqa: E402
+
 FFMPEG = shutil.which("ffmpeg")
 API_URL = "https://api.elevenlabs.io/v1/sound-generation"
 MODEL = "eleven_text_to_sound_v2"
@@ -32,8 +43,6 @@ MODEL = "eleven_text_to_sound_v2"
 # plan gains sit 3-5 dB higher than the table suggests. See 14-sfx-design.md.
 TARGET_LUFS = -20.0
 TARGET_PEAK_DBFS = -1.5
-
-DEFAULT_LIBRARY = Path("media/sfx/library")
 
 
 class LibraryError(Exception):
@@ -49,8 +58,8 @@ def _read_json(path, default):
         raise LibraryError(f"{Path(path).name} is not valid JSON: {exc.msg}") from exc
 
 
-def load_palette(library):
-    path = Path(library) / "palette.json"
+def load_palette(library, recipes=None):
+    path = Path(recipes) if recipes else Path(library) / "palette.json"
     if not path.exists():
         raise LibraryError(
             f"palette not found: {path} — run from the plugin root or pass --library"
@@ -63,10 +72,10 @@ def load_catalog(library):
     return _read_json(Path(library) / "catalog.json", {"clips": []})
 
 
-def missing_recipes(library, only=None, force=False):
+def missing_recipes(library, only=None, force=False, recipes=None):
     """Which recipes still need a clip. Library-first: an existing clip is never regenerated."""
-    recipes = load_palette(library)
-    by_id = {r["id"]: r for r in recipes}
+    palette = load_palette(library, recipes)
+    by_id = {r["id"]: r for r in palette}
 
     if only:
         unknown = [i for i in only if i not in by_id]
@@ -75,13 +84,13 @@ def missing_recipes(library, only=None, force=False):
                 f"palette.json has no recipe for: {', '.join(unknown)}. "
                 "Add the recipe first — generating without one leaves a clip nothing can reuse."
             )
-        recipes = [by_id[i] for i in only]
+        palette = [by_id[i] for i in only]
 
     if force:
-        return recipes
+        return palette
 
     have = {c["id"] for c in load_catalog(library).get("clips", [])}
-    return [r for r in recipes if r["id"] not in have]
+    return [r for r in palette if r["id"] not in have]
 
 
 def loudnorm_args():
@@ -133,13 +142,13 @@ def _request_sfx(prompt, duration_s, api_key):
         return resp.read()
 
 
-def generate(library, env=None, only=None, force=False, dry_run=False, log=print):
+def generate(library, env=None, only=None, force=False, dry_run=False, log=print, recipes=None):
     library = Path(library)
     env = env if env is not None else {}
     clips_dir = library / "clips"
 
-    recipes = missing_recipes(library, only=only, force=force)
-    if not recipes:
+    todo = missing_recipes(library, only=only, force=force, recipes=recipes)
+    if not todo:
         log("library is complete — nothing to generate")
         return {"degraded": False, "written": [], "pending": []}
 
@@ -151,22 +160,22 @@ def generate(library, env=None, only=None, force=False, dry_run=False, log=print
             "add them to catalog.json by hand with their real source and licence."
         )
         log(reason)
-        for r in recipes:
+        for r in todo:
             log(f"  pending: {r['id']} — \"{r['prompt']}\" ({r.get('duration_s')}s)")
         return {"degraded": True, "reason": reason, "written": [],
-                "pending": [r["id"] for r in recipes]}
+                "pending": [r["id"] for r in todo]}
 
     if dry_run:
-        for r in recipes:
+        for r in todo:
             log(f"  would generate {r['id']} — \"{r['prompt']}\" ({r.get('duration_s')}s)")
-        return {"degraded": False, "written": [], "pending": [r["id"] for r in recipes]}
+        return {"degraded": False, "written": [], "pending": [r["id"] for r in todo]}
 
     clips_dir.mkdir(parents=True, exist_ok=True)
     catalog = load_catalog(library)
     written = []
     failed = []
 
-    for recipe in recipes:
+    for recipe in todo:
         try:
             raw = _request_sfx(recipe["prompt"], recipe.get("duration_s", 2.0), api_key)
         except urllib.error.HTTPError as exc:
@@ -215,7 +224,8 @@ def renormalise(library, log=print):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--library", default=str(DEFAULT_LIBRARY))
+    ap.add_argument("--library", help="default: ${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/sfx")
+    ap.add_argument("--recipes", help="palette.json; default: the plugin's, or DIR's when --library is given")
     ap.add_argument("--only", help="comma-separated recipe ids")
     ap.add_argument("--force", action="store_true", help="regenerate even if a clip exists")
     ap.add_argument("--dry-run", action="store_true")
@@ -234,13 +244,18 @@ def main(argv=None):
     except OSError:
         pass
 
+    library = Path(args.library) if args.library else asset_home.library("sfx")
+    recipes = args.recipes or (None if args.library else asset_home.recipes("sfx"))
+
     try:
         if args.renorm:
-            renormalise(args.library)
+            renormalise(library)
             return 0
-        generate(args.library, env=env,
+        if not args.dry_run and not args.library:
+            asset_home.adopt("sfx")
+        generate(library, env=env,
                  only=args.only.split(",") if args.only else None,
-                 force=args.force, dry_run=args.dry_run)
+                 force=args.force, dry_run=args.dry_run, recipes=recipes)
         return 0
     except LibraryError as exc:
         print(f"gen_sfx: {exc}", file=sys.stderr)

@@ -3,6 +3,10 @@
 
     python3 tools/mix_music.py <project-dir> [--plan PATH] [--master PATH] [--print]
 
+A segment `track` of the form `library:<id>` is the shared library's
+`${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/music/tracks/<id>.mp3`; any other value is an
+absolute path or one relative to the project, as before.
+
 The track choice is not asked for again: `av-script.md` has carried a per-scene music
 direction since Phase 2, and until now nothing read it. This pass does.
 
@@ -24,6 +28,11 @@ import tempfile
 import wave
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools import asset_home  # noqa: E402
+
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
 
@@ -44,6 +53,13 @@ TONE_TO_MOOD = {
 
 class MusicError(Exception):
     """The music plan cannot be applied as written."""
+
+
+def resolve_track(project, track):
+    """`library:<id>` -> the home music library; else absolute, or relative to the project."""
+    if track.startswith("library:"):
+        return asset_home.library("music") / "tracks" / f"{track[len('library:'):]}.mp3"
+    return Path(project) / track
 
 
 def mood_for_tone(tone):
@@ -184,7 +200,7 @@ def apply(plan_path, project, master=None, out=None, log=print):
 
     usable = []
     for seg in segments:
-        track = project / seg["track"]
+        track = resolve_track(project, seg["track"])
         try:
             level_dbfs(track)          # proves it is readable audio before ffmpeg sees it
         except MusicError as exc:
@@ -207,7 +223,7 @@ def apply(plan_path, project, master=None, out=None, log=print):
     cmd = [FFMPEG, "-y", "-v", "error", "-i", str(master)]
     filters, labels = [], []
     for i, seg in enumerate(usable, start=1):
-        cmd += ["-i", str(project / seg["track"])]
+        cmd += ["-i", str(resolve_track(project, seg["track"]))]
         delay = int(seg["from_s"] * 1000)
         length = seg["to_s"] - seg["from_s"]
         fi = seg.get("fade_in_s", 1.0)

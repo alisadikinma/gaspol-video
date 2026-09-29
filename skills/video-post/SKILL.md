@@ -402,9 +402,14 @@ cannot do.
 ### 3.2 Library first
 
 ```bash
-python3 tools/gen_sfx.py --library media/sfx/library --dry-run   # what is missing
-python3 tools/gen_sfx.py --library media/sfx/library             # generate only the misses
+python3 tools/gen_sfx.py --dry-run   # what is missing
+python3 tools/gen_sfx.py             # generate only the misses
 ```
+
+Clips are written to `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/sfx`, so a plugin update never
+loses them (`python3 tools/asset_home.py where` prints the path; the first real run copies clips
+earlier plugin versions made). Recipes stay in the plugin's `media/sfx/library/palette.json`. An
+`sfx-plan.json` with no `catalog` key reads that home catalog.
 
 Reuse a catalogued clip before generating one. New recipes get GENERIC ids so the next project
 reuses them.
@@ -522,6 +527,10 @@ python3 tools/mix_music.py {output_folder}
 
 The track is derived from the per-scene music direction already in `av-script.md` plus the video
 tone, not asked for again. The bed sits at least 12 dB below the voice by measurement.
+
+Palette tracks live in `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/music/tracks/`. A
+`music-plan.json` segment names one as `"track": "library:<mood-id>"`; an absolute or
+project-relative path still works.
 
 `music-plan.json` `bed_source` defaults to `palette`. When the user asked for a composed bed, run
 `python3 tools/gen_music.py video {output_folder}` after the master exists (flags: `--master`,

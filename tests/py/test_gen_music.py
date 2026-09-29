@@ -1,13 +1,16 @@
+import contextlib
 import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
-from tools import gen_music, renders
+from tools import asset_home, gen_music, renders
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
 
 
@@ -142,6 +145,71 @@ class RequestFailureWrappingTest(unittest.TestCase):
             with self.assertRaises(gen_music.MusicLibraryError) as ctx:
                 gen_music.generate(self.library, env={"ELEVENLABS_API_KEY": "fake-key"})
         self.assertIn("disk full", str(ctx.exception))
+
+
+class HomeLibraryTest(unittest.TestCase):
+    """The library defaults to GASPOL_VIDEO_HOME; recipes stay in the plugin (GV-8 K4)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.home = self.root / "home"
+        env = patch.dict(os.environ, {"GASPOL_VIDEO_HOME": str(self.home),
+                                      "ELEVENLABS_API_KEY": "k"})
+        env.start()
+        self.addCleanup(env.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.palette = self.root / "palette.json"
+        self.palette.write_text(json.dumps(PALETTE))
+
+    def _run(self, argv):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            rc = gen_music.main(argv)
+        return rc, out.getvalue()
+
+    def test_default_library_is_home_and_recipes_come_from_the_flag(self):
+        rc, out = self._run(["--recipes", str(self.palette), "--dry-run"])
+        self.assertEqual(rc, 0)
+        self.assertIn("WOULD generate tense-low-pulse -> tracks/tense-low-pulse.mp3", out)
+        self.assertTrue((self.home / "library" / "music").is_dir())
+
+    def test_default_recipes_are_the_plugins_palette(self):
+        first = json.loads(asset_home.recipes("music").read_text())["moods"][0]["id"]
+        rc, out = self._run(["--dry-run"])
+        self.assertEqual(rc, 0)
+        self.assertIn(f"WOULD generate {first}", out)
+
+    def test_track_in_home_library_is_skipped(self):
+        tracks = asset_home.library("music") / "tracks"
+        tracks.mkdir()
+        (tracks / "tense-low-pulse.mp3").write_bytes(b"x" * 10)
+        rc, out = self._run(["--recipes", str(self.palette), "--dry-run"])
+        self.assertIn("skipping (library-first): tense-low-pulse", out)
+
+    def test_explicit_library_reads_its_own_palette_and_ignores_home(self):
+        lib = self.root / "custom"
+        lib.mkdir()
+        (lib / "palette.json").write_text(json.dumps(
+            {"moods": [{"id": "custom-only", "prompt": "p", "duration_s": 30}]}))
+        rc, out = self._run(["--library", str(lib), "--dry-run"])
+        self.assertEqual(rc, 0)
+        self.assertIn("WOULD generate custom-only", out)
+        self.assertFalse((self.home / "library").exists())
+
+    def test_adopt_runs_before_a_real_run_but_not_a_dry_run(self):
+        with patch.object(gen_music.asset_home, "adopt", return_value=0) as adopt, \
+                patch("tools.gen_music.urllib.request.urlopen", side_effect=OSError("offline")):
+            self._run(["--recipes", str(self.palette), "--dry-run"])
+            adopt.assert_not_called()
+            self._run(["--recipes", str(self.palette)])
+            adopt.assert_called_once()
+            self.assertEqual(adopt.call_args.args[0], "music")
+
+    def test_video_defaults_still_read_the_plugin_palette(self):
+        with patch.object(gen_music.asset_home, "recipes", return_value=self.palette) as rec:
+            defaults = gen_music._plugin_defaults()
+        rec.assert_called_once_with("music")
+        self.assertEqual(defaults["model"], "music_v2")
 
 
 class DryRunTest(unittest.TestCase):

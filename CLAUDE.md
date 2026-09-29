@@ -54,7 +54,8 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/setup.sh`, `requirements.txt` | Build the shared venv (Pillow, playwright, google-api-python-client, google-auth-oauthlib) |
 | `tools/renders.py` | Render ledger (`{output_folder}/renders.json`) shared by the Phase 4/5 render offers |
 | `tools/gen_app_screen.py` | `capture` (Playwright, real URL) and `mock` (Remotion `renderStill`) app screens into `ref/ui-*.png` |
-| `tools/gen_music.py` | Two modes. Flag mode generates missing `media/music/library/tracks/*.mp3` from the mood palette via ElevenLabs Music. `video` subcommand composes one bed to the finished master (`output/music.mp3`) from a picture-only proxy; exit 3 = `FALLBACK palette: <reason>` and the palette segments stay |
+| `tools/asset_home.py` | Where the reusable libraries live: `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/{sfx,music,images}` (survives plugin updates); recipes stay in the plugin's `media/<kind>/library/palette.json`. `where` prints the dirs, `adopt` copies earlier plugin versions' clips/tracks in (never moves). SFX plans without `catalog` and music segments `library:<id>` resolve here |
+| `tools/gen_music.py` | Two modes. Flag mode generates missing `tracks/*.mp3` (into the home library) from the plugin's mood palette via ElevenLabs Music. `video` subcommand composes one bed to the finished master (`output/music.mp3`) from a picture-only proxy; exit 3 = `FALLBACK palette: <reason>` and the palette segments stay |
 | `tools/verify_render.py` | P6 — second ASR pass diffs the rendered master against `av-script.md` |
 | `tools/clean_voice.py`, `tools/models/rnnoise/*.rnnn` | Cleans platform-native dialogue (ElevenLabs Isolator or ffmpeg RNNoise) before the Voice Changer |
 | `tools/composite.py` | `cutaway` / `overlay` / `split` (picture-in-picture) / `insert` (pauses the master for a full shot) |

@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Grow the shared music-bed library from palette.json mood recipes.
 
-    python3 tools/gen_music.py [--library media/music/library] [--only id1,id2]
+    python3 tools/gen_music.py [--library DIR] [--recipes FILE] [--only id1,id2]
                                 [--length-s N] [--force] [--dry-run] [--renorm]
     python3 tools/gen_music.py video <project> [--master output/master.mp4] [--tags a,b]
                                 [--model music_v2] [--description-file F] [--force] [--dry-run]
+
+Tracks are written to `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/music` so a plugin update
+never loses them; mood recipes are read from the plugin's `media/music/library/palette.json`.
+An explicit `--library DIR` keeps the old behaviour: tracks go to DIR, palette read from DIR.
+Earlier plugin versions' tracks are copied into the home library on the first real run.
 
 LIBRARY-FIRST: a mood whose tracks/<id>.mp3 already exists is skipped and never re-billed,
 unless --force. Tracks are generated with ElevenLabs Music (force_instrumental) and
@@ -33,13 +38,11 @@ from pathlib import Path
 # tools/ is not a package on sys.path when this file runs as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import renders  # noqa: E402
+from tools import asset_home, renders  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
 API_URL = "https://api.elevenlabs.io/v1/music"
-
-DEFAULT_LIBRARY = Path("media/music/library")
 
 # Video-to-music (GV-8): a bed composed to the edited master's picture.
 V2M_URL = "https://api.elevenlabs.io/v1/music/video-to-music"
@@ -71,8 +74,8 @@ def _read_json(path, default):
         raise MusicLibraryError(f"{Path(path).name} is not valid JSON: {exc.msg}") from exc
 
 
-def load_palette(library):
-    path = Path(library) / "palette.json"
+def load_palette(library, recipes=None):
+    path = Path(recipes) if recipes else Path(library) / "palette.json"
     if not path.exists():
         raise MusicLibraryError(
             f"palette not found: {path} — run from the plugin root or pass --library"
@@ -343,12 +346,13 @@ def _write_catalog(library, catalog):
     (library / "catalog.json").write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n")
 
 
-def generate(library, env=None, only=None, force=False, dry_run=False, length_s=None, log=print):
+def generate(library, env=None, only=None, force=False, dry_run=False, length_s=None, log=print,
+             recipes=None):
     """Fill in the missing tracks. Returns a summary dict; raises MusicLibraryError only for
     conditions that stop the whole run (missing key with real work to do, an HTTP failure)."""
     library = Path(library)
     env = env if env is not None else {}
-    palette = load_palette(library)
+    palette = load_palette(library, recipes)
     defaults = load_defaults(palette)
 
     todo, skipped = plan_work(palette, library, only=only, force=force)
@@ -415,10 +419,10 @@ def generate(library, env=None, only=None, force=False, dry_run=False, length_s=
     return {"written": written, "skipped": skipped}
 
 
-def renormalise(library, only=None, log=print):
+def renormalise(library, only=None, log=print, recipes=None):
     """Re-balance existing tracks to the current target. No API call, no billing."""
     library = Path(library)
-    palette = load_palette(library)
+    palette = load_palette(library, recipes)
     defaults = load_defaults(palette)
     catalog = load_catalog(library)
     by_id = {t["id"]: t for t in catalog.get("tracks", [])}
@@ -469,7 +473,7 @@ def _sha256_file(path):
 
 def _plugin_defaults():
     try:
-        return load_defaults(load_palette(Path(__file__).resolve().parent.parent / DEFAULT_LIBRARY))
+        return load_defaults(load_palette(None, asset_home.recipes("music")))
     except MusicLibraryError:
         return dict(FALLBACK_DEFAULTS)
 
@@ -626,7 +630,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
         epilog="For a bed composed to the edited master: gen_music.py video --help")
-    ap.add_argument("--library", default=str(DEFAULT_LIBRARY))
+    ap.add_argument("--library", help="default: ${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/music")
+    ap.add_argument("--recipes", help="palette.json; default: the plugin's, or DIR's when --library is given")
     ap.add_argument("--only", help="comma-separated mood ids")
     ap.add_argument("--length-s", type=float, default=None,
                     help="override every mood's duration_s (use the master's duration)")
@@ -635,16 +640,19 @@ def main(argv=None):
     ap.add_argument("--renorm", action="store_true", help="re-balance existing tracks, no API call")
     args = ap.parse_args(argv)
 
-    library = Path(args.library)
+    library = Path(args.library) if args.library else asset_home.library("music")
+    recipes = args.recipes or (None if args.library else asset_home.recipes("music"))
     only = args.only.split(",") if args.only else None
     env = _load_env()
 
     try:
         if args.renorm:
-            renormalise(library, only=only)
+            renormalise(library, only=only, recipes=recipes)
             return 0
+        if not args.dry_run and not args.library:
+            asset_home.adopt("music")
         generate(library, env=env, only=only, force=args.force,
-                 dry_run=args.dry_run, length_s=args.length_s)
+                 dry_run=args.dry_run, length_s=args.length_s, recipes=recipes)
         return 0
     except MusicLibraryError as exc:
         print(f"gen_music: {exc}", file=sys.stderr)
