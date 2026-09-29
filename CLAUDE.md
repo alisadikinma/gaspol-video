@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 19 CLI tools (17 Python + 2 Node, 4 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 36 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 20 CLI tools (18 Python + 2 Node, 4 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 36 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -54,7 +54,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/setup.sh`, `requirements.txt` | Build the shared venv (Pillow, playwright, google-api-python-client, google-auth-oauthlib) |
 | `tools/renders.py` | Render ledger (`{output_folder}/renders.json`) shared by the Phase 4/5 render offers |
 | `tools/gen_app_screen.py` | `capture` (Playwright, real URL) and `mock` (Remotion `renderStill`) app screens into `ref/ui-*.png` |
-| `tools/gen_music.py` | Generates missing `media/music/library/tracks/*.mp3` from the mood palette via ElevenLabs Music |
+| `tools/gen_music.py` | Two modes. Flag mode generates missing `media/music/library/tracks/*.mp3` from the mood palette via ElevenLabs Music. `video` subcommand composes one bed to the finished master (`output/music.mp3`) from a picture-only proxy; exit 3 = `FALLBACK palette: <reason>` and the palette segments stay |
 | `tools/verify_render.py` | P6 — second ASR pass diffs the rendered master against `av-script.md` |
 | `tools/clean_voice.py`, `tools/models/rnnoise/*.rnnn` | Cleans platform-native dialogue (ElevenLabs Isolator or ffmpeg RNNoise) before the Voice Changer |
 | `tools/composite.py` | `cutaway` / `overlay` / `split` (picture-in-picture) / `insert` (pauses the master for a full shot) |
@@ -65,7 +65,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/caption_keywords.py` | Scores key phrases in a narration line (number+unit, brand term, acronym, reversal word) for kinetic-caption highlighting |
 | `tools/gen_captions.py` | Builds `work/caption-plan.json` from `vo/vo-manifest.json` words (or AssemblyAI, imported from `gen_subs.py`) plus `caption_keywords.score_spans()`; capped, deterministic, reusable unless `--force` |
 | `tools/plan_motion.py` | Fills the `motion` field on static segments of `work/edit-plan.json` — splits a segment over 5.0s into alternating punch-in/punch-out beats, gives a shorter one a single slow punch-in; never overwrites a hand-written `motion` or a `kind: "shot"` segment |
-| `tools/qa_frames.py` | Visual clip QA — a 5-frame contact sheet per rendered clip in `.tmp/qa-scene-NN.jpg` and a `work/visual-qa.md` verdict sheet with each scene's PLAUSIBILITY block, for Claude to judge |
+| `tools/qa_frames.py` | Visual clip QA — a 5-frame contact sheet per rendered clip in `.tmp/qa-scene-NN.jpg` and a `work/visual-qa.md` verdict sheet with each scene's PLAUSIBILITY block, for Claude to judge in-session; `--check` is the V15 gate (reads verdict cells only, exit 1 on a missing, empty or `FAIL:` cell or a clip changed since judged) |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
 | `templates/remotion/lib/{brand.ts,kit.tsx,browser.tsx,screencast.tsx}` | Generic Remotion components ported from `claude-youtube-editor`, brand tokens only from the project's `brand.json` |
 | `templates/remotion/scripts/{gen-registry,render-all,qa-frames,render-stills}.mjs` | Registry generation, render, QA-still and mock-screen-still scripts copied into every scaffolded workspace |
@@ -595,6 +595,11 @@ All configurable values live in `reference/global-promo-config.md` — single so
 | **(v3.0.0) Music makes the voice hard to follow** | Bed is too loud under speech, or the duck is not engaging. Check the headroom measurement the music pass prints; the bed fails soft (no music) rather than shipping a mix that buries the narration |
 | **(v3.0.0) Thumbnail promises more than the video delivers** | Packaging honesty guardrail. The frame's promise must sit inside what the video actually shows. Pick a different lever, not a bigger claim |
 | **(v2.3.0) Kling duration mismatch (padding or rushing)** | Picked 8s default when scene needed 5s (awkward pause) OR picked 5s when needed 9s (rushed). Use Kling's per-second selector — pick exact duration matching natural dialogue/beat pace. Eliminates re-pacing in post-edit. |
+| **(v3.6.0) `qa_frames.py --check` exits 1 (V15 FAIL)** | A rendered clip has no section in `work/visual-qa.md`, a Verdict cell is empty, malformed or `FAIL:`, or the clip's bytes changed after it was judged. Run `python3 tools/qa_frames.py {output_folder}`, open `.tmp/qa-scene-NN.jpg`, fill the cells, re-run `--check`. Never edit a cell to pass without looking. `UNSURE:` is a note for a human, not a failure |
+| **(v3.6.0) `gen_music.py video` prints `FALLBACK palette: HTTP 403`** | The video-to-music request was refused (key without the music scope, or the endpoint rejected the proxy). Exit is 3 by design: keep the palette segments already in `music-plan.json`, and do not set `"bed_source": "video"`. The failure is recorded in `renders.json` as phase 6 so it is not silently retried; `--force` retries |
+| **(v3.6.0) `edit_render.py` refuses a dissolve: previous source has too little handle** | `transition_in` needs `dur_s` seconds of source AFTER the previous segment's `out_s` to dissolve over without moving the timeline. Extend the source, end the previous segment earlier, or shorten `dur_s`. A previous segment ending in a freeze pad (`pad_end_s > 0`) has no frames to dissolve over and is refused too |
+| **(v3.6.0) `gen_vo.mjs` fails `pause ... outside 0.2-5s` or `malformed pause tag`** | A `[pause: 1.2s]` / `[jeda: 1.2 detik]` tag has a length outside 0.2-5.0s, or the bracket is broken. Fix the tag in `av-script.md`; a wrong tag is refused, never rendered as a guess. Split a longer silence across two lines instead |
+| **(v3.6.0) The platform speaks "pause" aloud (V16)** | A `[pause: Ns]` tag was pasted into a VEO/Seedance/Kling prompt. Pause tags belong only in `av-script.md` narration, where `gen_vo.mjs` renders sample-exact silence and captions, subtitles and `verify_render.py` strip them. Remove the tag from `video-prompts.md` and use a written beat in the action instead |
 | **(v3.1.0) Tool exits 2 with `missing <module>: run tools/setup.sh`** | A dependency-bearing tool (`gen_app_screen.py`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py`) could not find Pillow/Playwright/Google client libs on `python3` or the venv. Run `bash tools/setup.sh` once; it builds `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv` and installs `requirements.txt`. |
 | **(v3.1.0) Render offer skips a scene, reason `prompt-only`** | Seedance, Kling, Scene Extension, a duration outside 4/6/8s, or an aspect outside 16:9/9:16 are not rendered by the pipeline (`indusia-video-gen` has no extend endpoint and this plugin only wires VEO 3.1 fast). Render that scene by hand in the platform's own UI. |
 | **(v3.1.0) VEO render fails `Audio generation failed`** | The prompt's audio line is a negated list (`no music, no voices`). For a scene with `audio_source: elevenlabs` the render offer retries once automatically with a positive ambience line (clip audio is discarded in the edit). For a `platform-native` scene it records `failed` and asks you, because that ambience would reach the master. |
@@ -607,8 +612,47 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.4.0
-**Last Updated:** 2026-09-20
+**Version:** 3.6.0
+**Last Updated:** 2026-09-29
+
+### v3.6.0 Changelog
+
+- **Pause tags in narration.** `[pause: 1.2s]` or `[jeda: 1.2 detik]` inside a layer's `text` in
+  `audio-plan.json` now renders as silence. `tools/gen_vo.mjs` splits the text at each tag, sends
+  one ElevenLabs request per speech chunk (chained through `previousIds` so delivery stays warm),
+  decodes each chunk to PCM, joins them with zero samples and encodes once, so a pause is exact to
+  the sample and word offsets come from sample counts, not from probing an mp3 with encoder
+  padding. A length outside 0.2-5.0s or a broken bracket is refused. `strip_pause_tags()` in
+  `tools/gen_subs.py` is imported by `tools/gen_captions.py` and `tools/verify_render.py`, so
+  captions, subtitles and the P6 diff never see the tag. Adapted from MoneyPrinterTurbo.
+- **Dissolves at act changes.** A segment in `work/edit-plan.json` may carry
+  `transition_in: {dur_s}`. `tools/edit_render.py` renders the segment BEFORE it `dur_s` longer,
+  from source frames past its `out_s` (the handle), and merges the pair with an ffmpeg `xfade`
+  under a `-t` cap equal to the planned length, so the timeline does not move by a frame and the
+  A/V gate still holds. The plan is refused when there is no previous segment, the previous source
+  has too little handle, or the previous segment ends in a freeze pad (nothing to dissolve over).
+  Motion on the handle is clamped so the zoom does not overshoot.
+- **Visual QA of rendered clips (V15).** New `tools/qa_frames.py` tiles five frames per rendered
+  clip into `.tmp/qa-scene-NN.jpg` and writes `work/visual-qa.md`, one section per scene with its
+  `PLAUSIBILITY:` block and a seven-row verdict table that Claude fills after looking at the sheet.
+  Verdicts survive a re-run for an unchanged clip and are cleared for a changed one. `--check`
+  reads only the Verdict cells and exits 1 on a missing, empty or `FAIL:` cell. Validator check
+  V15 and `video-gen` Rule 23. Catches the defects the plausibility gate names but only a picture
+  can confirm, before the edit is paid for.
+- **Video-to-music bed.** `tools/gen_music.py video` sends a picture-only proxy of the master
+  (`.tmp/music-proxy.mp4`) to ElevenLabs and writes `output/music.mp3` sized to the master, logged
+  in `renders.json` as phase 6 so an unchanged result is reused and not re-billed. Any failure
+  (HTTP error, missing key, bad TLS) exits 3 with `FALLBACK palette: <reason>`; the tool never
+  rewrites a plan it did not write, so `video-post` keeps the palette segments. On success the plan
+  gets `"bed_source": "video"` (`palette` otherwise). Adapted from MoneyPrinterTurbo.
+- **V16.** A pause tag inside a platform prompt in `video-prompts.md` is a FAIL: the platform
+  would speak it. Reviewer check V16 and `video-validate` V16.
+- **Docs.** `reference/post-production/11-voice-cast-and-vo.md` (pause tags),
+  `13-ffmpeg-edit.md` (dissolves and handles) and `17-music-bed.md` (video bed, fallback) carry the
+  detail; `video-post`, `video-gen`, `video-script`, `video-validate` and both agents point at it.
+- **Tool count:** 20 CLI tools (18 Python + 2 Node), up from 19. Excluded on purpose: TwelveLabs
+  analysis, Sonilo, other render adapters, slide/zoom transitions, transitions outside act
+  changes.
 
 ### v3.4.0 Changelog
 

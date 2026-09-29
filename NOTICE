@@ -109,6 +109,15 @@ Adapted:
   * The fail-soft rule for the music bed (app/services/bgm.py and the BGM half of
     generate_video): a music track that fails to load, fade, or mix still leaves a
     finished voice-only video plus a warning, never a missing deliverable.
+  * Pause-tag syntax and silence built from raw samples (app/services/voice.py
+    _tts_with_pauses), so a pause in narration has an exact length.
+  * The picture-only proxy and the video-to-music request shape
+    (app/services/elevenlabs_music.py), used by gen_music.py video.
+  * The post-render clip QA idea (app/services/twelvelabs.py analyze_clip), adapted
+    to frame sheets that are judged in-session instead of sent to an analysis API
+    (qa_frames.py).
+  * Transitions (app/services/utils/video_effects.py), adapted to ffmpeg xfade with
+    source handles so the timeline does not move.
 
 Not adopted from MoneyPrinterTurbo: stock-footage matching, the LLM script
 writer, the Streamlit web interface, the FastAPI service and its redis task
