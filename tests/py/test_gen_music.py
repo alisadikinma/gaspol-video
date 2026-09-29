@@ -539,3 +539,32 @@ class VideoMusicRunTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DefaultTagsTest(unittest.TestCase):
+    """Spec GV-8: with no --tags, style tags come from the project's tone."""
+
+    def brief(self, text):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        project = Path(tmp.name)
+        (project / "strategic-brief.md").write_text(text, encoding="utf-8")
+        return project
+
+    def test_tone_heading_gives_tone_plus_mood_descriptors(self):
+        project = self.brief("# Brief\n\n## Tone: Serious\n\nDetail.\n")
+        self.assertEqual(gen_music.default_tags(project),
+                         ["serious", "low pulsing bed", "restrained", "industrial documentary"])
+
+    def test_video_tone_field_is_read_too(self):
+        project = self.brief("video_tone: Professional\n")
+        self.assertEqual(gen_music.default_tags(project)[0], "professional")
+
+    def test_negated_descriptors_never_become_tags(self):
+        project = self.brief("## Tone: Serious\n")
+        self.assertFalse([t for t in gen_music.default_tags(project) if t.startswith("no ")])
+
+    def test_no_brief_or_unknown_tone_gives_no_tags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(gen_music.default_tags(Path(tmp)), [])
+        self.assertEqual(gen_music.default_tags(self.brief("## Tone: Whimsical\n")), [])

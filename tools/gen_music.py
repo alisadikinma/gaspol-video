@@ -39,6 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import asset_home, renders  # noqa: E402
+from tools.mix_music import mood_for_tone  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
@@ -209,6 +210,35 @@ def _music_direction_lines(text):
         if m:
             found.append(m.group(1).strip())
     return found
+
+
+_TONE_RE = re.compile(r"(?im)^(?:#{1,6}\s*tone|video_tone)\s*:\s*([A-Za-z]+)")
+
+
+def default_tags(project):
+    """Style tags from the project's tone when none were given: the tone itself, then the
+    matching palette mood's positive descriptors (a `no drums` descriptor is an instruction,
+    not a style, so it never becomes a tag). Unknown tone or no brief -> no tags."""
+    try:
+        brief = (Path(project) / "strategic-brief.md").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    match = _TONE_RE.search(brief)
+    mood_id = mood_for_tone(match.group(1)) if match else None
+    if not mood_id:
+        return []
+    tags = [match.group(1).lower()]
+    try:
+        moods = load_palette(None, recipes=asset_home.recipes("music")).get("moods", [])
+    except MusicLibraryError:
+        moods = []
+    for mood in moods:
+        if mood.get("id") == mood_id:
+            for part in mood.get("prompt", "").split(","):
+                part = part.strip().lower()
+                if part and not part.startswith("no ") and part not in tags:
+                    tags.append(part)
+    return tags[:V2M_MAX_TAGS]
 
 
 def default_description(project):
@@ -520,7 +550,7 @@ def run_video_music(project, master="output/master.mp4", description_file=None, 
             return 1
     else:
         description = default_description(project)
-    tags = list(tags)
+    tags = list(tags) or default_tags(project)
     request_key = json.dumps({"master_sha256": _sha256_file(master_path),
                               "description": description, "tags": tags, "model": model},
                              sort_keys=True)
