@@ -252,7 +252,7 @@ def _check_transition(seg, prev, i, project, check_durations):
                 )
 
 
-def _motion_filter(motion, duration_s, width, height):
+def _motion_filter(motion, duration_s, width, height, clamp=False):
     """The zoom filter for one segment, or None when there is no motion (absent, JSON
     null, or `kind: none`) — in which case the caller adds nothing and the chain stays
     byte-identical to what this tool renders today.
@@ -265,6 +265,9 @@ def _motion_filter(motion, duration_s, width, height):
     filter that accepts `eval=frame`, so the zoom happens there and `crop` then takes a
     fixed, centred window out of the enlarged frame. `ceil(.../2)*2` keeps every
     intermediate dimension even, which yuv420p requires.
+
+    `clamp` is for a segment rendered past its planned length (a dissolve handle): the
+    zoom holds at `to` instead of running on over the frames the fade consumes.
     """
     if not motion or motion.get("kind") == "none":
         return None
@@ -274,30 +277,47 @@ def _motion_filter(motion, duration_s, width, height):
     # Rounded so plain values like 1.0 -> 1.08 don't pick up float-subtraction noise
     # (1.08 - 1.0 == 0.08000000000000007) in the emitted expression.
     delta = round(to - frm, 6)
-    zoom = f"({frm}+({delta})*t/{duration_s})"
+    t = f"min(t\\,{duration_s})" if clamp else "t"
+    zoom = f"({frm}+({delta})*{t}/{duration_s})"
     return (
         f"scale=w='ceil({width}*{zoom}/2)*2':h='ceil({height}*{zoom}/2)*2':eval=frame,"
         f"crop={width}:{height}"
     )
 
 
+def _dissolve_dur(seg):
+    """Seconds of dissolve INTO this segment, 0.0 when it has none."""
+    transition = seg.get("transition_in")
+    return float(transition["dur_s"]) if transition else 0.0
+
+
 def build_commands(plan):
-    """One ffmpeg invocation per segment, then a concat. Returned so --print can show them."""
+    """One ffmpeg invocation per segment, one merge per run of dissolved segments, then a
+    concat. Returned so --print can show them; `parts` are the files the concat joins.
+
+    A dissolve must not move the timeline, so the segment BEFORE it is rendered
+    `dur_s` longer, from the source frames past its out_s, and the merge overlaps that
+    handle with the head of the incoming segment.
+    """
     width, height = plan.size
     work = plan.project / "work" / "render"
     cmds = []
-    parts = []
+    seg_parts = []
+    segments = plan.segments
 
-    for i, seg in enumerate(plan.segments, start=1):
+    for i, seg in enumerate(segments, start=1):
         src = plan.project / seg["src"]
         part = work / f"part-{i:03d}.mp4"
-        parts.append(part)
+        seg_parts.append(part)
         dur = seg["out_s"] - seg["in_s"]
         pad = float(seg.get("pad_end_s", 0.0) or 0.0)
+        # The handle: source frames past out_s that the next segment dissolves over.
+        ext = _dissolve_dur(segments[i]) if i < len(segments) else 0.0
+        render_dur = round(dur + ext, 3) if ext else dur
 
         vf = f"scale={width}:{height}:force_original_aspect_ratio=decrease," \
              f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
-        motion_filter = _motion_filter(seg.get("motion"), dur, width, height)
+        motion_filter = _motion_filter(seg.get("motion"), dur, width, height, clamp=bool(ext))
         if motion_filter:
             vf += "," + motion_filter
         vf += f",fps={plan.fps}"
@@ -308,16 +328,65 @@ def build_commands(plan):
             vf += f",tpad=stop_mode={clone}:stop_duration={pad}"
 
         cmd = [FFMPEG, "-y", "-v", "error",
-               "-ss", str(seg["in_s"]), "-t", str(dur), "-i", str(src),
+               "-ss", str(seg["in_s"]), "-t", str(render_dur), "-i", str(src),
                "-vf", vf,
                "-af", f"apad=pad_dur={pad}" if pad else "anull",
-               "-t", str(dur + pad),
+               "-t", str(render_dur + pad),
                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                "-c:a", "aac", "-ar", "48000", "-ac", "2",
                str(part)]
         cmds.append(cmd)
 
-    return cmds, parts, work
+    # Consecutive dissolves form a group; each group becomes one file for the concat.
+    groups = []
+    for i, seg in enumerate(segments):
+        if i and seg.get("transition_in"):
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+
+    parts = []
+    merges = []
+    for g, members in enumerate(groups, start=1):
+        if len(members) == 1:
+            parts.append(seg_parts[members[0]])
+            continue
+        merged = work / f"group-{g:03d}.mp4"
+        parts.append(merged)
+        merges.append(_merge_command(plan, members, seg_parts, merged))
+
+    return cmds + merges, parts, work
+
+
+def _merge_command(plan, members, seg_parts, merged):
+    """Chain xfade/acrossfade over the parts of one group. The offset of each dissolve is
+    the PLANNED length of everything before the incoming part, so it starts at exactly its
+    planned second; the outgoing part's handle is what the fade eats."""
+    inputs = []
+    for idx in members:
+        inputs += ["-i", str(seg_parts[idx])]
+
+    video, audio = [], []
+    v_in, a_in = "[0:v]", "[0:a]"
+    planned = _segment_length(plan.segments[members[0]])
+    for k, idx in enumerate(members[1:], start=1):
+        d = _dissolve_dur(plan.segments[idx])
+        last = k == len(members) - 1
+        v_out, a_out = ("[vout]", "[aout]") if last else (f"[v{k}]", f"[a{k}]")
+        video.append(f"{v_in}[{k}:v]xfade=transition=fade:duration={d}:offset={round(planned, 3)}{v_out}")
+        audio.append(f"{a_in}[{k}:a]acrossfade=d={d}:c1=tri:c2=tri{a_out}")
+        v_in, a_in = v_out, a_out
+        planned += _segment_length(plan.segments[idx])
+
+    # The last part carries no handle, so `planned` is now the group's exact planned
+    # length. Capping at it drops the encoder padding aac appends after the final frame,
+    # which the concat would otherwise add to the master.
+    return [FFMPEG, "-y", "-v", "error", *inputs,
+            "-filter_complex", ";".join(video + audio),
+            "-map", "[vout]", "-map", "[aout]", "-r", str(plan.fps), "-t", str(round(planned, 3)),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "48000", "-ac", "2",
+            str(merged)]
 
 
 def av_durations(path):
@@ -362,6 +431,8 @@ def format_sheet(plan):
         length = _segment_length(seg)
         pad = seg.get("pad_end_s", 0.0)
         note = f"  +{pad}s {seg.get('pad_mode', 'freeze')}" if pad else ""
+        if seg.get("transition_in"):
+            note += f"  ~{_dissolve_dur(seg)}s dissolve at {at:.2f}s"
         lines.append(f"  {i:>3}. {at:7.2f} -> {at + length:7.2f}  {length:5.2f}s  "
                      f"{seg['kind']:<5} {seg['src']}  [{seg['in_s']:.2f}-{seg['out_s']:.2f}]{note}")
         at += length
@@ -392,7 +463,8 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False)
         print("+ " + " ".join(cmd))
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
-            raise PlanError(f"ffmpeg failed on a segment:\n{proc.stderr.strip()[-800:]}")
+            what = "a dissolve merge" if Path(cmd[-1]).name.startswith("group-") else "a segment"
+            raise PlanError(f"ffmpeg failed on {what}:\n{proc.stderr.strip()[-800:]}")
 
     listfile = work / "concat.txt"
     listfile.write_text("".join(f"file '{p.resolve()}'\n" for p in parts))
@@ -409,7 +481,7 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False)
         raise PlanError(f"{message} — the render is rejected, not shipped with a note")
 
     if not keep_parts:
-        for p in parts:
+        for p in [*parts, *work.glob("part-*.mp4")]:
             p.unlink(missing_ok=True)
         listfile.unlink(missing_ok=True)
 

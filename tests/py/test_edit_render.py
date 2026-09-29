@@ -386,5 +386,167 @@ class TransitionValidationTest(unittest.TestCase):
         self.assertEqual(loaded.segments[1]["transition_in"]["dur_s"], 0.5)
 
 
+FROZEN_ENCODE = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+                 "-c:a", "aac", "-ar", "48000", "-ac", "2"]
+
+
+class DissolveCommandsTest(unittest.TestCase):
+    """build_commands only builds argv lists, so these run without ffmpeg installed."""
+
+    def setUp(self):
+        self._ffmpeg = edit_render.FFMPEG
+        edit_render.FFMPEG = "ffmpeg"
+
+    def tearDown(self):
+        edit_render.FFMPEG = self._ffmpeg
+
+    def _plan(self, segments):
+        data = {"fps": 30, "width": 320, "height": 240, "segments": segments}
+        return edit_render.Plan(data, "/proj", "/proj/work/edit-plan.json")
+
+    def test_untagged_plan_commands_are_frozen(self):
+        plan = self._plan([
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.5, "out_s": 2.5,
+             "motion": {"kind": "punch-in", "from": 1.0, "to": 1.08}},
+            {"kind": "shot", "src": "shots/c.mp4", "in_s": 0.0, "out_s": 1.5,
+             "pad_end_s": 0.5, "pad_mode": "freeze"},
+        ])
+        cmds, parts, work = edit_render.build_commands(plan)
+        base = "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2"
+        self.assertEqual(cmds, [
+            ["ffmpeg", "-y", "-v", "error", "-ss", "0.0", "-t", "2.0", "-i", "/proj/clips/a.mp4",
+             "-vf", base + ",fps=30", "-af", "anull", "-t", "2.0", *FROZEN_ENCODE,
+             "/proj/work/render/part-001.mp4"],
+            ["ffmpeg", "-y", "-v", "error", "-ss", "0.5", "-t", "2.0", "-i", "/proj/clips/b.mp4",
+             "-vf", base + ",scale=w='ceil(320*(1.0+(0.08)*t/2.0)/2)*2':"
+                    "h='ceil(240*(1.0+(0.08)*t/2.0)/2)*2':eval=frame,crop=320:240,fps=30",
+             "-af", "anull", "-t", "2.0", *FROZEN_ENCODE, "/proj/work/render/part-002.mp4"],
+            ["ffmpeg", "-y", "-v", "error", "-ss", "0.0", "-t", "1.5", "-i", "/proj/shots/c.mp4",
+             "-vf", base + ",fps=30,tpad=stop_mode=clone:stop_duration=0.5",
+             "-af", "apad=pad_dur=0.5", "-t", "2.0", *FROZEN_ENCODE,
+             "/proj/work/render/part-003.mp4"],
+        ])
+        self.assertEqual([str(p) for p in parts],
+                         ["/proj/work/render/part-001.mp4", "/proj/work/render/part-002.mp4",
+                          "/proj/work/render/part-003.mp4"])
+        self.assertEqual(str(work), "/proj/work/render")
+
+    def test_previous_segment_is_rendered_longer_by_the_dissolve(self):
+        plan = self._plan([
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.0, "out_s": 2.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+        ])
+        cmds = edit_render.build_commands(plan)[0]
+        first = cmds[0]
+        self.assertEqual(first[first.index("-t") + 1], "2.5")
+        self.assertEqual(first[len(first) - first[::-1].index("-t")], "2.5")
+        second = cmds[1]
+        self.assertEqual(second[second.index("-t") + 1], "2.0")
+
+    def test_motion_zoom_holds_over_the_handle(self):
+        plan = self._plan([
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 2.0,
+             "motion": {"kind": "punch-in", "from": 1.0, "to": 1.08}},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.0, "out_s": 2.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+        ])
+        vf = edit_render.build_commands(plan)[0][0]
+        vf = vf[vf.index("-vf") + 1]
+        self.assertIn("min(t\\,2.0)/2.0", vf)
+
+    def test_group_of_two_merges_with_planned_offset(self):
+        plan = self._plan([
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.0, "out_s": 2.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+            {"kind": "clip", "src": "clips/c.mp4", "in_s": 0.0, "out_s": 2.0},
+        ])
+        cmds, parts, _ = edit_render.build_commands(plan)
+        self.assertEqual(len(cmds), 4)
+        self.assertEqual([p.name for p in parts], ["group-001.mp4", "part-003.mp4"])
+        graph = cmds[3][cmds[3].index("-filter_complex") + 1]
+        self.assertIn("xfade=transition=fade:duration=0.5:offset=2.0", graph)
+        self.assertIn("acrossfade=d=0.5:c1=tri:c2=tri", graph)
+        self.assertEqual(cmds[3][-1], "/proj/work/render/group-001.mp4")
+
+    def test_two_consecutive_dissolves_form_one_group_of_three(self):
+        plan = self._plan([
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.0, "out_s": 2.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+            {"kind": "shot", "src": "shots/c.mp4", "in_s": 0.0, "out_s": 3.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.4}},
+        ])
+        cmds, parts, _ = edit_render.build_commands(plan)
+        self.assertEqual([p.name for p in parts], ["group-001.mp4"])
+        # a is 0.5s longer, b is 0.4s longer, c (last) is as planned
+        durs = [c[c.index("-t") + 1] for c in cmds[:3]]
+        self.assertEqual(durs, ["2.5", "2.4", "3.0"])
+        graph = cmds[3][cmds[3].index("-filter_complex") + 1]
+        self.assertIn("duration=0.5:offset=2.0", graph)
+        self.assertIn("duration=0.4:offset=4.0", graph)
+
+    def test_sheet_marks_the_dissolve_with_its_offset(self):
+        plan = self._plan([
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.0, "out_s": 2.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+        ])
+        sheet = edit_render.format_sheet(plan)
+        self.assertIn("~0.5s dissolve at 2.00s", sheet)
+
+
+class DissolveRenderTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name)
+        (self.project / "clips").mkdir()
+        for n in (1, 2, 3):
+            make_clip(self.project / "clips" / f"scene-0{n}.mp4", seconds=3.0)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _segments(self, **second):
+        return [
+            {"kind": "clip", "src": "clips/scene-01.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/scene-02.mp4", "in_s": 0.0, "out_s": 2.0, **second},
+            {"kind": "clip", "src": "clips/scene-03.mp4", "in_s": 0.0, "out_s": 2.0},
+        ]
+
+    @requires_ffmpeg
+    def test_dissolve_keeps_the_timeline_and_blends(self):
+        dissolve = {"transition_in": {"kind": "dissolve", "dur_s": 0.5}}
+        plan = write_plan(self.project, self._segments(**dissolve))
+        out = edit_render.render(plan, self.project)
+        v, a = duration_of(out, "v:0"), duration_of(out, "a:0")
+        print(f"dissolve master: v:0 {v} a:0 {a}")
+        self.assertAlmostEqual(v, 6.0, delta=0.04)
+        self.assertAlmostEqual(a, 6.0, delta=0.04)
+        self.assertTrue(edit_render.check_av_gate(out)[0])
+
+        # Same plan without the dissolve is the reference for the two pure pictures.
+        plain = write_plan(self.project, self._segments(), out="output/plain.mp4")
+        plain_out = edit_render.render(plain, self.project)
+        frame = lambda src, name, at: extract_frame(src, self.project / name, at_s=at)
+        blended = frame(out, "blend.png", 2.2)
+        pure_incoming = frame(plain_out, "in.png", 2.2)
+        pure_outgoing = frame(plain_out, "out.png", 1.9)
+        self.assertLess(psnr(blended, pure_incoming), 40.0)
+        self.assertLess(psnr(blended, pure_outgoing), 40.0)
+        # Well after the fade the picture is the plain incoming one again.
+        self.assertGreater(psnr(frame(out, "late.png", 3.0), frame(plain_out, "late-plain.png", 3.0)), 30.0)
+
+    @requires_ffmpeg
+    def test_motion_segment_with_handle_renders(self):
+        segs = self._segments(transition_in={"kind": "dissolve", "dur_s": 0.5})
+        segs[0]["motion"] = {"kind": "punch-in", "from": 1.0, "to": 1.08}
+        plan = write_plan(self.project, segs)
+        out = edit_render.render(plan, self.project)
+        self.assertAlmostEqual(duration_of(out, "v:0"), 6.0, delta=0.04)
+
+
 if __name__ == "__main__":
     unittest.main()
