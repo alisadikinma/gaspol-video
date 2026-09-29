@@ -116,6 +116,36 @@ works when every input already agrees, and generated clips do not — different 
 different frame rates and audio layouts, and a mismatched concat produces silent audio drops or a
 stream that stops halfway.
 
+### 4.1 Dissolves at act changes (GV-8)
+
+A hard cut is the default. The one place a dissolve earns its keep is the first segment of a new act
+(the beat label changes in `scene-plan.md`), where it marks that time or place has moved on. Write it
+on that segment only, never on the first segment of the film and not mid-act:
+
+```json
+{ "kind": "clip", "src": "clips/scene-06.mp4", "in_s": 0.0, "out_s": 8.0,
+  "transition_in": { "kind": "dissolve", "dur_s": 0.5 } }
+```
+
+The dissolve must not move the timeline, or the narration laid on it would slip. So the segment
+BEFORE it is rendered `dur_s` longer from its own source frames past `out_s` (the handle), and the
+merge (`xfade` for picture, `acrossfade` for sound) overlaps that handle with the head of the
+incoming segment. Consecutive dissolves are merged in one group. The merge is capped at the group's
+planned length, which drops the AAC padding the encoder would append, so the A/V gate in section 5
+sees the same duration as without the dissolve. A punch-in on the outgoing segment holds at its end
+value while the handle plays instead of zooming on.
+
+`edit_render.py` refuses the plan, naming the segment, when:
+
+| Refusal | Fix |
+|---|---|
+| `transition_in on the first segment` | delete it, nothing to dissolve from |
+| `unknown transition kind` | only `dissolve` exists |
+| `dur_s ... must be between 0.2 and 1.0` | under 0.2 s reads as a glitch, over 1.0 s eats the beat |
+| `not shorter than this segment` or `... the previous segment` | shorten `dur_s` |
+| `previous segment ends in a freeze pad` (or black) | there are no source frames to dissolve over; leave the hard cut |
+| `previous source ... has N s after out_s, dissolve needs D s` | set `out_s` earlier, shorten `dur_s` (min 0.2), or leave the hard cut. Never pad |
+
 ---
 
 ## 5. The A/V duration gate

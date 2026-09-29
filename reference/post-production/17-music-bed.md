@@ -108,3 +108,43 @@ This is the opposite of the A/V duration gate, and the asymmetry is intentional:
 | Music bed fails | **warn and ship** | obvious on the first play, and the video is still usable without it |
 
 Blocking the deliverable on a background track would trade a working video for a missing one.
+
+---
+
+## 5. A bed composed to the picture (`bed_source: video`, GV-8)
+
+The palette route picks a mood and plays a track under it. The video route asks ElevenLabs
+video-to-music to compose a bed for the edited master, so the changes in the music land on the cuts.
+
+```bash
+python3 tools/gen_music.py video {output_folder} --dry-run     # size and limits, no spend
+python3 tools/gen_music.py video {output_folder}               # confirm first, this bills
+```
+
+Flags: `--master` (default `output/master.mp4`), `--description-file`, `--tags a,b` (up to 10),
+`--model` (`music_v1`, `music_v2` default, `music_v2_5`), `--force`, `--dry-run`. With no
+`--description-file` the description is the script's music direction (`music:` lines and the Music
+column of `av-script.md`), cut to 1000 characters.
+
+**When to use it:** the user asked for a bed that follows the film, and the master exists (run it
+after pass 2, before the mix). **When not to:** a master over 600 s, or no paid plan. Video-to-music
+needs an ElevenLabs plan with Music access; a free key gets HTTP 403.
+
+**Why the proxy is picture-only.** The tool sends a small copy of the master with the audio removed
+(`.tmp/music-proxy.mp4`, at most 1280 px, well under the 200 MB limit), deleted after a real run.
+The music should follow the cuts, not react to the words: with narration in the upload the model
+tends to score the speech, and the bed then fights the voice it must sit under.
+
+Outcomes, by exit code:
+
+| Exit | Meaning | What `/video-post` does |
+|---|---|---|
+| 0 | `output/music.mp3` written and normalised, or the master and inputs are unchanged since the last paid run (nothing re-billed) | one segment `0.0` to the master duration, `track: output/music.mp3`, `bed_source: video` |
+| 1 | bad input (unreadable description file, description over 1000 characters, unknown model, more than 10 tags) | fix and rerun |
+| 3 | no bed was made; the last line is `FALLBACK palette: <reason>` (master over 600 s, proxy over 200 MB, no key, HTTP 403 no Music access, HTTP 422, network error) | keep the palette segments, `bed_source: palette`, report the reason |
+
+The request is sent once. After an ambiguous failure billing may already have happened, so the tool
+never retries by itself; the user reruns on purpose. A sent request is recorded in `renders.json`
+with phase `6` (schema in `10-post-production-pipeline.md` §3.8). The same fail-soft rule as section
+4 applies: a missing bed never blocks the video, and the mix still measures the bed 12 dB under the
+voice like any other track.

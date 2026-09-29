@@ -77,9 +77,11 @@ Everything Phase 6 reads and writes lives under the project's `{output_folder}`.
     sfx-plan.json
     subtitle-plan.json
     music-plan.json
+    visual-qa.md       Phase 5   verdicts on each clip's contact sheet (validator V15)
   output/                Phase 6   kelompok-K{N}.mp4, master.mp4, master.srt, master-mixed.mp4
   _arsip/                any phase  rejected or superseded paid artefacts, kept with their reason
   .tmp/                  any phase  every derived file; safe to delete at any time
+                                    (includes qa-scene-NN.jpg contact sheets, music-proxy.mp4)
 ```
 
 ### 2.1 These folders are the whole contract. Do not create others.
@@ -104,6 +106,11 @@ subfolder:**
 | `clips/_cek/s05-4.0.jpg` | `.tmp/s05-4.0.jpg` |
 | `keyframes/_gen/DITOLAK-S07-....png` | `_arsip/keyframe-DITOLAK-S07-....png` |
 | `clips/_tidak-dipakai/scene-07-v1.mp4` | `_arsip/klip-scene-07-v1.mp4` |
+
+Derived files added in v3.6.0, all loose files in `.tmp/`, never a subfolder: `qa-scene-NN.jpg`
+(five-frame contact sheet of a rendered clip, written by `tools/qa_frames.py`), `music-proxy.mp4`
+(picture-only copy of the master sent to video-to-music, deleted after a real run) and
+`music-new.mp3` (a downloaded bed before it is normalised into `output/music.mp3`).
 
 Suffixes already in use: `-1920` (upload copy), `-ov` (clip plus overlay), `-jadi` (clip plus
 overlay plus mixed audio), `-clean` (isolated dialogue), `-v2`/`-v3` (version).
@@ -212,6 +219,14 @@ a resolution that disagrees with the project's aspect ratio each add a line.
 `pad_mode` ∈ `freeze | black`. Trimming beats padding every time; a pad above 1.0s is warned about,
 because a long freeze reads as a stall rather than a beat.
 
+`transition_in` (optional, GV-8) is `{ "kind": "dissolve", "dur_s": 0.5 }` on the first segment of a
+new act; absent or `null` means a hard cut. `dur_s` is 0.2 to 1.0 s. The dissolve does not move the
+timeline: the previous segment is rendered `dur_s` longer from the source frames past its `out_s`
+(the handle) and the two overlap by `dur_s`. Refused, naming the segment: on the first segment, an
+unknown kind, `dur_s` out of range or not shorter than either neighbour, a previous segment that
+ends in a pad (no frames to dissolve over), or a previous source with less than `dur_s` of footage
+after `out_s`. See `13-ffmpeg-edit.md`.
+
 ### 3.4 `sfx-plan.json` — pass 3
 
 ```jsonc
@@ -259,6 +274,13 @@ because a long freeze reads as a stall rather than a beat.
 }
 ```
 
+`bed_source` (optional, top level) is `palette` (default when absent) or `video`. `palette` means
+`track` comes from the mood library. `video` means one segment `0.0` to the master duration with
+`track: output/music.mp3`, written by `/video-post` after `tools/gen_music.py video` exits 0. The
+tool exits 3 and prints `FALLBACK palette: <reason>` when it cannot compose a bed; the plan then
+keeps its palette segments and `bed_source: palette`, and the tool never edits this file. The
+per-segment `source` string stays a provenance note and is not this field. See `17-music-bed.md`.
+
 ### 3.7 `vo-manifest.json` — written by `tools/gen_vo.mjs`
 
 ```jsonc
@@ -273,6 +295,10 @@ because a long freeze reads as a stall rather than a beat.
   ]
 }
 ```
+
+A layer whose `text` carries pause tags (`[pause: 1.2s]`, see `11-voice-cast-and-vo.md` §3.1) is
+written with `words` offsets that already include each silence, and `chars` counts the spoken text
+without the tags.
 
 `words` is what the subtitle pass reads when the audio source is ElevenLabs. It is absent for audio
 that came from a clip; those cues fall back to AssemblyAI.
@@ -294,7 +320,10 @@ instead of restating it.
 ```
 
 - `status` ∈ `done | failed | skipped`.
-- `phase` ∈ `4A | 4B | 5`.
+- `phase` ∈ `4A | 4B | 5 | 6`. Phase `6` is the video-to-music bed: `file` `output/music.mp3`,
+  `scene` `null`, `model` the music model id, `prompt_sha256` a hash of the master's sha256, the
+  description, the tags and the model, so an unchanged master is never re-billed. A request that
+  went out and failed is recorded `failed` with the reason.
 - `prompt_sha256` — sha256 of the prompt with trailing whitespace stripped per line and CRLF
   normalised to LF, so a whitespace-only re-save of the same prompt does not trigger a re-render.
 - An entry is keyed by `file`: `record()` replaces the existing entry for that file rather than
