@@ -17,6 +17,7 @@ Stdlib only. Missing key or missing ffmpeg degrades loudly and names what could 
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -28,6 +29,11 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools import renders  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
@@ -212,10 +218,14 @@ def default_description(project):
     joined = "; ".join(_music_direction_lines(text))
     if not joined:
         return None
-    if len(joined) <= V2M_MAX_DESCRIPTION:
-        return joined
-    cut = joined[:V2M_MAX_DESCRIPTION]
-    if not joined[V2M_MAX_DESCRIPTION].isspace():
+    return _clip_description(joined)
+
+
+def _clip_description(text):
+    if len(text) <= V2M_MAX_DESCRIPTION:
+        return text
+    cut = text[:V2M_MAX_DESCRIPTION]
+    if not text[V2M_MAX_DESCRIPTION].isspace():
         cut = cut.rsplit(None, 1)[0]
     return cut.rstrip()
 
@@ -446,12 +456,155 @@ def _load_env():
     return env
 
 
-def main_video(argv):
-    """`gen_music.py video <project>` — arguments only for now; sending, the ledger and the
-    palette fallback arrive with the next phase."""
+V2M_MUSIC_FILE = "output/music.mp3"
+
+
+def _sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _plugin_defaults():
+    try:
+        return load_defaults(load_palette(Path(__file__).resolve().parent.parent / DEFAULT_LIBRARY))
+    except MusicLibraryError:
+        return dict(FALLBACK_DEFAULTS)
+
+
+def _network_reason(exc):
+    reason = str(exc)
+    if "CERTIFICATE_VERIFY_FAILED" in reason:
+        reason += (
+            ". This looks like the python.org 3.14 installer not registering system CA "
+            "certificates. Run `/Applications/Python 3.14/Install Certificates.command` "
+            "once, then retry.")
+    return reason
+
+
+def run_video_music(project, master="output/master.mp4", description_file=None, tags=(),
+                    model="music_v2", force=False, dry_run=False, sender=None, env=None,
+                    log=print):
+    """Compose a bed to the master. Returns 0 (written, up-to-date or dry-run), 1 (bad
+    input) or 3 (fall back to the palette; the reason is logged). Never raises past here."""
+    project = Path(project)
+    sender = sender or _request_music
+    env = env if env is not None else _load_env()
+    master_path = project / master
+    proxy_path = project / ".tmp" / "music-proxy.mp4"
+    out_path = project / V2M_MUSIC_FILE
+
+    def fallback(reason, sent=False, prompt_hash=""):
+        log(f"FALLBACK palette: {reason}")
+        if sent:
+            renders.record(project, {
+                "file": V2M_MUSIC_FILE, "phase": "6", "scene": None, "model": model,
+                "prompt_sha256": prompt_hash, "refs": [], "status": "failed",
+                "error": reason, "cdn_url": None})
+        return 3
+
+    if not master_path.is_file():
+        return fallback("master not found")
+
+    if description_file:
+        try:
+            description = _clip_description(Path(description_file).read_text().strip()) or None
+        except OSError as exc:
+            log(f"gen_music: cannot read --description-file: {exc}")
+            return 1
+    else:
+        description = default_description(project)
+    tags = list(tags)
+    request_key = json.dumps({"master_sha256": _sha256_file(master_path),
+                              "description": description, "tags": tags, "model": model},
+                             sort_keys=True)
+    prompt_hash = renders.prompt_sha256(request_key)
+
+    if not force and out_path.exists():
+        try:
+            fresh = not renders.needs_render(renders.load(project), V2M_MUSIC_FILE, request_key)
+        except renders.RenderLedgerError:
+            fresh = False
+        if fresh:
+            log(f"up-to-date: {V2M_MUSIC_FILE} (master unchanged)")
+            return 0
+
+    duration = probe_duration(master_path)
+    if duration is not None and duration > V2M_MAX_S:
+        return fallback(f"master is {duration:.0f}s, video-to-music accepts up to {V2M_MAX_S}s")
+
+    try:
+        try:
+            make_proxy(master_path, proxy_path)
+        except MusicLibraryError as exc:
+            return fallback(str(exc))
+        size = proxy_path.stat().st_size
+        if size > V2M_MAX_BYTES:
+            return fallback(f"proxy is {size / 1048576:.0f} MB, limit 200 MB")
+        api_key = (env.get("ELEVENLABS_API_KEY") or "").strip()
+        if not api_key:
+            return fallback("ELEVENLABS_API_KEY not set")
+
+        try:
+            url, headers, body = build_video_music_request(
+                proxy_path.read_bytes(), description, tags, model)
+        except MusicLibraryError as exc:
+            log(f"gen_music: {exc}")
+            return 1
+
+        if dry_run:
+            log(f"WOULD request video-to-music: {size / 1048576:.1f} MB, "
+                f"{duration if duration is not None else '?'}s, model {model}, {len(tags)} tags")
+            return 0
+
+        # One attempt only: after an ambiguous failure billing may have happened, so the
+        # user re-runs deliberately instead of the tool retrying.
+        try:
+            audio = sender(url, headers, body, api_key)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", "ignore")[:200]
+            if exc.code == 403:
+                reason = "HTTP 403 \u2014 this ElevenLabs plan has no Music access"
+            elif exc.code == 422:
+                reason = f"HTTP 422 \u2014 {detail}"
+            else:
+                reason = f"HTTP {exc.code} \u2014 {detail}"
+            return fallback(reason, sent=True, prompt_hash=prompt_hash)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            return fallback(f"network error: {_network_reason(exc)}", sent=True,
+                            prompt_hash=prompt_hash)
+        if len(audio) < 1000:
+            return fallback(f"response too small ({len(audio)} bytes)", sent=True,
+                            prompt_hash=prompt_hash)
+
+        staged = project / ".tmp" / "music-new.mp3"
+        staged.write_bytes(audio)
+        _measure_and_normalise({"id": "music"}, staged, _plugin_defaults(), log=log)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(staged, out_path)
+        renders.record(project, {
+            "file": V2M_MUSIC_FILE, "phase": "6", "scene": None, "model": model,
+            "prompt_sha256": prompt_hash, "refs": [], "status": "done",
+            "error": None, "cdn_url": None})
+        length = probe_duration(out_path)
+        shown = f"{length:.2f}s" if length is not None else "duration unknown"
+        log(f'wrote {V2M_MUSIC_FILE} ({shown}) \u2014 set music-plan.json "bed_source": "video"')
+        return 0
+    except (OSError, renders.RenderLedgerError) as exc:
+        return fallback(f"{type(exc).__name__}: {exc}")
+    finally:
+        if not dry_run:
+            proxy_path.unlink(missing_ok=True)
+
+
+def main_video(argv, sender=None, env=None, log=print):
+    """`gen_music.py video <project>` — see the module docstring."""
     ap = argparse.ArgumentParser(
         prog="gen_music.py video",
-        description="Compose a music bed to the edited master with ElevenLabs video-to-music.")
+        description="Compose a music bed to the edited master with ElevenLabs video-to-music. "
+                    "Exit 3 means fall back to the palette.")
     ap.add_argument("project", help="the {output_folder} holding output/ and av-script.md")
     ap.add_argument("--master", default="output/master.mp4", help="master, relative to the project")
     ap.add_argument("--description-file", help="text file to use instead of the script's music lines")
@@ -459,8 +612,11 @@ def main_video(argv):
     ap.add_argument("--model", default="music_v2", choices=V2M_MODELS)
     ap.add_argument("--force", action="store_true", help="request even if the master is unchanged")
     ap.add_argument("--dry-run", action="store_true")
-    ap.parse_args(argv)
-    return 0
+    args = ap.parse_args(argv)
+    tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+    return run_video_music(
+        args.project, master=args.master, description_file=args.description_file, tags=tags,
+        model=args.model, force=args.force, dry_run=args.dry_run, sender=sender, env=env, log=log)
 
 
 def main(argv=None):

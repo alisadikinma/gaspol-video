@@ -1,3 +1,4 @@
+import io
 import json
 import subprocess
 import tempfile
@@ -6,7 +7,7 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
-from tools import gen_music
+from tools import gen_music, renders
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
 
 
@@ -277,6 +278,195 @@ class MakeProxyTest(unittest.TestCase):
                  "-show_entries", "stream=width", "-of", "csv=p=0", str(dest)],
                 capture_output=True, text=True)
             self.assertEqual(probe.stdout.strip(), "1280")
+
+
+KEY = "test-key-do-not-leak"
+AUDIO = b"ID3" + b"\x00" * 4000
+
+
+class FakeSender:
+    def __init__(self, result=AUDIO, error=None):
+        self.result, self.error, self.calls = result, error, []
+
+    def __call__(self, url, headers, body, api_key):
+        self.calls.append((url, headers, body, api_key))
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def http_error(code, body=b""):
+    return urllib.error.HTTPError("https://x", code, "err", {}, io.BytesIO(body))
+
+
+class VideoMusicRunTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name)
+        (self.project / "output").mkdir()
+        self.master = self.project / "output" / "master.mp4"
+        self.logs = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_video(self, sender, extra=(), env=None):
+        env = {"ELEVENLABS_API_KEY": KEY} if env is None else env
+        rc = gen_music.main_video([str(self.project), *extra], sender=sender, env=env,
+                                  log=self.logs.append)
+        return rc, "\n".join(self.logs)
+
+    def make_master(self, seconds=1.0):
+        make_clip(self.master, seconds=seconds, size="640x360")
+
+    def ledger(self):
+        return renders.load(self.project)["renders"]
+
+    @requires_ffmpeg
+    def test_http_403_falls_back_with_exit_3(self):
+        self.make_master()
+        fake = FakeSender(error=http_error(403))
+        rc, out = self.run_video(fake)
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: HTTP 403", out)
+
+    @requires_ffmpeg
+    def test_success_writes_file_and_done_ledger_entry(self):
+        self.make_master()
+        fake = FakeSender()
+        rc, out = self.run_video(fake, ["--tags", "cinematic,tense"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(fake.calls), 1)
+        self.assertEqual(fake.calls[0][3], KEY)
+        self.assertEqual((self.project / "output" / "music.mp3").read_bytes()[:3], b"ID3")
+        self.assertIn('wrote output/music.mp3', out)
+        self.assertIn('"bed_source": "video"', out)
+        entry = self.ledger()[0]
+        self.assertEqual((entry["file"], entry["phase"], entry["status"], entry["model"]),
+                         ("output/music.mp3", "6", "done", "music_v2"))
+        self.assertNotIn(KEY, (self.project / "renders.json").read_text())
+        self.assertNotIn(KEY, out)
+        self.assertFalse((self.project / ".tmp" / "music-proxy.mp4").exists())
+
+    @requires_ffmpeg
+    def test_second_run_with_same_master_is_up_to_date(self):
+        self.make_master()
+        self.run_video(FakeSender())
+        fake = FakeSender()
+        rc, out = self.run_video(fake)
+        self.assertEqual(rc, 0)
+        self.assertEqual(fake.calls, [])
+        self.assertIn("up-to-date: output/music.mp3 (master unchanged)", out)
+
+    @requires_ffmpeg
+    def test_changed_master_requests_again(self):
+        self.make_master()
+        self.run_video(FakeSender())
+        self.make_master(seconds=1.5)
+        fake = FakeSender()
+        rc, _ = self.run_video(fake)
+        self.assertEqual((rc, len(fake.calls)), (0, 1))
+
+    @requires_ffmpeg
+    def test_force_requests_again(self):
+        self.make_master()
+        self.run_video(FakeSender())
+        fake = FakeSender()
+        rc, _ = self.run_video(fake, ["--force"])
+        self.assertEqual((rc, len(fake.calls)), (0, 1))
+
+    @requires_ffmpeg
+    def test_no_key_falls_back_without_request_or_ledger_entry(self):
+        self.make_master()
+        fake = FakeSender()
+        rc, out = self.run_video(fake, env={})
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: ELEVENLABS_API_KEY not set", out)
+        self.assertEqual(fake.calls, [])
+        self.assertEqual(self.ledger(), [])
+
+    def test_master_over_600s_falls_back_before_proxy(self):
+        self.master.write_bytes(b"not really a video")
+        fake = FakeSender()
+        with patch("tools.gen_music.probe_duration", return_value=700.0), \
+                patch("tools.gen_music.make_proxy", side_effect=AssertionError("no proxy")):
+            rc, out = self.run_video(fake)
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: master is 700s, video-to-music accepts up to 600s", out)
+        self.assertEqual(fake.calls, [])
+
+    def test_missing_master_falls_back(self):
+        rc, out = self.run_video(FakeSender())
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: master not found", out)
+
+    @requires_ffmpeg
+    def test_proxy_over_200mb_falls_back(self):
+        self.make_master()
+        fake = FakeSender()
+        with patch("tools.gen_music.V2M_MAX_BYTES", 10):
+            rc, out = self.run_video(fake)
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: proxy is", out)
+        self.assertIn("limit 200 MB", out)
+        self.assertEqual(fake.calls, [])
+
+    @requires_ffmpeg
+    def test_tiny_response_falls_back_with_failed_entry(self):
+        self.make_master()
+        rc, out = self.run_video(FakeSender(result=b"tiny"))
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: response too small (4 bytes)", out)
+        entry = self.ledger()[0]
+        self.assertEqual(entry["status"], "failed")
+        self.assertIn("response too small", entry["error"])
+        self.assertFalse((self.project / "output" / "music.mp3").exists())
+
+    @requires_ffmpeg
+    def test_http_422_reports_body_and_records_failed(self):
+        self.make_master()
+        rc, out = self.run_video(FakeSender(error=http_error(422, b"bad input " * 50)))
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: HTTP 422 \u2014 bad input", out)
+        self.assertEqual(self.ledger()[0]["status"], "failed")
+
+    @requires_ffmpeg
+    def test_other_http_code_falls_back(self):
+        self.make_master()
+        rc, out = self.run_video(FakeSender(error=http_error(500, b"boom")))
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: HTTP 500", out)
+
+    @requires_ffmpeg
+    def test_network_error_falls_back_once_with_certificate_hint(self):
+        self.make_master()
+        err = urllib.error.URLError("[SSL: CERTIFICATE_VERIFY_FAILED] nope")
+        fake = FakeSender(error=err)
+        rc, out = self.run_video(fake)
+        self.assertEqual(rc, 3)
+        self.assertEqual(len(fake.calls), 1)
+        self.assertIn("Install Certificates.command", out)
+        self.assertEqual(self.ledger()[0]["status"], "failed")
+
+    @requires_ffmpeg
+    def test_dry_run_checks_but_never_sends(self):
+        self.make_master()
+        fake = FakeSender()
+        rc, out = self.run_video(fake, ["--dry-run", "--tags", "a,b"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(fake.calls, [])
+        self.assertIn("WOULD request video-to-music:", out)
+        self.assertIn("model music_v2, 2 tags", out)
+        self.assertTrue((self.project / ".tmp" / "music-proxy.mp4").exists())
+        self.assertEqual(self.ledger(), [])
+
+    @requires_ffmpeg
+    def test_too_many_tags_is_a_usage_error_not_a_crash(self):
+        self.make_master()
+        fake = FakeSender()
+        rc, _ = self.run_video(fake, ["--tags", ",".join(f"t{i}" for i in range(11))])
+        self.assertEqual(rc, 1)
+        self.assertEqual(fake.calls, [])
 
 
 if __name__ == "__main__":
