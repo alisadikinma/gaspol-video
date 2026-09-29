@@ -32,4 +32,16 @@ need reference/image-video-gen/10-physical-plausibility-gate.md 'qa_frames.py' '
 need skills/video-image/SKILL.md 'asset_library.py' 'name asset_library.py'
 need reference/image-video-gen/01-nb2-image-generation.md 'asset_library.py' 'name asset_library.py'
 
+# Phase L: real-run evidence. Each eval records either measured output or an explicit NOT RUN.
+for ev in gen-music-video-run pause-tags-run qa-frames-run; do
+  f="docs/evals/$ev.md"
+  if [ ! -f "$f" ]; then
+    echo "FAIL $f missing"
+    fail=1
+  elif ! grep -qF '## Result' "$f"; then
+    echo "FAIL $f has no ## Result section"
+    fail=1
+  fi
+done
+
 exit $fail
