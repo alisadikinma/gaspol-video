@@ -2,11 +2,16 @@
 """Contact sheets and a verdict sheet for visual QA of rendered Phase 5 clips.
 
     python3 tools/qa_frames.py <project> [--scenes 5,6] [--clip clips/scene-05.mp4 ...]
+    python3 tools/qa_frames.py <project> --check [--scenes 5,6] [--clip ...]
 
 For each rendered clip: five frames (start, 25%, 50%, 75%, last frame) tiled into
 `.tmp/qa-scene-NN.jpg`, and one section per scene in `work/visual-qa.md` carrying the
 scene's PLAUSIBILITY block and a seven-row verdict table for Claude to fill after looking
 at the sheet. Re-running keeps verdicts for a clip whose bytes did not change.
+
+`--check` is the V15 gate: it reads only the Verdict cells of `work/visual-qa.md`, extracts
+nothing and writes nothing. Exit 1 when a clip has no section, a cell is empty or malformed
+or `FAIL:`, or the section was judged against different bytes; `UNSURE:` is a note for a human.
 
 Stdlib only. Needs ffmpeg and ffprobe.
 """
@@ -225,12 +230,52 @@ def _collect(project, ledger, clip_args, wanted):
     return found
 
 
+_VERDICT_RE = re.compile(r"^(PASS|FAIL:\s*(.*)|UNSURE:\s*(.*))$", re.DOTALL)
+
+
+def check(project, clips):
+    """V15 over `work/visual-qa.md`. Returns (problems, notes) as printable lines.
+
+    Only the Verdict cells of each scene's table are read, never the surrounding prose."""
+    qa_path = project / "work" / "visual-qa.md"
+    text = qa_path.read_text(encoding="utf-8") if qa_path.exists() else ""
+    sections = _parse_sections(text)
+    problems, notes = [], []
+    for scene in sorted(clips):
+        label = "scene %02d" % scene
+        if scene not in sections:
+            problems.append("V15 FAIL %s: no section in work/visual-qa.md" % label)
+            continue
+        _chunk, sha, verdicts = sections[scene]
+        clip = project / clips[scene]
+        if not clip.is_file():
+            problems.append("V15 FAIL %s: %s is missing on disk" % (label, clips[scene]))
+        elif sha != _sha256(clip):
+            problems.append("V15 FAIL %s: verdicts were judged against a different clip "
+                            "(clip_sha256 does not match %s)" % (label, clips[scene]))
+        for k, cell in enumerate(verdicts, 1):
+            m = _VERDICT_RE.match(cell)
+            if not cell:
+                problems.append("V15 FAIL %s q%d: %s has no verdict" % (label, k, QUESTIONS[k - 1]))
+            elif not m:
+                problems.append("V15 FAIL %s q%d: verdict must start with PASS, FAIL: or "
+                                "UNSURE: (got %r)" % (label, k, cell))
+            elif m.group(1).startswith("FAIL"):
+                problems.append("V15 FAIL %s q%d: %s" % (label, k, m.group(2) or QUESTIONS[k - 1]))
+            elif m.group(1).startswith("UNSURE"):
+                notes.append("V15 NOTE %s q%d: %s \u2014 needs a human look"
+                             % (label, k, m.group(3) or QUESTIONS[k - 1]))
+    return problems, notes
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("project")
     ap.add_argument("--scenes", help="comma-separated scene numbers to keep, e.g. 5,6")
     ap.add_argument("--clip", action="append", default=[],
                     help="a hand-rendered clip relative to the project (repeatable)")
+    ap.add_argument("--check", action="store_true",
+                    help="V15 gate: verify work/visual-qa.md is fully and honestly judged")
     args = ap.parse_args(argv)
 
     project = Path(args.project)
@@ -252,6 +297,11 @@ def main(argv=None):
         print("qa_frames: no rendered clips found (renders.json has no done phase-5 entry; "
               "pass --clip for hand-rendered clips)", file=sys.stderr)
         return 2
+    if args.check:
+        problems, notes = check(project, clips)
+        for line in problems + notes:
+            print(line)
+        return 1 if problems else 0
     if not (FFMPEG and FFPROBE):
         print("qa_frames: ffmpeg and ffprobe are required and were not found on PATH",
               file=sys.stderr)

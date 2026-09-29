@@ -237,5 +237,93 @@ class ExitTwoTest(unittest.TestCase):
             self.assertIn("no scene number", err)
 
 
+class CheckTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.project = Path(self._tmp.name)
+        (self.project / "clips").mkdir()
+        (self.project / "work").mkdir()
+        self.clip = self.project / "clips" / "scene-05.mp4"
+        self.clip.write_bytes(b"clip bytes")
+        write_ledger(self.project, [ledger_entry(5, "clips/scene-05.mp4")])
+
+    def write_sheet(self, cells=None, sha=None):
+        sha = sha or qa_frames._sha256(self.clip)
+        text = qa_frames.merge_sheet("", [section(scene=5, sha=sha)])
+        for k, cell in enumerate(cells or [], 1):
+            question = qa_frames.QUESTIONS[k - 1]
+            text = text.replace("| %d | %s | |" % (k, question),
+                                "| %d | %s | %s |" % (k, question, cell))
+        (self.project / "work" / "visual-qa.md").write_text(text, encoding="utf-8")
+
+    def check(self):
+        return run_main([str(self.project), "--check"])
+
+    def test_empty_verdict_cell_exits_1(self):
+        self.write_sheet(["PASS"] * 6)
+        code, out, err = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("V15 FAIL scene 05", out)
+
+    def test_fail_cell_exits_1(self):
+        self.write_sheet(["PASS", "PASS", "FAIL: truck reverses"] + ["PASS"] * 4)
+        code, out, err = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("V15 FAIL scene 05", out)
+        self.assertIn("truck reverses", out)
+
+    def test_malformed_cell_exits_1(self):
+        self.write_sheet(["ok"] + ["PASS"] * 6)
+        code, out, err = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("V15 FAIL scene 05", out)
+
+    def test_hash_mismatch_exits_1(self):
+        self.write_sheet(["PASS"] * 7, sha="0" * 64)
+        code, out, err = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("different clip", out)
+
+    def test_all_pass_exits_0(self):
+        self.write_sheet(["PASS"] * 7)
+        before = sorted(p.name for p in self.project.rglob("*"))
+        code, out, err = self.check()
+        self.assertEqual(code, 0, out + err)
+        self.assertNotIn("V15 FAIL", out)
+        self.assertEqual(sorted(p.name for p in self.project.rglob("*")), before)
+
+    def test_free_text_containing_pass_does_not_count_as_a_verdict(self):
+        self.write_sheet([""] * 7)
+        code, out, err = self.check()
+        self.assertEqual(code, 1)
+
+    def test_unsure_is_a_note_not_a_failure(self):
+        self.write_sheet(["PASS"] * 3 + ["UNSURE: plate hidden"] + ["PASS"] * 3)
+        code, out, err = self.check()
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("V15 NOTE scene 05 q4: plate hidden \u2014 needs a human look", out)
+
+    def test_listed_clip_without_a_section_exits_1(self):
+        self.write_sheet(["PASS"] * 7)
+        (self.project / "clips" / "scene-06.mp4").write_bytes(b"other")
+        write_ledger(self.project, [ledger_entry(5, "clips/scene-05.mp4"),
+                                    ledger_entry(6, "clips/scene-06.mp4")])
+        code, out, err = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("V15 FAIL scene 06", out)
+
+    def test_no_sheet_at_all_exits_1(self):
+        code, out, err = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("V15 FAIL scene 05", out)
+
+    def test_no_rendered_clips_exits_2(self):
+        write_ledger(self.project, [])
+        code, out, err = self.check()
+        self.assertEqual(code, 2)
+        self.assertIn("no rendered clips found", err)
+
+
 if __name__ == "__main__":
     unittest.main()
