@@ -55,6 +55,19 @@ def frame_times(duration_s, fps):
             (0.0, duration_s * 0.25, duration_s * 0.5, duration_s * 0.75, last)]
 
 
+_ID_RE = re.compile(r"(\d+)([a-z]?)")
+
+
+def scene_id(text):
+    """Canonical scene id: digits padded to two, plus an optional lowercase letter suffix
+    (`clips/scene-01b.mp4` -> `01b`, `5` -> `05`, `03A` -> `03a`). None when there is no id.
+    A bare id (`--scenes` value, heading number) or a `scene-` clip name are both understood."""
+    text = str(text).lower()
+    m = (re.search(r"scene-(\d+)([a-z]?)(?![0-9a-z])", text)
+         or re.fullmatch(r"\s*(\d+)([a-z]?)\s*", text))
+    return "%02d%s" % (int(m.group(1)), m.group(2)) if m else None
+
+
 _HEADING_RE = re.compile(r"^(#{1,6})\s")
 _NUMBERED_RE = re.compile(r"^\s*\d+\.\s")
 
@@ -65,7 +78,9 @@ def find_plausibility(markdown, scene):
     The scene's section runs from its `## / ### / ####  Scene N` heading to the next heading
     of the same or higher level. The block is the `PLAUSIBILITY:` line plus the numbered
     lines that follow it; it ends at the first line that is not numbered."""
-    heading = re.compile(r"^#{2,4}\s+Scene\s+0*%d\b" % int(scene))
+    number, suffix = _ID_RE.fullmatch(scene_id(scene)).groups()
+    heading = re.compile(r"^#{2,4}\s+(?:Scene\s+|S)0*%d%s(?![0-9a-z])" % (int(number), suffix),
+                         re.IGNORECASE)
     lines = markdown.splitlines()
     start = level = None
     for i, line in enumerate(lines):
@@ -96,7 +111,7 @@ def render_section(scene, clip, sha, sheet, times, plausibility, verdicts=None, 
     texts (kept from an earlier judgement) or None for empty cells."""
     verdicts = verdicts or [""] * len(QUESTIONS)
     stamps = ", ".join("%.2fs" % t for t in times)
-    lines = ["## Scene %02d" % int(scene), "",
+    lines = ["## Scene %s" % scene_id(scene), "",
              "- clip: %s" % clip,
              "- clip_sha256: %s" % sha,
              "- sheet: %s — frames at %s" % (sheet, stamps)]
@@ -110,14 +125,14 @@ def render_section(scene, clip, sha, sheet, times, plausibility, verdicts=None, 
     return "\n".join(lines) + "\n"
 
 
-_SECTION_SPLIT_RE = re.compile(r"(?m)^(?=## Scene \d+\s*$)")
-_SCENE_RE = re.compile(r"## Scene (\d+)")
+_SECTION_SPLIT_RE = re.compile(r"(?m)^(?=## Scene \d+[a-z]?\s*$)")
+_SCENE_RE = re.compile(r"## Scene (\d+[a-z]?)")
 _SHA_RE = re.compile(r"(?m)^- clip_sha256: (\S+)")
 _ROW_RE = re.compile(r"^\|\s*(\d)\s*\|[^|]*\|(.*)\|\s*$")
 
 
 def _parse_sections(text):
-    """{scene number: (section text, clip_sha256 or None, seven verdict cells)}"""
+    """{scene id: (section text, clip_sha256 or None, seven verdict cells)}"""
     found = {}
     for chunk in _SECTION_SPLIT_RE.split(text):
         m = _SCENE_RE.match(chunk)
@@ -129,7 +144,7 @@ def _parse_sections(text):
             row = _ROW_RE.match(line)
             if row and 1 <= int(row.group(1)) <= len(QUESTIONS):
                 verdicts[int(row.group(1)) - 1] = row.group(2).strip()
-        found[int(m.group(1))] = (chunk.rstrip("\n") + "\n", sha.group(1) if sha else None, verdicts)
+        found[scene_id(m.group(1))] = (chunk.rstrip("\n") + "\n", sha.group(1) if sha else None, verdicts)
     return found
 
 
@@ -140,7 +155,7 @@ def merge_sheet(existing_text, sections):
     old = _parse_sections(existing_text)
     merged = {n: chunk for n, (chunk, _sha, _v) in old.items()}
     for kwargs in sections:
-        scene = int(kwargs["scene"])
+        scene = scene_id(kwargs["scene"])
         prev = old.get(scene)
         if prev and prev[1] == kwargs["sha"]:
             merged[scene] = render_section(verdicts=prev[2], **kwargs)
@@ -149,11 +164,6 @@ def merge_sheet(existing_text, sections):
         else:
             merged[scene] = render_section(**kwargs)
     return SHEET_HEADER + "\n".join(merged[n] for n in sorted(merged))
-
-
-def _scene_of(name):
-    m = re.search(r"scene-(\d+)", str(name))
-    return int(m.group(1)) if m else None
 
 
 def _sha256(path):
@@ -194,8 +204,8 @@ def make_sheet(clip, project, scene, times):
     """Extract one frame per timestamp, tile them into .tmp/qa-scene-NN.jpg, delete the frames."""
     tmp = project / ".tmp"
     tmp.mkdir(exist_ok=True)
-    frames = [tmp / ("qa-scene-%02d-%d.jpg" % (scene, k)) for k in range(len(times))]
-    sheet = tmp / ("qa-scene-%02d.jpg" % scene)
+    frames = [tmp / ("qa-scene-%s-%d.jpg" % (scene, k)) for k in range(len(times))]
+    sheet = tmp / ("qa-scene-%s.jpg" % scene)
     try:
         for t, frame in zip(times, frames):
             _run([FFMPEG, "-v", "error", "-y", "-ss", str(t), "-i", str(clip),
@@ -217,13 +227,13 @@ def _collect(project, ledger, clip_args, wanted):
     for entry in ledger.get("renders", []):
         if str(entry.get("phase")) == "5" and entry.get("status") == "done" and entry.get("file"):
             scene = entry.get("scene")
-            scene = scene if isinstance(scene, int) else _scene_of(entry["file"])
+            scene = scene_id(scene) if scene is not None else scene_id(entry["file"])
             if scene is not None:
                 found[scene] = entry["file"]
     for clip in clip_args:
-        scene = _scene_of(clip)
+        scene = scene_id(clip)
         if scene is None:
-            raise ValueError("--clip %s has no scene number (expected scene-NN in the name)" % clip)
+            raise ValueError("--clip %s has no scene number (expected scene-NN or scene-NNx in the name)" % clip)
         found[scene] = clip
     if wanted is not None:
         found = {n: c for n, c in found.items() if n in wanted}
@@ -242,7 +252,7 @@ def check(project, clips):
     sections = _parse_sections(text)
     problems, notes = [], []
     for scene in sorted(clips):
-        label = "scene %02d" % scene
+        label = "scene %s" % scene
         if scene not in sections:
             problems.append("V15 FAIL %s: no section in work/visual-qa.md" % label)
             continue
@@ -271,7 +281,7 @@ def check(project, clips):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("project")
-    ap.add_argument("--scenes", help="comma-separated scene numbers to keep, e.g. 5,6")
+    ap.add_argument("--scenes", help="comma-separated scene ids to keep, e.g. 5,6 or 1b")
     ap.add_argument("--clip", action="append", default=[],
                     help="a hand-rendered clip relative to the project (repeatable)")
     ap.add_argument("--check", action="store_true",
@@ -280,10 +290,13 @@ def main(argv=None):
 
     project = Path(args.project)
     try:
-        wanted = ({int(x) for x in args.scenes.split(",") if x.strip()}
+        wanted = ({scene_id(x) for x in args.scenes.split(",") if x.strip()}
                   if args.scenes else None)
+        if wanted and None in wanted:
+            raise ValueError
     except ValueError:
-        print("qa_frames: --scenes must be comma-separated numbers, e.g. 5,6", file=sys.stderr)
+        print("qa_frames: --scenes must be comma-separated scene ids, e.g. 5,6 or 1b",
+              file=sys.stderr)
         return 2
     try:
         clips = _collect(project, renders.load(project), args.clip, wanted)
@@ -316,22 +329,22 @@ def main(argv=None):
         rel = clips[scene]
         clip = project / rel
         if not clip.is_file():
-            print("scene %02d  skipped: %s is missing on disk" % (scene, rel))
+            print("scene %s  skipped: %s is missing on disk" % (scene, rel))
             continue
         duration, fps = probe(clip)
         try:
             times = frame_times(duration, fps)
         except ValueError as exc:
-            print("scene %02d  skipped: %s" % (scene, exc))
+            print("scene %s  skipped: %s" % (scene, exc))
             continue
         try:
             sheet = make_sheet(clip, project, scene, times)
         except RuntimeError as exc:
-            print("scene %02d  failed: %s" % (scene, exc), file=sys.stderr)
+            print("scene %s  failed: %s" % (scene, exc), file=sys.stderr)
             failed = True
             continue
         sheet_rel = sheet.relative_to(project).as_posix()
-        print("scene %02d  %.2fs  sheet %s" % (scene, duration, sheet_rel))
+        print("scene %s  %.2fs  sheet %s" % (scene, duration, sheet_rel))
         sections.append(dict(scene=scene, clip=rel, sha=_sha256(clip), sheet=sheet_rel,
                              times=times, plausibility=find_plausibility(prompts, scene)))
 

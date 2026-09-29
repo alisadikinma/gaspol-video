@@ -179,7 +179,7 @@ python3 tools/qa_frames.py {output_folder} --check          # the V15 gate
 
 - For each rendered clip (from `renders.json`, or `--clip clips/scene-05.mp4` for one rendered by
   hand) it tiles five frames, at the start, 25%, 50%, 75% and the last frame, into
-  `.tmp/qa-scene-NN.jpg`.
+  `.tmp/qa-scene-NN.jpg` (NN may carry a letter suffix, `01b`, matching a `### S01b` heading).
 - It writes one section per scene into `work/visual-qa.md`: the scene's `PLAUSIBILITY:` block copied
   from `video-prompts.md` and a seven-row table, one row per question. If the block is missing the
   section says so and the scene is judged against its description.

@@ -68,6 +68,41 @@ class FindPlausibilityTest(unittest.TestCase):
         self.assertIsNone(qa_frames.find_plausibility("", 5))
 
 
+REAL_PROMPTS = """# Video prompts
+
+### S01 — Gate opens
+
+PLAUSIBILITY:
+1. MECHANISM — arm rises.
+
+### S01b — Gate, second angle
+
+PLAUSIBILITY:
+1. MECHANISM — arm rises from the base, seen from the side.
+
+### S01c — Gate, wide
+
+No block here.
+"""
+
+
+class SceneIdTest(unittest.TestCase):
+    def test_ids_are_padded_strings_with_optional_lowercase_letter(self):
+        self.assertEqual(qa_frames.scene_id("clips/scene-01b.mp4"), "01b")
+        self.assertEqual(qa_frames.scene_id("scene-5.mp4"), "05")
+        self.assertEqual(qa_frames.scene_id("1b"), "01b")
+        self.assertEqual(qa_frames.scene_id("03A"), "03a")
+        self.assertEqual(qa_frames.scene_id(5), "05")
+        self.assertIsNone(qa_frames.scene_id("intro.mp4"))
+
+    def test_s_heading_with_letter_matches_only_its_own_id(self):
+        block = qa_frames.find_plausibility(REAL_PROMPTS, "01b")
+        self.assertIn("seen from the side", block)
+        self.assertIn("arm rises.", qa_frames.find_plausibility(REAL_PROMPTS, "01"))
+        self.assertNotIn("side", qa_frames.find_plausibility(REAL_PROMPTS, "01"))
+        self.assertIsNone(qa_frames.find_plausibility(REAL_PROMPTS, "01c"))
+
+
 TIMES = [0.0, 2.0, 4.0, 6.0, 7.96]
 BLOCK = "PLAUSIBILITY:\n1. MECHANISM — the arm rises from its base."
 
@@ -210,6 +245,55 @@ class MainExtractionTest(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertTrue((project / ".tmp" / "qa-scene-04.jpg").exists())
             self.assertFalse((project / ".tmp" / "qa-scene-03.jpg").exists())
+
+
+@media.requires_ffmpeg
+class LetteredScenesTest(unittest.TestCase):
+    def make_project(self, tmp):
+        project = Path(tmp)
+        (project / "clips").mkdir()
+        for name in ("scene-01", "scene-01b", "scene-01c"):
+            media.make_clip(project / "clips" / (name + ".mp4"), seconds=2.0, fps=25)
+        write_ledger(project, [ledger_entry(None, "clips/scene-01.mp4"),
+                               ledger_entry(None, "clips/scene-01b.mp4"),
+                               ledger_entry(None, "clips/scene-01c.mp4")])
+        (project / "video-prompts.md").write_text(REAL_PROMPTS, encoding="utf-8")
+        return project
+
+    def test_lettered_clips_get_their_own_sheet_and_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(tmp)
+            code, out, err = run_main([str(project)])
+            self.assertEqual(code, 0, err)
+            for sid in ("01", "01b", "01c"):
+                self.assertTrue((project / ".tmp" / ("qa-scene-%s.jpg" % sid)).exists(), sid)
+            text = (project / "work" / "visual-qa.md").read_text(encoding="utf-8")
+            for sid in ("01", "01b", "01c"):
+                self.assertEqual(text.count("## Scene %s\n" % sid), 1, sid)
+            self.assertIn("seen from the side", text)
+
+    def test_scenes_flag_selects_a_lettered_scene_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(tmp)
+            code, out, err = run_main([str(project), "--scenes", "1b"])
+            self.assertEqual(code, 0, err)
+            self.assertTrue((project / ".tmp" / "qa-scene-01b.jpg").exists())
+            self.assertFalse((project / ".tmp" / "qa-scene-01.jpg").exists())
+            self.assertFalse((project / ".tmp" / "qa-scene-01c.jpg").exists())
+
+    def test_check_passes_when_every_lettered_section_is_judged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(tmp)
+            self.assertEqual(run_main([str(project)])[0], 0)
+            qa = project / "work" / "visual-qa.md"
+            text = qa.read_text(encoding="utf-8")
+            for k, question in enumerate(qa_frames.QUESTIONS, 1):
+                text = text.replace("| %d | %s | |" % (k, question),
+                                    "| %d | %s | PASS |" % (k, question))
+            qa.write_text(text, encoding="utf-8")
+            self.assertIn("## Scene 01b", text)
+            code, out, err = run_main([str(project), "--check"])
+            self.assertEqual(code, 0, out + err)
 
 
 class ExitTwoTest(unittest.TestCase):

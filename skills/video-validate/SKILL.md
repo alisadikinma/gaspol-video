@@ -244,7 +244,7 @@ Mirrors reviewer check C8.
 ### Check V15: Visual QA verdicts (v3.6.0)
 
 Run `python3 tools/qa_frames.py {output_folder} --check`. It reads only the Verdict cells of
-`work/visual-qa.md` for every rendered clip. Exit 1 = FAIL: a clip has no section, a cell is empty
+`work/visual-qa.md` for every rendered clip (scene ids may carry a letter suffix, `01b`). Exit 1 = FAIL: a clip has no section, a cell is empty
 or malformed or `FAIL:`, or the section was judged against different bytes than the clip now has.
 Exit 2 = ERROR (no rendered clips, bad ledger). Exit 0 = PASS; any `V15 NOTE` lines are
 `UNSURE:` cells, listed as human-look items, not failures.
