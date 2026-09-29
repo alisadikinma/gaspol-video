@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 import unittest
 import urllib.error
@@ -6,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools import gen_music
+from tests.py.media import duration_of, make_clip, requires_ffmpeg
 
 
 PALETTE = {
@@ -158,6 +160,123 @@ class DryRunTest(unittest.TestCase):
                 self.library, env={"ELEVENLABS_API_KEY": "fake-key"}, dry_run=True
             )
         self.assertEqual(result["written"], [])
+
+
+class VideoMusicRequestTest(unittest.TestCase):
+    def test_request_shape(self):
+        url, headers, body = gen_music.build_video_music_request(
+            b"VID", "tense low pulse", ["cinematic"], "music_v2")
+        self.assertTrue(url.endswith("/v1/music/video-to-music?output_format=mp3_44100_128"))
+        self.assertTrue(headers["Content-Type"].startswith("multipart/form-data; boundary="))
+        self.assertIn(b'name="videos"; filename="master.mp4"', body)
+        self.assertIn(b"Content-Type: video/mp4", body)
+        self.assertIn(b"VID", body)
+        self.assertIn(b'name="description"', body)
+        self.assertIn(b"tense low pulse", body)
+        self.assertEqual(body.count(b'name="tags"'), 1)
+        self.assertIn(b'name="model_id"', body)
+        self.assertIn(b"music_v2", body)
+        self.assertNotIn("xi-api-key", {k.lower() for k in headers})
+        self.assertNotIn(b"xi-api-key", body)
+
+
+    def test_eleven_tags_refused(self):
+        with self.assertRaises(gen_music.MusicLibraryError) as ctx:
+            gen_music.build_video_music_request(b"V", "d", [f"t{i}" for i in range(11)], "music_v2")
+        self.assertIn("tags", str(ctx.exception))
+
+    def test_ten_tags_become_ten_fields(self):
+        _, _, body = gen_music.build_video_music_request(
+            b"V", "d", [f"t{i}" for i in range(10)], "music_v2")
+        self.assertEqual(body.count(b'name="tags"'), 10)
+
+    def test_unknown_model_refused(self):
+        with self.assertRaises(gen_music.MusicLibraryError) as ctx:
+            gen_music.build_video_music_request(b"V", "d", [], "music_v9")
+        self.assertIn("music_v9", str(ctx.exception))
+
+    def test_overlong_description_refused(self):
+        with self.assertRaises(gen_music.MusicLibraryError):
+            gen_music.build_video_music_request(b"V", "x" * 1001, [], "music_v2")
+
+    def test_no_description_omits_the_field(self):
+        _, _, body = gen_music.build_video_music_request(b"V", None, [], "music_v2")
+        self.assertNotIn(b'name="description"', body)
+
+
+class DefaultDescriptionTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_music_lines_and_table_column(self):
+        (self.project / "av-script.md").write_text(
+            "# Script\n"
+            "Music: low pulsing bed, tense\n"
+            "- musik: opens sparse, lifts at the reveal\n"
+            "Narration: not music\n"
+            "\n"
+            "| Scene | Narration | Music |\n"
+            "|---|---|---|\n"
+            "| 1 | hello | soft piano |\n"
+            "| 2 | world | - |\n"
+        )
+        self.assertEqual(
+            gen_music.default_description(self.project),
+            "low pulsing bed, tense; opens sparse, lifts at the reveal; soft piano")
+
+    def test_truncates_on_a_word_boundary(self):
+        (self.project / "av-script.md").write_text("Music: " + " ".join(["bed"] * 400) + "\n")
+        out = gen_music.default_description(self.project)
+        self.assertLessEqual(len(out), 1000)
+        self.assertTrue(out.endswith("bed"))
+        self.assertNotIn("  ", out)
+
+    def test_none_found_returns_none(self):
+        (self.project / "av-script.md").write_text("Narration: hello\n")
+        self.assertIsNone(gen_music.default_description(self.project))
+
+    def test_missing_script_returns_none(self):
+        self.assertIsNone(gen_music.default_description(self.project))
+
+
+class VideoDispatchTest(unittest.TestCase):
+    def test_video_help_exits_0(self):
+        with self.assertRaises(SystemExit) as ctx:
+            gen_music.main(["video", "--help"])
+        self.assertEqual(ctx.exception.code, 0)
+
+    def test_video_routes_to_main_video(self):
+        with patch("tools.gen_music.main_video", return_value=7) as mv:
+            self.assertEqual(gen_music.main(["video", "proj", "--dry-run"]), 7)
+        mv.assert_called_once_with(["proj", "--dry-run"])
+
+    def test_palette_mode_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Path(tmp)
+            (library / "tracks").mkdir()
+            (library / "palette.json").write_text(json.dumps(PALETTE))
+            with patch("tools.gen_music.main_video", side_effect=AssertionError("not video")):
+                self.assertEqual(gen_music.main(["--library", str(library), "--dry-run"]), 0)
+
+
+class MakeProxyTest(unittest.TestCase):
+    @requires_ffmpeg
+    def test_proxy_is_picture_only_and_at_most_1280(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            master = make_clip(Path(tmp) / "master.mp4", seconds=1.0, size="1920x1080")
+            dest = Path(tmp) / ".tmp" / "music-proxy.mp4"
+            gen_music.make_proxy(master, dest)
+            self.assertTrue(dest.exists())
+            self.assertIsNone(duration_of(dest, "a:0"))
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream=width", "-of", "csv=p=0", str(dest)],
+                capture_output=True, text=True)
+            self.assertEqual(probe.stdout.strip(), "1280")
 
 
 if __name__ == "__main__":

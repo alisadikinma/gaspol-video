@@ -3,6 +3,8 @@
 
     python3 tools/gen_music.py [--library media/music/library] [--only id1,id2]
                                 [--length-s N] [--force] [--dry-run] [--renorm]
+    python3 tools/gen_music.py video <project> [--master output/master.mp4] [--tags a,b]
+                                [--model music_v2] [--description-file F] [--force] [--dry-run]
 
 LIBRARY-FIRST: a mood whose tracks/<id>.mp3 already exists is skipped and never re-billed,
 unless --force. Tracks are generated with ElevenLabs Music (force_instrumental) and
@@ -23,6 +25,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +34,14 @@ FFPROBE = shutil.which("ffprobe")
 API_URL = "https://api.elevenlabs.io/v1/music"
 
 DEFAULT_LIBRARY = Path("media/music/library")
+
+# Video-to-music (GV-8): a bed composed to the edited master's picture.
+V2M_URL = "https://api.elevenlabs.io/v1/music/video-to-music"
+V2M_MAX_S = 600
+V2M_MAX_BYTES = 200 * 1024 * 1024
+V2M_MAX_DESCRIPTION = 1000
+V2M_MAX_TAGS = 10
+V2M_MODELS = ("music_v1", "music_v2", "music_v2_5")
 
 FALLBACK_DEFAULTS = {
     "model": "music_v2",
@@ -108,6 +119,105 @@ def build_request(mood, defaults, length_s=None):
     url = f"{API_URL}?output_format={output_format}"
     headers = {"Content-Type": "application/json", "Accept": "audio/mpeg"}
     return url, headers, json.dumps(body).encode("utf-8")
+
+
+def build_video_music_request(proxy_bytes, description, tags, model,
+                              output_format="mp3_44100_128"):
+    """Pure multipart request for /v1/music/video-to-music — no API key here, so it is testable
+    without one. The caller adds xi-api-key at send time."""
+    tags = list(tags or [])
+    if model not in V2M_MODELS:
+        raise MusicLibraryError(f"unknown model: {model} (use one of {', '.join(V2M_MODELS)})")
+    if len(tags) > V2M_MAX_TAGS:
+        raise MusicLibraryError(f"too many tags: {len(tags)} (max {V2M_MAX_TAGS})")
+    if description is not None and not 1 <= len(description) <= V2M_MAX_DESCRIPTION:
+        raise MusicLibraryError(
+            f"description must be 1-{V2M_MAX_DESCRIPTION} chars, got {len(description)}")
+
+    boundary = uuid.uuid4().hex
+    crlf = b"\r\n"
+    parts = [(f'Content-Disposition: form-data; name="videos"; filename="master.mp4"\r\n'
+              f"Content-Type: video/mp4\r\n").encode("utf-8"), proxy_bytes]
+    fields = []
+    if description:
+        fields.append(("description", description))
+    fields.extend(("tags", tag) for tag in tags)
+    fields.append(("model_id", model))
+    for name, value in fields:
+        parts.append(f'Content-Disposition: form-data; name="{name}"\r\n'.encode("utf-8"))
+        parts.append(value.encode("utf-8"))
+
+    body = b""
+    for i in range(0, len(parts), 2):
+        body += f"--{boundary}\r\n".encode("utf-8") + parts[i] + crlf + parts[i + 1] + crlf
+    body += f"--{boundary}--\r\n".encode("utf-8")
+    headers = {"Content-Type": f"multipart/form-data; boundary={boundary}", "Accept": "audio/mpeg"}
+    return f"{V2M_URL}?output_format={output_format}", headers, body
+
+
+def make_proxy(master, dest):
+    """Picture-only, at most 1280px, small: what video-to-music needs to see, well under the
+    200 MB limit. The master's audio is dropped on purpose — the model composes to the picture."""
+    if FFMPEG is None:
+        raise MusicLibraryError("ffmpeg not found on PATH — cannot build the picture-only proxy")
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [FFMPEG, "-v", "error", "-y", "-i", str(master), "-an",
+         "-vf", "scale=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=2",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+         "-movflags", "+faststart", str(dest)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0 or not dest.exists():
+        raise MusicLibraryError(f"ffmpeg could not build the proxy: {proc.stderr.strip()[-300:]}")
+    return dest
+
+
+def _music_direction_lines(text):
+    """Direction text from lines starting `music:` / `musik:` (list markers and bold ignored)
+    and from cells under a `Music` / `Musik` table column."""
+    found = []
+    column = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            lowered = [c.lower().strip("* ") for c in cells]
+            if column is None:
+                for name in ("music", "musik"):
+                    if name in lowered:
+                        column = lowered.index(name)
+                        break
+                continue
+            if all(re.fullmatch(r":?-{3,}:?", c) for c in cells if c):
+                continue
+            if column < len(cells) and cells[column] not in ("", "-"):
+                found.append(cells[column])
+            continue
+        column = None
+        plain = re.sub(r"^[-*+]\s+", "", line).replace("**", "")
+        m = re.match(r"(?i)(?:music|musik)\s*:\s*(.+)$", plain)
+        if m:
+            found.append(m.group(1).strip())
+    return found
+
+
+def default_description(project):
+    """The script's music direction as a video-to-music description, or None when the script
+    names none. Truncated to the API's 1000 characters on a word boundary."""
+    try:
+        text = (Path(project) / "av-script.md").read_text()
+    except OSError:
+        return None
+    joined = "; ".join(_music_direction_lines(text))
+    if not joined:
+        return None
+    if len(joined) <= V2M_MAX_DESCRIPTION:
+        return joined
+    cut = joined[:V2M_MAX_DESCRIPTION]
+    if not joined[V2M_MAX_DESCRIPTION].isspace():
+        cut = cut.rsplit(None, 1)[0]
+    return cut.rstrip()
 
 
 def _request_music(url, headers, body, api_key, timeout=300):
@@ -336,8 +446,30 @@ def _load_env():
     return env
 
 
+def main_video(argv):
+    """`gen_music.py video <project>` — arguments only for now; sending, the ledger and the
+    palette fallback arrive with the next phase."""
+    ap = argparse.ArgumentParser(
+        prog="gen_music.py video",
+        description="Compose a music bed to the edited master with ElevenLabs video-to-music.")
+    ap.add_argument("project", help="the {output_folder} holding output/ and av-script.md")
+    ap.add_argument("--master", default="output/master.mp4", help="master, relative to the project")
+    ap.add_argument("--description-file", help="text file to use instead of the script's music lines")
+    ap.add_argument("--tags", default="", help="comma-separated, at most 10")
+    ap.add_argument("--model", default="music_v2", choices=V2M_MODELS)
+    ap.add_argument("--force", action="store_true", help="request even if the master is unchanged")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.parse_args(argv)
+    return 0
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["video"]:
+        return main_video(argv[1:])
+    ap = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        epilog="For a bed composed to the edited master: gen_music.py video --help")
     ap.add_argument("--library", default=str(DEFAULT_LIBRARY))
     ap.add_argument("--only", help="comma-separated mood ids")
     ap.add_argument("--length-s", type=float, default=None,
