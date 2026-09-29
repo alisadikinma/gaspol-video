@@ -96,6 +96,8 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or NB2-
 
 22. **(v3.4.0) Post-render frame audit before the clip is promoted.** Sample three frames of every rendered clip — about 1s, mid-clip, and 0.5s before the end — and LOOK at them. Check: count holds in all three, facing holds, mechanism holds, nothing appeared or vanished, direction still reads against the paired scene, and the light still matches the time of day the overlay claims. Count/facing/mechanism failures are re-rendered. A light-only drift is fixed with a colour grade in assembly, not with credits — platform models pull an evening keyframe back toward midday in the second half of a clip.
 
+23. **(v3.6.0) Look at the contact sheet, then write the verdict.** After every render batch `tools/qa_frames.py` tiles five frames per clip into `.tmp/qa-scene-NN.jpg` and lists the scene's `PLAUSIBILITY:` answers in `work/visual-qa.md`. Every Verdict cell is `PASS`, `FAIL: <what is visible>` or `UNSURE: <why frames cannot tell>`, written after reading the sheet. `PASS` for something the frames do not show is a false verdict. `python3 tools/qa_frames.py {output_folder} --check` (validator V15) exits 1 on any empty cell or `FAIL:`; `UNSURE:` is listed as a note for a human look. This is the tool form of Rule 22.
+
 20. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
 `.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
@@ -464,6 +466,14 @@ FOR each batch (ACT or sub-batch):
           verbatim. Continue with the next scene either way.
      g. AFTER the batch, run `python3 tools/probe_clips.py {output_folder}`
         and report its `problems` list to the user.
+     h. VISUAL QA (Rule 23): run `python3 tools/qa_frames.py {output_folder}
+        --scenes <batch scene numbers>`. Read every `.tmp/qa-scene-NN.jpg`
+        with the Read tool. Fill each row of `work/visual-qa.md` with `PASS`,
+        `FAIL: <what is visible>` or `UNSURE: <why frames cannot tell>` against
+        that scene's PLAUSIBILITY answers. Never write PASS for something the
+        frames do not show. Any FAIL: offer a re-render of that scene before
+        rendering the next batch. For a clip rendered by hand, add
+        `--clip clips/scene-NN.mp4`.
 
   6. APPEND to {output_folder}/video-prompts.md
 

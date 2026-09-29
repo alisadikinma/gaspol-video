@@ -18,7 +18,7 @@ Unified validation skill for the AI Video Promo Engine. Covers 5 validation targ
 |------|--------|-------|
 | `--script` | Script output quality | av-script.md + strategic-brief.md |
 | `--image` | NB2 prompt rules + actual keyframe image review | image-prompts.md + keyframes/*.png |
-| `--video` | VEO prompt rules | video-prompts.md + scene-plan.md |
+| `--video` | VEO prompt rules, visual QA verdicts (V1-V16) | video-prompts.md + scene-plan.md + work/visual-qa.md |
 | `--post` | Post-production: rendered master and plan files (P1-P6) |
 | `--refs` | Cross-file reference consistency (24 checks) | All reference + skill + agent files |
 | `--all` | Everything above | All files |
@@ -240,6 +240,24 @@ matches whether they speak on camera.
 FAIL lists the characters with no block. The fix is to ask the user, never to substitute a voice.
 
 Mirrors reviewer check C8.
+
+### Check V15: Visual QA verdicts (v3.6.0)
+
+Run `python3 tools/qa_frames.py {output_folder} --check`. It reads only the Verdict cells of
+`work/visual-qa.md` for every rendered clip. Exit 1 = FAIL: a clip has no section, a cell is empty
+or malformed or `FAIL:`, or the section was judged against different bytes than the clip now has.
+Exit 2 = ERROR (no rendered clips, bad ledger). Exit 0 = PASS; any `V15 NOTE` lines are
+`UNSURE:` cells, listed as human-look items, not failures.
+
+Mirrors video-gen Rule 23.
+
+### Check V16: No pause tag in a platform prompt (v3.6.0)
+
+Grep the prompt bodies in `video-prompts.md` for `\[\s*(pause|jeda)\s*:`. Any hit = FAIL: the
+platform would speak the tag. Pause tags belong only in the narration text of `av-script.md`,
+where `gen_vo.mjs` renders them as silence. FAIL names the scene.
+
+Mirrors reviewer check V16.
 
 ### Check V12: NB2→VEO Consistency
 **How:** Compare VEO prompt visual description with corresponding NB2 prompt/image
@@ -579,6 +597,8 @@ Check V9: Resolution for Extendable ......... PASS
 Check V10: Extension References ............. PASS
 Check V11: Transition Instructions .......... PASS
 Check V12: NB2→VEO Consistency .............. PASS
+Check V15: Visual QA Verdicts ............... PASS
+Check V16: No Pause Tag In Prompt ........... PASS
 
 --- Reference Checks (--refs) ---
 Check R1: VEO Mode Mutual Exclusivity ...... PASS

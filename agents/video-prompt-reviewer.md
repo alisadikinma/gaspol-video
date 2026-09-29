@@ -274,6 +274,12 @@ screen. A `simulated: false` (real capture) screen is not held to this wording c
 
 FAIL output names the scene, the declared Screen Source, and which artefact violated the rule.
 
+### V16. No Pause Tag In A Platform Prompt (Phase 5 platform prompts — v3.6.0)
+
+Run on every Phase 5 batch. Search each prompt body for `[pause:` or `[jeda:` (allowing spaces,
+regex `\[\s*(pause|jeda)\s*:`). Any hit is a FAIL: the platform would speak the tag aloud. Pause
+tags are allowed only in the narration text of `av-script.md`. Report the scene id and the line.
+
 ## Output Format
 
 Return a structured report:
