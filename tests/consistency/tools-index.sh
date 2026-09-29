@@ -36,12 +36,12 @@ for f in reference/post-production/*.md; do
   fi
 done
 
-if ! grep -qF '"version": "3.5.0"' .claude-plugin/plugin.json; then
-  echo "FAIL plugin.json version is not 3.5.0"
+if ! grep -qF '"version": "3.6.0"' .claude-plugin/plugin.json; then
+  echo "FAIL plugin.json version is not 3.6.0"
   fail=1
 fi
 
-for needle in capture_web screencast verify_cut make_stems gen_music clean_voice composite_logo thumb_scrim yt_stats bake.py; do
+for needle in capture_web screencast verify_cut make_stems gen_music clean_voice composite_logo thumb_scrim yt_stats bake.py qa_frames video-to-music; do
   if ! grep -qF "$needle" NOTICE; then
     echo "FAIL NOTICE does not mention $needle"
     fail=1

@@ -168,7 +168,7 @@ def video_render_eligibility(scene: dict) -> tuple[bool, str]:
     return True, ""
 
 
-_RENDER_PHASES = {"4A", "4B", "5"}
+_RENDER_PHASES = {"4A", "4B", "5", "6"}
 _RENDER_STATUSES = {"done", "failed", "skipped"}
 
 

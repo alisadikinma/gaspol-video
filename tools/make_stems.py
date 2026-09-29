@@ -30,7 +30,7 @@ from pathlib import Path
 # ModuleNotFoundError. Same line as thumb_scrim.py, verify_render.py and three others.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import mix_music
+from tools import asset_home, mix_music
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
@@ -160,8 +160,11 @@ def build_sfx(project, plan_path, out, duration, batch=BATCH_SIZE):
     except json.JSONDecodeError as exc:
         raise StemError(f"{plan_path.name}: invalid JSON ({exc.msg})") from exc
 
-    catalog_rel = plan.get("catalog", "media/sfx/library/catalog.json")
-    catalog_path = Path(catalog_rel) if Path(catalog_rel).is_absolute() else project / catalog_rel
+    catalog_rel = plan.get("catalog")
+    if not catalog_rel:
+        catalog_path = asset_home.library("sfx") / "catalog.json"
+    else:
+        catalog_path = Path(catalog_rel) if Path(catalog_rel).is_absolute() else project / catalog_rel
     try:
         catalog_data = json.loads(catalog_path.read_text())
     except FileNotFoundError as exc:
@@ -260,9 +263,7 @@ def build_music(project, plan_path, out, duration):
 
     usable = []
     for seg in plan.get("segments", []):
-        track_path = Path(seg["track"])
-        if not track_path.is_absolute():
-            track_path = project / track_path
+        track_path = mix_music.resolve_track(project, seg["track"])
         if not track_path.exists():
             print(f"! {track_path}: missing — this segment was dropped", file=sys.stderr)
             continue

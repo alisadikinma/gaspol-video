@@ -314,9 +314,15 @@ class MainCliTest(unittest.TestCase):
         self.assertEqual(rc, 1)
 
     def test_record_subcommand_rejects_invalid_phase(self):
-        entry = {"file": "keyframes/z.png", "phase": "6", "status": "done"}
+        entry = {"file": "keyframes/z.png", "phase": "7", "status": "done"}
         rc, out = self._run([str(self.project), "record", "--json", json.dumps(entry)])
         self.assertEqual(rc, 1)
+
+    def test_record_subcommand_accepts_phase_6_music_entry(self):
+        entry = {"file": "output/music.mp3", "phase": "6", "status": "done"}
+        rc, out = self._run([str(self.project), "record", "--json", json.dumps(entry)])
+        self.assertEqual(rc, 0)
+        self.assertEqual(renders.load(self.project)["renders"][0]["file"], "output/music.mp3")
 
     def test_record_subcommand_rejects_invalid_status(self):
         entry = {"file": "keyframes/z.png", "phase": "4A", "status": "maybe"}

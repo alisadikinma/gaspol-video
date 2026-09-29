@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools.gen_subs import SubtitleError, derive_keyterms, transcribe_assemblyai  # noqa: E402
+from tools.gen_subs import SubtitleError, derive_keyterms, strip_pause_tags, transcribe_assemblyai  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 
@@ -351,7 +351,7 @@ def build_intended(audio_plan, edit_plan):
         layers = sorted(layers, key=lambda l: float(l.get("at_s", 0.0)))
         for layer in layers:
             layer_id += 1
-            raw_words = norm(layer.get("text", ""))
+            raw_words = norm(strip_pause_tags(layer.get("text", "")))
             if not raw_words:
                 continue
             scene_start = starts.get(scene.get("scene"))

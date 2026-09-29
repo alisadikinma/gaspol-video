@@ -93,6 +93,45 @@ time instead of after a re-generation.
 The word timings in `vo-manifest.json` are also what the subtitle pass reads, so captions cost no
 extra transcription when the narration came from ElevenLabs.
 
+### 3.1 Pause tags (GV-8)
+
+A beat of silence the script wants goes in the narration or dialogue `text` as `[pause: 1.2s]`, or
+`[jeda: 1.2s]` in an Indonesian script. Case does not matter; spaces inside the brackets and `s` or
+`detik` after the number are optional. The range is **0.2 to 5.0 s**: shorter is a comma, longer is a
+scene cut. A tag outside the range, a malformed one (`[pause 1s]`, `[pause: ]`), or a layer that is
+all pauses and no speech stops `gen_vo.mjs` before the first paid request, naming the layer.
+
+Tags belong in the spoken text only. Never put one in an NB2 or platform prompt, where the model
+would say it aloud (validator V16).
+
+How the silence is made, and why it is exact:
+
+- The text is split at the tags. Each speech chunk is one ElevenLabs request, chained with
+  `previous_request_ids` (section 4) so the delivery stays warm across the pause.
+- Each chunk is decoded to mono 16-bit PCM at 44.1 kHz. The pause is written as that many zero
+  samples, `round(seconds x 44100)` of them. The chunks and the silences are joined and encoded to
+  one mp3.
+- Every word offset in `vo-manifest.json` comes from a running sample count, not from probing an
+  mp3, so it is exact by construction. Probing would be off by the encoder padding every mp3
+  carries.
+- `ffmpeg` is needed only for a layer that has tags. An untagged layer takes the one-request path
+  and needs nothing beyond the API. Without ffmpeg a tagged layer fails with a message saying so.
+- `chars` counts the spoken text without the tags. Captions, subtitles and P6 read the text with
+  the tags removed, so a viewer never sees one.
+- A speech chunk is kept in `.tmp/` as `vocache-<fingerprint>.mp3` + `.json` (flat, no subfolders);
+  the decode PCM is deleted after the encode, and a failed run says which files it kept.
+
+### 3.2 Reuse
+
+Nothing already generated is requested twice. A layer whose text, cast voice, model and settings
+are unchanged is carried over from the previous `vo-manifest.json` (log: `reused (unchanged)`),
+provided its mp3 still exists. Inside a tagged layer, each speech chunk is cached in `.tmp/` by
+its own fingerprint, so changing only a pause length, or one sentence, re-requests nothing or one
+chunk, and the mp3 is rebuilt from the cached audio. The fingerprint holds a hash of the voice id,
+so a different voice behind the same env name regenerates; the id and the API key are never
+written to the manifest or the cache. Deleting `.tmp/` only costs re-requests. `--force` bypasses
+both levels; `--dry-run` reports `would reuse` or `would generate` per layer.
+
 ---
 
 ## 4. Prosody across scenes

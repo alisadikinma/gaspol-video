@@ -31,7 +31,7 @@ from pathlib import Path
 # ModuleNotFoundError. Same line as thumb_scrim.py, verify_render.py and three others.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools.gen_subs import derive_keyterms, transcribe_assemblyai
+from tools.gen_subs import derive_keyterms, strip_pause_tags, transcribe_assemblyai
 from tools.caption_keywords import score_spans
 from tools.burn_subs import check_contrast, StyleError, _luminance
 
@@ -378,7 +378,7 @@ def build_caption_plan(project, style=None, api_key=None, keyterms=None, brand=N
                         # only its timing does. See tools/gen_subs.py's module
                         # docstring for the rule this enforces.
                         try:
-                            words = align_to_script(asr_words, layer.get("text", ""))
+                            words = align_to_script(asr_words, strip_pause_tags(layer.get("text", "")))
                         except CaptionPlanError as exc:
                             raise CaptionPlanError(f"scene {scene_num}: {exc}") from exc
                         source = "assemblyai"

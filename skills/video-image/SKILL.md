@@ -125,7 +125,7 @@ of referencing the file is the same Asset-First violation as Rule 10, applied to
 28. **Inline-only reference pattern** — All NB2 reference image filenames MUST appear INLINE with the element they describe, NOT in a separate header block. Each filename appears EXACTLY ONCE per prompt. Three categories: (1) identity lock inline with character: `[Name] (Maintain exact facial identity from reference image: cast-c1-face.png) in blue uniform...`, (2) object/environment ref inline with element: `...the monitor — EXACTLY matching ui-anpr-screen.png: ANPR interface...`, (3) scene continuity inline: `...continuation from scene-{NN-1}-end.png — maintaining character position...`. BANNED: header blocks like `Using reference image xxx.png for [purpose]`, standalone identity lock lines, duplicate filename mentions.
 29. **Multi-POV environment spatial context** — When a scene's upload table has 2+ `env-*` references of the SAME location from DIFFERENT viewpoints (e.g., entry, exit, side, interior, exterior), the prompt MUST include a `SPATIAL CONTEXT` block immediately after the opening line. This block: (a) explicitly states all references show the SAME location from DIFFERENT camera angles, (b) maps each ref to the specific zone/element it depicts, (c) specifies the CAMERA POSITION for this scene relative to the reference angles, (d) clarifies which ref provides PRIMARY layout vs which provide DETAIL for specific zones. Without this block, NB2 may misinterpret multi-POV refs as separate locations or attempt to literally reproduce all angles simultaneously.
 30. **NEVER proceed without user approval** — every phase ends with approval gate
-31. **(v2.2.0) NB2 Reference Uniqueness Filter HARD GATE (Phase 4A)** — Before generating any Phase 4A standalone asset, apply UNIQUENESS filter test: "Can a competent prompt writer describe this in 20 words and trust NB2 to render correctly?" YES → COMMON tier → SKIP, NB2 renders from text. NO → UNIQUE/AMBIGUOUS tier → GENERATE. COMMON examples to ALWAYS skip: generic phone-in-hand, kopi gelas, concrete pavement, plain office chair, ceiling fan, generic paper stack, plain wall, generic clipboard. UNIQUE examples to ALWAYS generate: faces, company logos, custom UI screens, industry-specific equipment (UHF RFID reader / fuel sensor / chassis ID plate), proprietary product hero shots, location landmarks. Combined filter: (UNIQUE/AMBIGUOUS) AND (recurring 2+ scenes OR critical-identity OR plot-anchor). Validator C2 enforces. See `global-promo-config.md` §26.
+31. **(v2.2.0) NB2 Reference Uniqueness Filter HARD GATE (Phase 4A)** — Before generating any Phase 4A standalone asset, apply UNIQUENESS filter test: "Can a competent prompt writer describe this in 20 words and trust NB2 to render correctly?" YES → COMMON tier → SKIP, NB2 renders from text. NO → UNIQUE/AMBIGUOUS tier → GENERATE. COMMON examples to ALWAYS skip: generic phone-in-hand, kopi gelas, concrete pavement, plain office chair, ceiling fan, generic paper stack, plain wall, generic clipboard. UNIQUE examples to ALWAYS generate: faces, company logos, custom UI screens, industry-specific equipment (UHF RFID reader / fuel sensor / chassis ID plate), proprietary product hero shots, location landmarks. Combined filter: (UNIQUE/AMBIGUOUS) AND (recurring 2+ scenes OR critical-identity OR plot-anchor). Validator C2 enforces. See `global-promo-config.md` §26. Generic assets that pass the filter may be reused across projects through `tools/asset_library.py` (exact prompt + aspect match only, see the Phase 4A render offer); faces, logos, UI, products, costumes and real locations are never library assets.
 35. **(v3.4.0) Physical Plausibility Block — every Phase 4B prompt.** Before the prompt text, the document carries a `PLAUSIBILITY:` block answering seven questions in one line each: MECHANISM (what the object is in the real world, which part opens or moves, what state it is in now), COUNT (an explicit number for every story-critical object), FLOW (where liquid/power/load goes and what contains it), FACING (which way each device, screen, lens and vehicle points, relative to camera AND to its user), PAIR (the scene this one pairs with: what is IDENTICAL, what must DIFFER), PEOPLE (who is in frame and the two visible axes keeping each distinct), OVERLAY SURFACE (target surface, size in px at delivery resolution, frontal or oblique). Each answer must also be visible in the prompt text itself — an answer only in the block is a note to nobody. Unanswered question = FAIL, not a default. Validator K1-K7 enforces. See `reference/image-video-gen/10-physical-plausibility-gate.md`.
 
 36. **(v3.4.0) Overlay surface is decided before the clip is rendered.** Measure the intended screen in the keyframe, in delivery pixels. Frontal and ≥300px wide → tracked panel. Oblique >15° or 120-300px → tracked only if the four corners are measurable, otherwise floating card. Under 120px, or facing away from camera → floating card, always. Corners come from `python3 tools/track_screen.py <clip> <out.json> --seed x,y --qa <dir>`, never from a bounding box and never from extreme points; the panel is attached with `QuadScreenTracked` (`templates/remotion/lib/quad-screen.tsx`), which maps it by homography onto four moving corners. Look at the QA frames before rendering the overlay.
@@ -278,6 +278,27 @@ After the asset library is approved (option A above), offer to render it through
      `render` means it needs one. If the WHOLE batch prints `up-to-date`, skip
      step 3 entirely (no question, no render).
 
+2b. REUSE generic assets from the cross-project library (Phase 4A standalone
+   assets only, never Phase 4B scene keyframes): for each prompt still in the
+   render list, with its prompt already in a temp file:
+        python3 tools/asset_library.py find --prompt-file <temp-file> \
+          --aspect <aspect>
+   Exit 0 prints a stored path: an exact match (same normalised prompt, same
+   aspect) rendered in an earlier project. Ask once for the whole list ("pakai
+   ulang dari library? {n} gambar"); on yes, for each hit:
+        python3 tools/asset_library.py use --id <id> --to <file>
+   (`<id>` is the stored file's name without `.png`; add `--force` only when the
+   user agreed to overwrite), then record it as done, no render:
+        python3 tools/renders.py {output_folder} record --json \
+          '{"file": "<file>", "phase": "4A", "status": "done", \
+            "model": "library"}' --prompt-file <temp-file>
+   and drop it from the render list. Exit 1 = no match, render as usual. There
+   is no fuzzy auto-reuse. To browse instead, `python3 tools/asset_library.py
+   list --tag <tag>` and let the user pick one; never apply a tag hit on your
+   own. Faces, logos, UI screens, products, costumes and real locations are
+   never library assets, and `add` refuses a prompt that names `cast-`,
+   `brand-`, `ui-`, `product-`, `costume-`, `env-` or a `scene-NN-` ref.
+
 3. ASK (only if the render list is non-empty):
    AskUserQuestion:
    "Render batch {N} sekarang? ({k} gambar, model nano-banana-2)"
@@ -308,6 +329,15 @@ After the asset library is approved (option A above), offer to render it through
         `record` call with `"status": "failed"` and the MCP text verbatim in
         an `"error"` field, no `cdn_url`; continue with the next prompt — one
         failure never stops the batch.
+
+   c. AFTER a successful render of a generic asset (one that passes the
+      uniqueness filter as COMMON but was worth an asset, no ref filenames in
+      its prompt), offer in one line: "simpan ke library untuk project lain?".
+      On yes:
+        python3 tools/asset_library.py add --file <file> \
+          --prompt-file <temp-file> --aspect <aspect> --model nano-banana-2 \
+          --tags <a,b> --description "<short>" --project {output_folder}
+      Exit 2 = the prompt is project-specific; say so and move on.
 
 5. AFTER the batch, Read every produced image (multimodal) and report anything
    visibly wrong against the prompt before moving on (wrong identity, wrong

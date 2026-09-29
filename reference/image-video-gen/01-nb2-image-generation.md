@@ -99,6 +99,16 @@ Every NB2 prompt MUST also include a **Required Reference Images** table listing
 
 See `global-promo-config.md` §26 for full rule + validator C2 (Phase 4A uniqueness audit) + IRN before/after examples.
 
+### Reusing generic images across projects (GV-8)
+
+A generic asset (an empty warehouse aisle, a plain wall) is rendered once and kept in
+`${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/images`. `python3 tools/asset_library.py find` matches
+the exact prompt (same normalisation as the render ledger) and aspect; `use` copies it into `ref/`;
+`add` stores a finished render; `list --tag T` lets a person browse. Nothing is reused
+automatically from a tag. Faces, logos, UI screens, products, costumes and real locations are
+project-specific: `add` refuses any prompt naming `cast-`, `brand-`, `ui-`, `product-`, `costume-`,
+`env-`, an identity lock, or a `scene-NN-` continuity ref.
+
 ### Max 5 Inline References Per Phase 4B Prompt (v2.2.0+ — HARD CAP)
 
 **Replaces** old "Max 3 identity locks per scene" rule (which applied to faces only).

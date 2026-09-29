@@ -168,6 +168,36 @@ Sample three frames — around 1s, mid-clip, and 0.5s before the end — and rea
 A clip that fails COUNT, FACING or MECHANISM is re-rendered. A clip that only fails light is
 graded in the assembly step — that is a filter, not a credit.
 
+### Machine-assisted version: `tools/qa_frames.py` (GV-8, validator V15)
+
+Three hand-picked frames are easy to skip. `qa_frames.py` makes the look mandatory:
+
+```bash
+python3 tools/qa_frames.py {output_folder} --scenes 5,6     # after a render batch
+python3 tools/qa_frames.py {output_folder} --check          # the V15 gate
+```
+
+- For each rendered clip (from `renders.json`, or `--clip clips/scene-05.mp4` for one rendered by
+  hand) it tiles five frames, at the start, 25%, 50%, 75% and the last frame, into
+  `.tmp/qa-scene-NN.jpg` (NN may carry a letter suffix, `01b`, matching a `### S01b` heading).
+- It writes one section per scene into `work/visual-qa.md`: the scene's `PLAUSIBILITY:` block copied
+  from `video-prompts.md` and a seven-row table, one row per question. If the block is missing the
+  section says so and the scene is judged against its description.
+- Claude reads each sheet with the Read tool and fills every Verdict cell: `PASS`,
+  `FAIL: <what is visible>`, or `UNSURE: <why the frames cannot tell>`. `PASS` for something the
+  frames do not show is a false verdict; write `UNSURE`.
+- Re-running keeps the verdicts of a clip whose bytes did not change and clears them, with a note,
+  for one that did.
+- `--check` reads only the Verdict cells and writes nothing. Exit 1 when a clip has no section, a
+  cell is empty or malformed or `FAIL:`, or the section was judged against a different clip; `UNSURE:`
+  is listed as a note for a human look and does not fail. Exit 2 when it cannot run (no rendered
+  clips, ffmpeg or ffprobe missing).
+
+**Known limit: motion between the sampled frames is not seen.** A nozzle that leaves the hole for
+half a second, or a second truck that crosses the frame between two samples, passes the sheet. The
+sheet catches what is wrong at five moments; it does not replace watching the clip once before
+approval. An `UNSURE` on MECHANISM or COUNT usually means exactly this.
+
 ## Archive, never delete
 
 Every rejected paid artefact goes to `_arsip/` with the reason in the filename

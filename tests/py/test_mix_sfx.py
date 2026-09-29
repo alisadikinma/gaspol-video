@@ -1,12 +1,14 @@
 import json
 import math
+import os
 import struct
 import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
-from tools import mix_sfx
+from tools import asset_home, mix_sfx
 
 
 def write_wav(path, samples, rate=48000):
@@ -158,6 +160,50 @@ class PlanTest(unittest.TestCase):
         self.assertIn("amb-factory-floor", sheet)
         self.assertIn("12.40", sheet)
         self.assertIn("production line", sheet)
+
+
+class HomeCatalogTest(unittest.TestCase):
+    """A plan with no `catalog` key reads the home library; a named catalog is unchanged."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.project = self.root / "project"
+        (self.project / "work").mkdir(parents=True)
+        env = mock.patch.dict(os.environ, {"GASPOL_VIDEO_HOME": str(self.root / "home")})
+        env.start()
+        self.addCleanup(env.stop)
+        self.addCleanup(self.tmp.cleanup)
+        home_lib = asset_home.library("sfx")
+        (home_lib / "catalog.json").write_text(json.dumps({"clips": [
+            {"id": "pop-reveal", "file": "clips/pop.mp3", "duration_s": 0.4}]}))
+        self.home_lib = home_lib
+
+    def _plan(self, extra=None):
+        data = {"events": [{"at_s": 1.0, "sfx_id": "pop-reveal", "gain_db": -6}], **(extra or {})}
+        path = self.project / "work" / "sfx-plan.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_no_catalog_key_reads_the_home_catalog(self):
+        plan = mix_sfx.load_plan(self._plan(), self.project)
+        self.assertEqual([e["sfx_id"] for e in plan.events], ["pop-reveal"])
+        self.assertEqual(plan.clip_path(plan.events[0]["clip"]), self.home_lib / "clips" / "pop.mp3")
+
+    def test_named_catalog_wins_over_home(self):
+        other = self.root / "other"
+        (other / "clips").mkdir(parents=True)
+        (other / "catalog.json").write_text(json.dumps({"clips": [
+            {"id": "pop-reveal", "file": "clips/x.mp3"}]}))
+        plan = mix_sfx.load_plan(self._plan({"catalog": str(other / "catalog.json")}), self.project)
+        self.assertEqual(plan.clip_path(plan.events[0]["clip"]), other / "clips" / "x.mp3")
+
+    def test_named_relative_catalog_still_resolves_clips_beside_it_as_before(self):
+        (self.project / "lib").mkdir()
+        (self.project / "lib" / "catalog.json").write_text(json.dumps({"clips": [
+            {"id": "pop-reveal", "file": "clips/x.mp3"}]}))
+        plan = mix_sfx.load_plan(self._plan({"catalog": "lib/catalog.json"}), self.project)
+        self.assertEqual(plan.clip_path(plan.events[0]["clip"]), Path("lib/clips/x.mp3"))
 
 
 if __name__ == "__main__":

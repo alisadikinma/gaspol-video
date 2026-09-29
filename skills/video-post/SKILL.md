@@ -270,8 +270,16 @@ ever sees the audio. Speech-to-speech converts noise right along with the voice,
 after conversion is too late. Skip this step when `clean` is `none` (the default): the clip is
 already quiet, and cleaning a clean take buys nothing. See `11-voice-cast-and-vo.md` §5.
 
+`gen_vo.mjs` honours pause tags in a layer's `text` (`[pause: 1.2s]` or `[jeda: 1.2s]`, 0.2 to
+5.0 s): each speech chunk is synthesised, the pause is written as exact silence, and one mp3 comes
+out. A malformed tag or a value outside the range stops the run naming the layer. Captions,
+subtitles and P6 strip the tags before they read the text.
+
 `gen_vo.mjs` stitches consecutive requests so prosody carries across scenes, and writes
 `vo-manifest.json` with measured durations and word timings — the input for pass 2 and pass 4.
+An unchanged layer (same text, voice, model, settings) is reused from the previous manifest and a
+pause-tagged layer reuses its cached speech chunks, so a re-run costs nothing for what did not
+change; add `--force` to regenerate everything.
 
 **`--spans` is MANDATORY whenever the scene has more than one speaker.** Speech-to-speech converts
 whatever audio you hand it, so a whole-track conversion rewrites every voice in the clip, including
@@ -343,6 +351,16 @@ segment already carrying a hand-written `motion`, and any `kind: "shot"` segment
 shot already animates itself), are left exactly as they are. The report names every segment it
 changed and every one it skipped, and why.
 
+### 2.3b Act-change dissolves (GV-8)
+
+On the first segment of each new act (the beat label changes in `scene-plan.md`) write
+`"transition_in": {"kind": "dissolve", "dur_s": 0.5}`; nowhere else, and never on the first
+segment. `edit_render.py` refuses the plan when `dur_s` is outside 0.2 to 1.0 s, is not shorter than
+either neighbour, the previous segment ends in a pad, or the previous source clip has less than
+`dur_s` of footage after `out_s`. If it refuses for lack of handle frames, shorten `dur_s` (min 0.2)
+or leave the hard cut. Never pad. The dissolve does not move the timeline, so the A/V gate is
+unchanged.
+
 ### 2.4 Print, audit, render
 
 ```bash
@@ -384,9 +402,14 @@ cannot do.
 ### 3.2 Library first
 
 ```bash
-python3 tools/gen_sfx.py --library media/sfx/library --dry-run   # what is missing
-python3 tools/gen_sfx.py --library media/sfx/library             # generate only the misses
+python3 tools/gen_sfx.py --dry-run   # what is missing
+python3 tools/gen_sfx.py             # generate only the misses
 ```
+
+Clips are written to `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/sfx`, so a plugin update never
+loses them (`python3 tools/asset_home.py where` prints the path; the first real run copies clips
+earlier plugin versions made). Recipes stay in the plugin's `media/sfx/library/palette.json`. An
+`sfx-plan.json` with no `catalog` key reads that home catalog.
 
 Reuse a catalogued clip before generating one. New recipes get GENERIC ids so the next project
 reuses them.
@@ -504,6 +527,17 @@ python3 tools/mix_music.py {output_folder}
 
 The track is derived from the per-scene music direction already in `av-script.md` plus the video
 tone, not asked for again. The bed sits at least 12 dB below the voice by measurement.
+
+Palette tracks live in `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/music/tracks/`. A
+`music-plan.json` segment names one as `"track": "library:<mood-id>"`; an absolute or
+project-relative path still works.
+
+`music-plan.json` `bed_source` defaults to `palette`. When the user asked for a composed bed, run
+`python3 tools/gen_music.py video {output_folder}` after the master exists (flags: `--master`,
+`--description-file`, `--tags`, `--model`, `--force`, `--dry-run`). Exit 0 (written, or the master
+is unchanged): one segment `0.0` to the master duration, `track: output/music.mp3`,
+`bed_source: video`. Exit 1: bad input, fix it. Exit 3: keep the palette segments and report the
+printed `FALLBACK palette: <reason>` line; the tool never edits `music-plan.json`.
 
 Mix SFX before music: cues are short and land on moments, the bed is continuous, and a bed competing
 with a cue makes both mushy.

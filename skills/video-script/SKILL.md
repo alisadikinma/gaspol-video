@@ -83,6 +83,8 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 
 19. **(v3.4.0) Record scene pairs.** Any location, object or instrument shown twice (departure/return, before/after, empty/full) is recorded in `scene-plan.md` as a pair, with two columns: what must be IDENTICAL (hardware, reference image) and what must DIFFER (camera side, travel direction, light). A pair whose only difference is the overlay text reads as the same moment repeated. Validator C12 enforces.
 
+20. **(v3.6.0) Pause tags.** Narration and dialogue text in `av-script.md` may carry `[pause: 1.2s]` or `[jeda: 1.2s]`, 0.2 to 5.0 s, where a beat of silence is wanted. Only in that spoken text, never in an NB2 or platform prompt: `gen_vo.mjs` turns the tag into exact silence, while a platform model would speak it.
+
 ## Workflow
 
 ### Phase 2: SCRIPT GENERATION (Output: av-script.md)

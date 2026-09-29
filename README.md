@@ -1,8 +1,15 @@
 # gaspol-video
 
-**v3.5.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
+**v3.6.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
 
 Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
+
+> **v3.6.0 — pauses you can write, dissolves at act changes, a look at every clip, and a bed composed to the picture.**
+> `[pause: 1.2s]` in narration renders as sample-exact silence (`tools/gen_vo.mjs`) and is stripped
+> from captions and the P6 check. `transition_in` on an edit-plan segment dissolves over source
+> handles without moving the timeline. `tools/qa_frames.py` writes contact sheets and a verdict
+> sheet that Claude judges before the edit (V15). `tools/gen_music.py video` composes the music bed
+> to the finished master, and falls back to the palette (exit 3) when the request fails.
 
 > **v3.5.0 — captions that reveal word by word, title cards, and shots that no longer hold still.**
 > `tools/gen_captions.py` builds a per-scene caption plan from timings this plugin already has —
@@ -559,7 +566,7 @@ reference/
   storytelling_script_gen/           # 12 storytelling & script reference files
   image-video-gen/                  # 13 image & video production reference files (incl. 10-physical-plausibility-gate.md)
   post-production/                  # 9 post-production & packaging reference files (incl. 18-screencast.md)
-tools/                              # 22 CLI tools: 20 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
+tools/                              # 28 CLI tools: 26 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
   _venv.py, setup.sh                # Dependency guard + venv builder for the 4 tools below that need libs
   gen_app_screen.py                 # capture (Playwright) / mock (Remotion renderStill) app screens
   composite_logo.py, thumb_scrim.py # Deterministic thumbnail post-process (needs Pillow)

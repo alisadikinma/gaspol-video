@@ -1,11 +1,13 @@
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.py.media import make_clip, requires_ffmpeg
-from tools import make_stems, mix_music
+from tools import asset_home, make_stems, mix_music
 
 
 def _probe_audio(path):
@@ -211,6 +213,49 @@ class RealStemsTest(unittest.TestCase):
             master, self.project / "output" / "stems" / "voice.wav", 4.0)
         rate, channels, duration = _probe_audio(out)
         self.assertAlmostEqual(duration, 4.0, delta=0.05)
+
+
+class HomeLibraryStemsTest(unittest.TestCase):
+    """No `catalog` key and `library:<id>` tracks resolve into GASPOL_VIDEO_HOME (GV-8 K4)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.project = self.root / "project"
+        (self.project / "output").mkdir(parents=True)
+        (self.project / "work").mkdir()
+        env = mock.patch.dict(os.environ, {"GASPOL_VIDEO_HOME": str(self.root / "home")})
+        env.start()
+        self.addCleanup(env.stop)
+        self.addCleanup(self.tmp.cleanup)
+        make_clip(self.project / "output" / "master.mp4", seconds=3.0)
+
+    def _sine(self, path, freq, seconds):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                        "-i", f"sine=frequency={freq}:duration={seconds}", str(path)], check=True)
+
+    @requires_ffmpeg
+    def test_sfx_plan_without_catalog_reads_the_home_catalog(self):
+        lib = asset_home.library("sfx")
+        self._sine(lib / "clips" / "pop.wav", 880, 0.5)
+        (lib / "catalog.json").write_text(json.dumps({"clips": [
+            {"id": "pop-reveal", "file": "clips/pop.wav", "duration_s": 0.5}]}))
+        plan = self.project / "work" / "sfx-plan.json"
+        plan.write_text(json.dumps({"master": "output/master.mp4", "events": [
+            {"at_s": 1.0, "sfx_id": "pop-reveal", "gain_db": -6}]}))
+        out = make_stems.build_sfx(self.project, plan, self.project / "output" / "stems" / "sfx.wav", 3.0)
+        self.assertAlmostEqual(_probe_audio(out)[2], 3.0, delta=0.02)
+
+    @requires_ffmpeg
+    def test_music_library_track_resolves_into_home(self):
+        self._sine(asset_home.library("music") / "tracks" / "warm.mp3", 220, 3.0)
+        plan = self.project / "work" / "music-plan.json"
+        plan.write_text(json.dumps({"segments": [
+            {"from_s": 0.0, "to_s": 3.0, "track": "library:warm"}]}))
+        out = make_stems.build_music(self.project, plan,
+                                     self.project / "output" / "stems" / "music.wav", 3.0)
+        self.assertIsNotNone(out)
 
 
 if __name__ == "__main__":

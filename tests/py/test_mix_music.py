@@ -1,12 +1,14 @@
 import json
 import math
+import os
 import struct
 import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
-from tools import mix_music
+from tools import asset_home, mix_music
 
 
 def write_wav(path, samples, rate=48000):
@@ -92,6 +94,40 @@ class MixMusicTest(unittest.TestCase):
         for tone_name in ("Serious", "Inspirational", "Professional", "Humorous", "Casual", "Edgy"):
             self.assertIsNotNone(mix_music.mood_for_tone(tone_name),
                                  f"tone {tone_name} has no mood mapping")
+
+
+class ResolveTrackTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        env = mock.patch.dict(os.environ, {"GASPOL_VIDEO_HOME": str(self.root / "home")})
+        env.start()
+        self.addCleanup(env.stop)
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_library_form_resolves_into_the_home_music_library(self):
+        path = mix_music.resolve_track(self.root / "project", "library:warm-uplift")
+        self.assertEqual(path, asset_home.library("music") / "tracks" / "warm-uplift.mp3")
+
+    def test_project_relative_and_absolute_paths_are_unchanged(self):
+        project = self.root / "project"
+        self.assertEqual(mix_music.resolve_track(project, "tracks/a.mp3"), project / "tracks" / "a.mp3")
+        absolute = self.root / "elsewhere" / "b.mp3"
+        self.assertEqual(mix_music.resolve_track(project, str(absolute)), absolute)
+
+    def test_apply_reads_a_library_track_from_home(self):
+        project = self.root / "project"
+        (project / "work").mkdir(parents=True)
+        tracks = asset_home.library("music") / "tracks"
+        tracks.mkdir()
+        (tracks / "broken.mp3").write_bytes(b"not audio at all")
+        plan = project / "work" / "music-plan.json"
+        plan.write_text(json.dumps({"segments": [
+            {"from_s": 0.0, "to_s": 2.0, "track": "library:broken"}]}))
+        result = mix_music.apply(plan, project, master=project / "master.mp4", log=lambda *_: None)
+        self.assertTrue(result["degraded"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertTrue(any("library:broken" in w for w in result["warnings"]))
 
 
 if __name__ == "__main__":

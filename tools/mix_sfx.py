@@ -3,6 +3,10 @@
 
     python3 tools/mix_sfx.py <project-dir> [--plan PATH] [--print] [--no-optional] [--no-duck]
 
+A plan with no `catalog` key reads the shared library at
+`${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/sfx/catalog.json`; a plan that names a catalog
+uses that one, exactly as before.
+
 Two halves, and the second is the one that matters. Mixing is ffmpeg work. The
 audibility check is what stops a cue sheet that reads beautifully and cannot be heard:
 after mixing, each cue window is compared against the voice-only reference in dB.
@@ -31,6 +35,11 @@ import tempfile
 import wave
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools import asset_home  # noqa: E402
+
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
 
@@ -54,13 +63,19 @@ class PlanError(Exception):
 
 
 class SfxPlan:
-    def __init__(self, data, events, catalog, project, path):
+    def __init__(self, data, events, catalog, project, path, catalog_ref=None):
         self.data = data
+        self.catalog_ref = catalog_ref or data.get("catalog", "")
         self.events = events
         self.catalog = catalog
         self.project = Path(project)
         self.path = Path(path)
         self.notes = []
+
+    def clip_path(self, clip):
+        """A catalog entry's file: absolute as written, else beside the catalog."""
+        path = Path(clip["file"])
+        return path if path.is_absolute() else Path(self.catalog_ref).parent / path
 
 
 def window_for(sfx_id):
@@ -152,9 +167,9 @@ def load_plan(plan_path, project, master_duration_s=None, include_optional=True)
     except json.JSONDecodeError as exc:
         raise PlanError(f"{plan_path.name} is not valid JSON: line {exc.lineno}, {exc.msg}") from exc
 
-    catalog_path = data.get("catalog", "media/sfx/library/catalog.json")
-    catalog = load_catalog(catalog_path if Path(catalog_path).is_absolute()
-                           else Path(project) / catalog_path)
+    catalog_ref = data.get("catalog") or str(asset_home.library("sfx") / "catalog.json")
+    catalog = load_catalog(catalog_ref if Path(catalog_ref).is_absolute()
+                           else Path(project) / catalog_ref)
 
     events = []
     for i, ev in enumerate(data.get("events", []), start=1):
@@ -178,7 +193,7 @@ def load_plan(plan_path, project, master_duration_s=None, include_optional=True)
             )
         events.append({**ev, "at_s": at_s, "clip": catalog[sfx_id]})
 
-    plan = SfxPlan(data, events, catalog, project, plan_path)
+    plan = SfxPlan(data, events, catalog, project, plan_path, catalog_ref=catalog_ref)
 
     if not events:
         plan.notes.append("no cues in this plan — nothing will be mixed")
@@ -259,11 +274,7 @@ def mix(plan, out=None, duck=True):
 
     cmd = [FFMPEG, "-y", "-v", "error", "-i", str(master)]
     for ev in plan.events:
-        clip = ev["clip"]["file"]
-        clip_path = Path(clip)
-        if not clip_path.is_absolute():
-            clip_path = Path(plan.data.get("catalog", "")).parent / clip
-        cmd += ["-i", str(clip_path)]
+        cmd += ["-i", str(plan.clip_path(ev["clip"]))]
     cmd += ["-filter_complex", filt, "-map", "0:v", "-map", "[aout]",
             "-c:v", "copy", "-c:a", "aac", str(out_path)]
 
