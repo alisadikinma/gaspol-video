@@ -164,3 +164,11 @@ class CliTest(LibraryTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LetteredContinuityGuardTest(unittest.TestCase):
+    def test_lettered_scene_continuity_ref_is_project_specific(self):
+        # Real projects name scenes 01b / 03a (catalog-4), so scene-01b-end.png is a continuity
+        # frame exactly like scene-01-end.png and must never enter the shared library.
+        self.assertTrue(asset_library._PROJECT_SPECIFIC.search(
+            "continuation from scene-01b-end.png, same porch"))

@@ -36,10 +36,10 @@ from tools.renders import prompt_sha256  # noqa: E402
 ASPECTS = ("16:9", "9:16", "1:1", "4:3", "3:4")
 
 # Project-specific by definition: cast/brand/ui/product/costume/env reference files, an identity
-# lock, or a scene-NN- continuity ref. The prefix words must start a token so "environment"
+# lock, or a scene-NN- / scene-NNb- continuity ref. The prefix words must start a token so "environment"
 # and "business" do not trip them.
 _PROJECT_SPECIFIC = re.compile(
-    r"(?<![A-Za-z0-9])(?:cast|brand|ui|product|costume|env)-|Maintain exact facial identity|scene-\d{2}-")
+    r"(?<![A-Za-z0-9])(?:cast|brand|ui|product|costume|env)-|Maintain exact facial identity|scene-\d{2}[a-z]?-")
 _MAGIC = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")
 
 

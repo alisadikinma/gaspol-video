@@ -432,3 +432,19 @@ class CheckTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LedgerLetteredCollapseTest(unittest.TestCase):
+    """Plan-verifier GV-8: renders.json stores `scene` as an int (§3.8 example `"scene": 3`), so
+    two entries `scene: 1` for scene-01.mp4 and scene-01b.mp4 collapsed into one scene."""
+
+    def test_file_name_wins_over_integer_ledger_scene(self):
+        ledger = {"renders": [ledger_entry(1, "clips/scene-01.mp4"),
+                              ledger_entry(1, "clips/scene-01b.mp4")]}
+        found = qa_frames._collect(Path("/nonexistent"), ledger, [], None)
+        self.assertEqual(found, {"01": "clips/scene-01.mp4", "01b": "clips/scene-01b.mp4"})
+
+    def test_ledger_scene_is_used_when_the_name_has_no_scene_number(self):
+        ledger = {"renders": [ledger_entry(7, "clips/take-final.mp4")]}
+        found = qa_frames._collect(Path("/nonexistent"), ledger, [], None)
+        self.assertEqual(found, {"07": "clips/take-final.mp4"})

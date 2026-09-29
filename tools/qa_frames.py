@@ -229,8 +229,11 @@ def _collect(project, ledger, clip_args, wanted):
     found = {}
     for entry in ledger.get("renders", []):
         if str(entry.get("phase")) == "5" and entry.get("status") == "done" and entry.get("file"):
-            scene = entry.get("scene")
-            scene = scene_id(scene) if scene is not None else scene_id(entry["file"])
+            # The file name wins: the ledger stores `scene` as an int, which cannot tell
+            # scene-01.mp4 from scene-01b.mp4. It is only the fallback for an unnumbered name.
+            scene = scene_id(entry["file"])
+            if scene is None and entry.get("scene") is not None:
+                scene = scene_id(entry["scene"])
             if scene is not None:
                 found[scene] = entry["file"]
     for clip in clip_args:

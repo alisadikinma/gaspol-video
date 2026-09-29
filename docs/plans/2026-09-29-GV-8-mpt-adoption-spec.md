@@ -66,7 +66,7 @@ the plan does not include Music. 192 kbps mp3 needs Creator tier or above.
 - New stdlib tool: `python3 tools/qa_frames.py <project> [--scenes 5,6,7]`. For every clip in
   `renders.json` with a finished status (or the given scenes), extract five frames with ffmpeg at
   0 %, 25 %, 50 %, 75 % and the last frame, tile them into one contact sheet
-  `.tmp/qa/scene-NN.jpg` (labelled with timestamps).
+  `.tmp/qa-scene-NN.jpg`; the five timestamps are written on the `sheet:` line of `work/visual-qa.md`, not drawn on the image (ffmpeg `drawtext` needs a freetype build, and a sheet that fails to render on some machines is worse than an unlabelled one). Amended 2026-09-30 after the plan-verifier audit.
 - It writes or updates `work/visual-qa.md`: one section per scene carrying the scene's
   `PLAUSIBILITY:` block copied verbatim from `video-prompts.md`, the contact sheet path, and an
   empty verdict row per question (MECHANISM, COUNT, FLOW, FACING, PAIR, PEOPLE, OVERLAY SURFACE).

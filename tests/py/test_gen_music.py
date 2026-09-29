@@ -453,6 +453,15 @@ class VideoMusicRunTest(unittest.TestCase):
         self.assertEqual(fake.calls, [])
         self.assertEqual(self.ledger(), [])
 
+    def test_missing_ffmpeg_falls_back_without_request(self):
+        self.make_master()
+        fake = FakeSender()
+        with patch("tools.gen_music.FFMPEG", None):
+            rc, out = self.run_video(fake)
+        self.assertEqual(rc, 3)
+        self.assertIn("FALLBACK palette: ffmpeg not found", out)
+        self.assertEqual(fake.calls, [])
+
     def test_master_over_600s_falls_back_before_proxy(self):
         self.master.write_bytes(b"not really a video")
         fake = FakeSender()
