@@ -294,5 +294,97 @@ class EditRenderTest(unittest.TestCase):
                          f"last frame should differ once zoomed to 1.08, got PSNR {last_psnr}")
 
 
+class TransitionValidationTest(unittest.TestCase):
+    """transition_in is validated by load_plan; rendering it is a later phase."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name)
+        (self.project / "clips").mkdir()
+        for n in ("scene-01.mp4", "scene-02.mp4"):
+            (self.project / "clips" / n).write_bytes(b"x")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _load(self, first_extra=None, second_extra=None, check_durations=False):
+        first = {"kind": "clip", "src": "clips/scene-01.mp4", "in_s": 0.0, "out_s": 3.0}
+        second = {"kind": "clip", "src": "clips/scene-02.mp4", "in_s": 0.0, "out_s": 3.0}
+        first.update(first_extra or {})
+        second.update(second_extra or {})
+        plan = write_plan(self.project, [first, second])
+        return edit_render.load_plan(plan, self.project, check_durations=check_durations)
+
+    def test_transition_on_first_segment_is_rejected(self):
+        with self.assertRaises(edit_render.PlanError) as ctx:
+            self._load(first_extra={"transition_in": {"kind": "dissolve", "dur_s": 0.5}})
+        self.assertIn("first segment", str(ctx.exception))
+
+
+    def _rejects(self, transition, fragment, **kw):
+        with self.assertRaises(edit_render.PlanError) as ctx:
+            self._load(second_extra={"transition_in": transition}, **kw)
+        self.assertIn("segment 2", str(ctx.exception))
+        self.assertIn(fragment, str(ctx.exception))
+
+    def test_unknown_transition_kind_is_rejected(self):
+        self._rejects({"kind": "wipe", "dur_s": 0.5}, "wipe")
+
+    def test_too_short_dur_is_rejected(self):
+        self._rejects({"kind": "dissolve", "dur_s": 0.1}, "0.2")
+
+    def test_too_long_dur_is_rejected(self):
+        self._rejects({"kind": "dissolve", "dur_s": 1.5}, "1.0")
+
+    def test_non_numeric_dur_is_rejected(self):
+        self._rejects({"kind": "dissolve", "dur_s": "x"}, "dur_s")
+
+    def test_nan_dur_is_rejected(self):
+        self._rejects({"kind": "dissolve", "dur_s": float("nan")}, "finite")
+
+    def test_non_object_transition_is_rejected(self):
+        self._rejects("dissolve", "object")
+
+    def test_dur_not_shorter_than_this_segment_is_rejected(self):
+        with self.assertRaises(edit_render.PlanError) as ctx:
+            self._load(second_extra={"out_s": 0.5, "transition_in": {"kind": "dissolve", "dur_s": 0.5}})
+        self.assertIn("this segment", str(ctx.exception))
+
+    def test_dur_not_shorter_than_previous_segment_is_rejected(self):
+        with self.assertRaises(edit_render.PlanError) as ctx:
+            self._load(first_extra={"out_s": 0.5},
+                       second_extra={"transition_in": {"kind": "dissolve", "dur_s": 0.5}})
+        self.assertIn("previous segment", str(ctx.exception))
+
+    def test_previous_segment_padded_is_rejected(self):
+        with self.assertRaises(edit_render.PlanError) as ctx:
+            self._load(first_extra={"pad_end_s": 0.5, "pad_mode": "black"},
+                       second_extra={"transition_in": {"kind": "dissolve", "dur_s": 0.5}})
+        self.assertIn("black pad", str(ctx.exception))
+
+    def test_null_transition_is_treated_as_absent(self):
+        self.assertEqual(len(self._load(second_extra={"transition_in": None}).segments), 2)
+
+    @requires_ffmpeg
+    def test_insufficient_handle_is_rejected(self):
+        make_clip(self.project / "clips" / "scene-01.mp4", seconds=2.0)
+        make_clip(self.project / "clips" / "scene-02.mp4", seconds=3.0)
+        with self.assertRaises(edit_render.PlanError) as ctx:
+            self._load(first_extra={"out_s": 2.0},
+                       second_extra={"transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+                       check_durations=True)
+        self.assertIn("dissolve needs", str(ctx.exception))
+        self.assertIn("scene-01.mp4", str(ctx.exception))
+
+    @requires_ffmpeg
+    def test_sufficient_handle_is_accepted(self):
+        make_clip(self.project / "clips" / "scene-01.mp4", seconds=4.0)
+        make_clip(self.project / "clips" / "scene-02.mp4", seconds=3.0)
+        loaded = self._load(first_extra={"out_s": 3.0},
+                            second_extra={"transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+                            check_durations=True)
+        self.assertEqual(loaded.segments[1]["transition_in"]["dur_s"], 0.5)
+
+
 if __name__ == "__main__":
     unittest.main()

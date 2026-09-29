@@ -41,6 +41,12 @@ VALID_MOTION_KINDS = ("punch-in", "punch-out", "none")
 # still frame does.
 MAX_ZOOM = 1.12
 
+# An act change may dissolve into the next segment. Under 0.2s it reads as a glitch, over
+# 1.0s it eats the beat it is meant to punctuate.
+VALID_TRANSITIONS = ("dissolve",)
+TRANSITION_MIN_S = 0.2
+TRANSITION_MAX_S = 1.0
+
 
 class PlanError(Exception):
     """The plan cannot be rendered as written. Message names the offending segment."""
@@ -148,6 +154,7 @@ def load_plan(plan_path, project, check_durations=True):
             )
 
         _check_motion(seg.get("motion"), where)
+        _check_transition(seg, segments[i - 2] if i > 1 else None, i, project, check_durations)
 
         if check_durations:
             actual = _probe_duration(src_path)
@@ -192,6 +199,57 @@ def _check_motion(motion, where):
         raise PlanError(f"{where}: punch-in requires to > from (from={frm}, to={to})")
     if kind == "punch-out" and not (to < frm):
         raise PlanError(f"{where}: punch-out requires to < from (from={frm}, to={to})")
+
+
+def _check_transition(seg, prev, i, project, check_durations):
+    """Validate a segment's `transition_in`. None (absent or JSON null) is fine — the
+    field is additive. The dissolve is rendered over source frames past the previous
+    segment's out_s, so the timeline never moves; every refusal below is a case where
+    those frames would not exist or the fade would not fit."""
+    transition = seg.get("transition_in")
+    if transition is None:
+        return
+    where = f"segment {i}"
+    if prev is None:
+        raise PlanError(f"{where}: transition_in on the first segment — there is nothing to dissolve from")
+    if not isinstance(transition, dict):
+        raise PlanError(f"{where}: transition_in must be an object, got {transition!r}")
+
+    kind = transition.get("kind")
+    if kind not in VALID_TRANSITIONS:
+        raise PlanError(
+            f"{where}: unknown transition kind {kind!r}, expected one of {', '.join(VALID_TRANSITIONS)}"
+        )
+    try:
+        dur = float(transition["dur_s"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise PlanError(f"{where}: transition_in.dur_s missing or not a number") from exc
+    if not math.isfinite(dur):
+        raise PlanError(f"{where}: transition_in.dur_s must be a finite number ({dur})")
+    if not (TRANSITION_MIN_S <= dur <= TRANSITION_MAX_S):
+        raise PlanError(
+            f"{where}: transition_in.dur_s {dur} must be between {TRANSITION_MIN_S} and {TRANSITION_MAX_S}"
+        )
+
+    if dur >= _segment_length(seg):
+        raise PlanError(f"{where}: transition_in.dur_s {dur} is not shorter than this segment ({_segment_length(seg):.2f}s)")
+    if dur >= _segment_length(prev):
+        raise PlanError(f"{where}: transition_in.dur_s {dur} is not shorter than the previous segment ({_segment_length(prev):.2f}s)")
+
+    if float(prev.get("pad_end_s", 0.0) or 0.0) > 0:
+        mode = prev.get("pad_mode", "freeze")
+        raise PlanError(f"{where}: previous segment ends in a {mode} pad — no source frames to dissolve over")
+
+    if check_durations:
+        prev_src = prev.get("src")
+        actual = _probe_duration(Path(project) / prev_src) if prev_src else None
+        if actual is not None:
+            handle = actual - float(prev["out_s"])
+            if actual < float(prev["out_s"]) + dur - AV_TOLERANCE_S:
+                raise PlanError(
+                    f"{where}: previous source {prev_src} has {handle:.2f}s after out_s, "
+                    f"dissolve needs {dur}s — extend out_s earlier or shorten dur_s"
+                )
 
 
 def _motion_filter(motion, duration_s, width, height):
