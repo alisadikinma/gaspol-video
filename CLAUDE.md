@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 26 CLI tools (24 Python + 2 Node, 4 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 36 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 28 CLI tools (26 Python + 2 Node, 4 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 36 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -649,10 +649,27 @@ All configurable values live in `reference/global-promo-config.md` — single so
   gets `"bed_source": "video"` (`palette` otherwise). Adapted from MoneyPrinterTurbo.
 - **V16.** A pause tag inside a platform prompt in `video-prompts.md` is a FAIL: the platform
   would speak it. Reviewer check V16 and `video-validate` V16.
+- **Nothing general is generated twice.**
+  - `tools/gen_vo.mjs` fingerprints each layer (text, voice env, a sha256 of the voice id, model,
+    settings) into `vo-manifest.json` and reuses an unchanged layer with no request. The speech
+    chunks around pause tags are cached flat in `.tmp/vocache-*.mp3`, so changing only a pause
+    length re-requests nothing.
+  - Generated SFX clips and music tracks moved out of the versioned plugin cache (where the next
+    update would have dropped them) into `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/{sfx,music}`
+    via the new `tools/asset_home.py`. Adoption copies whatever an older version dir already holds,
+    and music plans may name a track as `library:<id>`.
+  - New `tools/asset_library.py` keeps a cross-project library of generic images, matched only on
+    the exact normalised prompt plus aspect. It refuses anything that names `cast-`, `brand-`,
+    `ui-`, `product-`, `costume-`, `env-`, an identity lock or a scene continuity frame, because
+    those are project-specific by definition. `video-image` checks the library before a Phase 4A
+    render and offers to add a generic asset after one.
+- **Real scene naming in QA.** `qa_frames.py` reads `### S01b —` headings and `scene-01b.mp4` clips
+  as their own scenes (`qa-scene-01b.jpg`) instead of folding `01`, `01b` and `01c` into one — found
+  on a real project before release.
 - **Docs.** `reference/post-production/11-voice-cast-and-vo.md` (pause tags),
   `13-ffmpeg-edit.md` (dissolves and handles) and `17-music-bed.md` (video bed, fallback) carry the
   detail; `video-post`, `video-gen`, `video-script`, `video-validate` and both agents point at it.
-- **Tool count:** 26 CLI tools (24 Python + 2 Node) — counted from `tools/`; earlier releases stopped updating this number at 19 while `check_vo_duration.py`, `check_overlay_strings.py`, `track_screen.py`, `caption_keywords.py`, `gen_captions.py` and `plan_motion.py` landed. Excluded on purpose: TwelveLabs
+- **Tool count:** 28 CLI tools (26 Python + 2 Node) — counted from `tools/`; earlier releases stopped updating this number at 19 while `check_vo_duration.py`, `check_overlay_strings.py`, `track_screen.py`, `caption_keywords.py`, `gen_captions.py` and `plan_motion.py` landed. Excluded on purpose: TwelveLabs
   analysis, Sonilo, other render adapters, slide/zoom transitions, transitions outside act
   changes.
 

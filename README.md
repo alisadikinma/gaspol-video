@@ -566,7 +566,7 @@ reference/
   storytelling_script_gen/           # 12 storytelling & script reference files
   image-video-gen/                  # 13 image & video production reference files (incl. 10-physical-plausibility-gate.md)
   post-production/                  # 9 post-production & packaging reference files (incl. 18-screencast.md)
-tools/                              # 26 CLI tools: 24 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
+tools/                              # 28 CLI tools: 26 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
   _venv.py, setup.sh                # Dependency guard + venv builder for the 4 tools below that need libs
   gen_app_screen.py                 # capture (Playwright) / mock (Remotion renderStill) app screens
   composite_logo.py, thumb_scrim.py # Deterministic thumbnail post-process (needs Pillow)
