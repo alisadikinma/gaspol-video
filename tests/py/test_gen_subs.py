@@ -141,6 +141,24 @@ class GenSubsTest(unittest.TestCase):
         plan = gen_subs.build_plan(self.project)
         self.assertEqual(plan["cues"], [])
 
+    def test_strip_pause_tags_matches_the_shared_fixture(self):
+        fixture = Path(__file__).resolve().parent.parent / "fixtures" / "pause-tags.json"
+        for case in json.loads(fixture.read_text()):
+            with self.subTest(text=case["in"]):
+                self.assertEqual(gen_subs.strip_pause_tags(case["in"]), case["out"])
+
+    def test_malformed_pause_tag_is_left_in_place(self):
+        self.assertEqual(gen_subs.strip_pause_tags("Satu [pause: abc] dua"), "Satu [pause: abc] dua")
+
+    def test_cues_carry_no_pause_tag_text(self):
+        plan_data = json.loads((self.project / "work" / "audio-plan.json").read_text())
+        plan_data["scenes"][0]["layers"][0]["text"] = "Sistem ANPR [pause: 1.5s] membaca plat itu dalam dua detik."
+        (self.project / "work" / "audio-plan.json").write_text(json.dumps(plan_data))
+        plan = gen_subs.build_plan(self.project)
+        for cue in plan["cues"]:
+            self.assertNotIn("[", cue["text"])
+            self.assertNotIn("1.5s", cue["text"])
+
 
 class FakeResponse:
     """Minimal stand-in for the context manager urllib.request.urlopen returns."""

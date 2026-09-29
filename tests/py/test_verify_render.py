@@ -361,6 +361,18 @@ class VerifyRenderTest(unittest.TestCase):
         self.assertEqual(r["drift_rows"][0]["start_ms"], 0)
 
 
+class PauseTagTest(unittest.TestCase):
+    def test_build_intended_drops_pause_tag_words(self):
+        audio_plan = audio_plan_one_layer("Tiap truk antre. [pause: 1.5s] Sekarang enam menit.")
+        edit_plan = edit_plan_segments([{"kind": "clip", "src": "clips/scene-01.mp4",
+                                          "in_s": 0.0, "out_s": 4.0}])
+        words = [e["word"] for e in verify_render.build_intended(audio_plan, edit_plan)]
+        self.assertNotIn("pause", words)
+        self.assertNotIn("1.5s", words)
+        self.assertNotIn("15s", words)
+        self.assertEqual(words[:3], ["tiap", "truk", "antre"])
+
+
 class NumberCollapseTest(unittest.TestCase):
     """Unit tests for the Indonesian/English number-word parser."""
 

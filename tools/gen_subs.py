@@ -28,6 +28,17 @@ from pathlib import Path
 
 ASSEMBLY_BASE = "https://api.assemblyai.com/v2"
 
+# [pause: 1.5s] / [jeda: 1.5s] — a directed silence in narration (GV-8). Case-insensitive,
+# optional spaces, seconds with optional decimal and optional "s"/"detik".
+PAUSE_TAG_RE = re.compile(
+    r"\[\s*(?:pause|jeda)\s*:\s*(\d+(?:\.\d+)?)\s*(?:s|detik)?\s*\]", re.IGNORECASE)
+
+
+def strip_pause_tags(text):
+    """Script text as a viewer or a recognizer meets it: tags removed, the spaces they
+    leave collapsed. Captions and P6 compare against this, never against the raw text."""
+    return " ".join(PAUSE_TAG_RE.sub(" ", text).split())
+
 DEFAULT_STYLE = {
     "font": "Inter", "size_px": 54, "stroke_px": 3, "position": "bottom",
     "margin_v_pct": 8, "max_chars_per_line": 38, "max_lines": 2,
@@ -149,7 +160,7 @@ def build_plan(project, asr_results=None, master_duration_s=None, style=None):
         for layer in scene.get("layers", []):
             if layer.get("kind") not in ("narration", "dialogue"):
                 continue
-            script_text = (layer.get("text") or "").strip()
+            script_text = strip_pause_tags(layer.get("text") or "")
             if not script_text:
                 continue
             item_id = Path(layer.get("out", "")).stem

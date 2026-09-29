@@ -1,0 +1,8 @@
+[
+  {"in": "Tiap truk antre. [pause: 1.5s] Sekarang enam menit.", "out": "Tiap truk antre. Sekarang enam menit."},
+  {"in": "Satu [jeda: 0.8 detik] dua", "out": "Satu dua"},
+  {"in": "[PAUSE:2] Mulai", "out": "Mulai"},
+  {"in": "Akhir [pause: 0.5s]", "out": "Akhir"},
+  {"in": "Tanpa tag sama sekali.", "out": "Tanpa tag sama sekali."},
+  {"in": "", "out": ""}
+]

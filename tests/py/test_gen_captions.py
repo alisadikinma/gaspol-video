@@ -147,6 +147,20 @@ class GenCaptionsTest(unittest.TestCase):
 
     # -- Phase B2: align_to_script() -----------------------------------------
 
+    def test_pause_tag_never_reaches_the_caption_words(self):
+        plan_data = json.loads((self.project / "work" / "audio-plan.json").read_text())
+        plan_data["scenes"][1]["layers"][0]["text"] = "Sudah [pause: 1.5s] lewat, Pak."
+        (self.project / "work" / "audio-plan.json").write_text(json.dumps(plan_data))
+        fake_words = {"words": [
+            {"text": "Sudah", "start_ms": 0, "end_ms": 300, "confidence": 0.9},
+            {"text": "lewat", "start_ms": 300, "end_ms": 600, "confidence": 0.9},
+            {"text": "Pak", "start_ms": 600, "end_ms": 900, "confidence": 0.9},
+        ]}
+        with patch("tools.gen_captions.transcribe_assemblyai", return_value=fake_words):
+            plan = gen_captions.build_caption_plan(self.project, api_key="fake-key")
+        scene2 = [s for s in plan["scenes"] if s["scene"] == 2][0]
+        self.assertEqual([w["text"] for w in scene2["words"]], ["Sudah", "lewat,", "Pak."])
+
     def test_asr_text_never_reaches_the_plan(self):
         asr_words = [
             {"text": "Sistem", "start_ms": 0, "end_ms": 400},
