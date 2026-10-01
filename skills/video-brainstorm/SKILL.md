@@ -49,6 +49,7 @@ Total: 4 files. Do NOT preload Phase 2-5 references.
 10. **Cultural accuracy** — when location is specified, web search MUST be performed and cultural details MUST be injected into environment NB2 prompts and VEO scene prompts. Wrong license plate / wrong ethnicity / wrong architecture = rejection signal.
 11. **Location context first** — Video setting/location MUST be confirmed (Step 1.2c) BEFORE domain research. Domain knowledge is location-specific: RS Indonesia ≠ RS USA ≠ RS Japan.
 12. **Domain deep research (MANDATORY, location-aware)** — AI MUST WebSearch `{domain} in {location}` BEFORE scripting (Step 1.2d). 6 queries: local process flow, local equipment brands, local workforce/PPE, local facility layout, product interface, local regulations/signage. See `global-promo-config.md` Section 24.
+13. **(v3.8.0) Customer business profile + reference photos (Step 1.2e)** — for any video that shows a real customer, ask what the business sells and collect product + site photos BEFORE scripting. Environments and products in every later phase derive from these photos, not from the category. No photo → web research + NB2 reference the user approves; never invented silently.
 
 ---
 
@@ -298,6 +299,50 @@ If B, C, or D → user corrects/adds info → update Domain Knowledge section.
 
 **HARD RULE:** Location-aware domain research MUST complete before Phase 2 (Script). Script without domain knowledge = wrong equipment, wrong processes, wrong uniforms, wrong architecture for the location.
 
+#### Step 1.2e: Customer Business Profile & Reference Photos (v3.8.0 — HARD GATE before Phase 4A)
+
+**Purpose:** Domain research (1.2d) tells the AI what a business LOOKS LIKE in general. It cannot know what THIS customer actually sells or what THEIR site looks like. Without it, the AI invents the products, packaging, shelves, trucks and rooms, and the generated environment is plausible for the category but wrong for the customer. Field case: Ekaputra film, 2026-10-02 — Scenes 11 and 12a showed products that were not in the Ekaputra lineup.
+
+**Trigger:** After Steps 1.2, 1.2c and 1.2d. Runs for every video that shows a real business (skip only for generic, no-customer videos — then record `business_profile: none`).
+
+```
+AskUserQuestion:
+"Usaha customer ini jual apa, dan jualnya ke siapa?"
+
+Options:
+A) Produk fisik (sebutkan jenis dan 3-5 produk utama)
+B) Jasa / layanan (sebutkan jenis dan tempat layanan diberikan)
+C) Software / digital (sebutkan produk dan siapa pemakainya)
+D) Campuran (jelaskan)
+```
+
+Follow-up, ONE question per turn, record the answers:
+1. Business type and what is sold: category, 3-5 main products or services, brand names as written on the pack.
+2. Where it is sold or delivered: warehouse, shop, kitchen, field, office — which of these appear in the video.
+3. What a visitor sees: vehicles, uniforms, signage, shelf and rack style, packaging colours.
+
+Then ask for photos:
+
+```
+AskUserQuestion (multi-select):
+"Kirim foto asli dari customer. Tiap jenis jadi satu file di ref/."
+
+Options:
+A) Produk / kemasan — label, bentuk, warna  → ref/biz-product-{name}.png
+B) Tempat usaha — gudang, toko, dapur, kantor → ref/biz-site-{place}.png
+C) Kendaraan / peralatan dengan branding asli → ref/biz-asset-{name}.png
+D) Seragam / staf                              → ref/biz-uniform.png
+E) Tidak ada foto sama sekali
+```
+
+Rules:
+- **Product + site photos are REQUIRED** when the video shows the customer's products or premises. The gate blocks Phase 4A until they exist in `ref/` OR the user chose E and approved a fallback below.
+- **Fallback when no photo (E, or a file is missing):** WebSearch for photos of the same business type in `video_location`, generate a reference with NB2 from that research, and show it to the user. The user MUST approve it before it is used. Mark the file `source: generated-approved`. Never silently invent products or premises.
+- A user photo is the truth. When it conflicts with the domain research (1.2d), the photo wins.
+- Crop a customer photo to the product, shelf or room before use when it shows real people the user did not clear.
+
+Save to `strategic-brief.md` section `## Business Profile` (what is sold, where, what a visitor sees) and list every photo with `source: user-photo | generated-approved`.
+
 #### Step 1.3: Target Market Selection
 
 ```
@@ -488,6 +533,13 @@ Present the Strategic Brief for approval:
 
 ## Domain Knowledge
 {From Step 1.2c — process flow, equipment visuals, operator roles, workspace environment, product appearance}
+
+## Business Profile
+{From Step 1.2e — what the customer sells, where, what a visitor sees}
+
+### Business Reference Photos
+| File | Content | Source (user-photo / generated-approved) |
+|------|---------|------------------------------------------|
 
 ## Cultural Context
 (Populated in Phase 3.5 via web search — see Step 3.5.2a)

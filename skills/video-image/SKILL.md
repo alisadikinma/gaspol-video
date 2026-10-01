@@ -23,6 +23,7 @@ These files must exist in the output folder:
 - `av-script.md` (from `/video-script`)
 - `scene-plan.md` (from `/video-script`)
 - `ref-manifest.md` (from `/video-script`) — ALL reference images must be validated and uploaded to ref/
+- **(v3.8.0) Business Profile gate:** `strategic-brief.md` must have a `## Business Profile` section (or `business_profile: none`), and when the video shows the customer's products or premises, `ref/biz-product-*.png` and `ref/biz-site-*.png` must exist (`source: user-photo`, or `generated-approved` with the user's approval). Missing → STOP, send the user back to `/video-brainstorm` Step 1.2e. Do not start Phase 4A on category research alone.
 
 ## Reference Files (Read On-Demand)
 
@@ -150,6 +151,8 @@ it replaces the folder — use `ffmpeg -vf scale`. Full contract:
    (v3.7.1) **Fewest refs that do the job — side ref only for a turned face.** The angle of the face in THIS keyframe decides the identity lock. Face roughly frontal (turned up to about 45°) → ONE face ref, `cast-c{N}-face.png`, nothing else for that person. Face clearly turned (more than about 45°, strong three-quarter or profile) → `cast-c{N}-face.png` + `cast-c{N}-face-side.png`. Never stack extra identity sources on top (real photo, 3-angle sheet, a previous keyframe that contains the same person): every extra image of the face is another vote, and NB2 averages them into somebody else. A previous keyframe used for continuity must not contain the person being locked — use the env ref instead. Field case (Ekaputra scene-06, 2026-10-02): near-frontal Pak Doni with 4-5 refs (front, side, real photo, body, scene-02b) came out 'sangat tidak mirip' twice; front ref + env ref only matched first time.
 
 39. **(v3.7.2) Face still off after render → fix the face with an edit pass, not a re-roll.** Crop the face from the keyframe and compare it side by side with `cast-c{N}-face.png` at the same size. Typical drift: older (wrinkles, crow's feet), wider jaw, different parting, eyes narrowed by a smile. Causes, in order: text that competes with the photo (age words like "early 40s", "stocky", "natural skin pores" push an older generic face), an expression far from the ref's neutral one, and too many identity images (Rule 38). Fix: one NB2 edit with exactly two refs — the keyframe and `cast-c{N}-face.png` — "keep everything, replace ONLY the face and hair with the face in cast-c{N}-face.png, same age, calm closed-mouth expression". If the hair overshoots, a second edit for hair alone. Field case: Ekaputra scene-06, 2026-10-02 — two full re-renders missed, the edit pass matched.
+
+40. **(v3.8.0) Environments and products derive from the customer's photos.** Every env-* and product-* asset in Phase 4A is generated FROM `ref/biz-site-*.png` / `ref/biz-product-*.png` as reference input (packaging, label, shelf style, building, colours copied from the photo), not from a category description. Keyframes then use the 4A asset. Never add a product, brand, vehicle livery or room that is not in the Business Profile. Why: Ekaputra Scenes 11 and 12a, 2026-10-02 — products that were not in the lineup had to be regenerated.
 
 ## Workflow
 
