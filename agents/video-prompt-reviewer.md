@@ -44,7 +44,8 @@ For EACH prompt in the batch, run ALL checks below. Report PASS or FAIL per chec
 
 ### D0. (v3.7.0) One keyframe per clip + side-view lock
 - [ ] No END frame prompt (`scene-{NN}-end.png`) unless scene-plan.md records the user's explicit First+Last request for that clip → else FAIL
-- [ ] Every Pemeran Utama framed three-quarter, in profile or turned away names `cast-c{N}-face.png` AND `cast-c{N}-face-side.png` inline in the identity lock → else FAIL
+- [ ] Face turned >45° names `cast-c{N}-face.png` AND `cast-c{N}-face-side.png`; face ≤45° names the front ref ONLY → else FAIL
+- [ ] (v3.7.1) No stacked identity sources for one person (real photo, 3-angle sheet, a continuity keyframe that contains that same person) → else FAIL
 
 ### D. Camera Angle Constraint (NB2 Frame mode only — legacy, opted-in First+Last clips)
 - [ ] START and END frame share same lens focal length

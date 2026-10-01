@@ -619,6 +619,10 @@ All configurable values live in `reference/global-promo-config.md` — single so
 **Version:** 3.6.0
 **Last Updated:** 2026-09-29
 
+### v3.7.1 Changelog
+
+- **Fewest refs that do the job.** The side face ref is used only when the face in the keyframe is turned more than about 45°; a near-frontal face gets `cast-c{N}-face.png` alone. No stacking of real photo, 3-angle sheet or a continuity keyframe that contains the same person — NB2 averages the extra faces into someone else. Updated `video-image` Rule 38, reviewer D0, `01-nb2-image-generation.md`. Source: Ekaputra scene-06, 2026-10-02.
+
 ### v3.7.0 Changelog
 
 - **One keyframe per clip.** Phase 4B renders only the start frame; no END frame and no First+Last mode unless the user explicitly asks for it on a named clip. Motion and state change move into the video prompt. Updated: `video-image` Rule 37, `video-gen` Rule 13, `script-to-scene-bridge.md` Step 3/3b/3c, `global-promo-config.md`, reviewer check D0. Source: Ekaputra film, 2026-10-02.
