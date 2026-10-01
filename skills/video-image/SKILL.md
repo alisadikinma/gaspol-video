@@ -143,11 +143,13 @@ it replaces the folder — use `ffmpeg -vf scale`. Full contract:
 
 ---
 
-37. **(v3.7.0) One keyframe per clip — start frame only.** Phase 4B renders ONE NB2 image per clip: its start frame (`keyframes/scene-{NN}-start.png`). No END frame and no First+Last Frame mode, on any platform (VEO, Seedance, Kling), for faces and for faceless shots alike. Every clip is Single I2V, or continues the previous clip (Extend / last frame of the rendered clip as the next start image). The motion and the state change that an end frame used to show are written into the video prompt instead. First+Last only when the user explicitly asks for it on a named clip. Why: user decision 2026-10-02 (Ekaputra film) — end frames doubled the image renders and review time, and F+L was already unusable for any face >30% of frame.
+37. **(v3.7.0) One keyframe per clip — start frame only.** Phase 4B renders ONE NB2 image per clip: its start frame, named `keyframes/scene-{NN}.png` (v3.7.2: no `-start` suffix, there is only one frame). No END frame and no First+Last Frame mode, on any platform (VEO, Seedance, Kling), for faces and for faceless shots alike. Every clip is Single I2V, or continues the previous clip (Extend / last frame of the rendered clip as the next start image). The motion and the state change that an end frame used to show are written into the video prompt instead. First+Last only when the user explicitly asks for it on a named clip. Why: user decision 2026-10-02 (Ekaputra film) — end frames doubled the image renders and review time, and F+L was already unusable for any face >30% of frame.
 
 38. **(v3.7.0) Side-view face reference for main cast.** Every Pemeran Utama gets TWO face refs in Phase 3.5: `cast-c{N}-face.png` (front) and `cast-c{N}-face-side.png` (three-quarter/profile, about 45-90° turned, same person, same lighting, neutral expression, generated FROM the front ref). In Phase 4B, whenever that character's face is turned more than about 45° (strong three-quarter or profile), the identity lock names BOTH, inline, once each: `Pak Johan (Maintain exact facial identity from reference images: cast-c2-face.png front view and cast-c2-face-side.png side view) — ...`. Both count toward the 5-ref cap. A front-only ref gives a face that is right from the front and drifts at every other angle. Why: Ekaputra scene-02b-start — Pak Johan seen three-quarter from a front-only ref did not resemble him.
 
    (v3.7.1) **Fewest refs that do the job — side ref only for a turned face.** The angle of the face in THIS keyframe decides the identity lock. Face roughly frontal (turned up to about 45°) → ONE face ref, `cast-c{N}-face.png`, nothing else for that person. Face clearly turned (more than about 45°, strong three-quarter or profile) → `cast-c{N}-face.png` + `cast-c{N}-face-side.png`. Never stack extra identity sources on top (real photo, 3-angle sheet, a previous keyframe that contains the same person): every extra image of the face is another vote, and NB2 averages them into somebody else. A previous keyframe used for continuity must not contain the person being locked — use the env ref instead. Field case (Ekaputra scene-06, 2026-10-02): near-frontal Pak Doni with 4-5 refs (front, side, real photo, body, scene-02b) came out 'sangat tidak mirip' twice; front ref + env ref only matched first time.
+
+39. **(v3.7.2) Face still off after render → fix the face with an edit pass, not a re-roll.** Crop the face from the keyframe and compare it side by side with `cast-c{N}-face.png` at the same size. Typical drift: older (wrinkles, crow's feet), wider jaw, different parting, eyes narrowed by a smile. Causes, in order: text that competes with the photo (age words like "early 40s", "stocky", "natural skin pores" push an older generic face), an expression far from the ref's neutral one, and too many identity images (Rule 38). Fix: one NB2 edit with exactly two refs — the keyframe and `cast-c{N}-face.png` — "keep everything, replace ONLY the face and hair with the face in cast-c{N}-face.png, same age, calm closed-mouth expression". If the hair overshoots, a second edit for hair alone. Field case: Ekaputra scene-06, 2026-10-02 — two full re-renders missed, the edit pass matched.
 
 ## Workflow
 
@@ -428,7 +430,7 @@ FOR each batch (ACT or sub-batch):
        - NB2 technical parameters (CFG 5-7, denoise 0.35-0.45)
        - **Aspect ratio triple enforcement** (first line, TECHNICAL, last line)
        - Central 60% rule
-       - **`Output →` filename** per prompt (ref/scene-{NN}-start.png, ref/scene-{NN}-end.png)
+       - **`Output →` filename** per prompt (keyframes/scene-{NN}.png — one per clip, no -end file, Rule 37)
        - **Ref-to-prompt body binding (inline-only)** — every ref in upload table MUST have matching INLINE mention in prompt body, placed directly with the element it describes. BANNED: header blocks like `Using reference image xxx.png for [purpose]`. Each filename MAX 1x per prompt.
        - **UI text localization** — on-screen text in narration language
        - **Scale/dimension specification** — every visible prop and object MUST have real-world dimensions in the prompt (cm/mm + visual analogy + proportion to hand + negative for wrong size)
@@ -557,7 +559,7 @@ After ALL batches are generated and approved:
 - [ ] Central 60% rule applied
 - [ ] Thinking mode specified (minimal for draft, high for final)
 - [ ] EVERY visual element references its asset file (no text-only descriptions for recurring elements)
-- [ ] Output filename specified per prompt (`ref/scene-{NN}-start.png`)
+- [ ] Output filename specified per prompt (`ref/scene-{NN}.png`)
 - [ ] Every ref in upload table has matching INLINE mention in prompt body — placed directly with the element it describes, NOT in a header block
 - [ ] No `Using reference image xxx.png for [purpose]` header blocks — all refs must be inline with elements
 - [ ] No standalone identity lock lines — must be inline with character description (e.g., `[Name] (Maintain exact facial identity...) — description...`)

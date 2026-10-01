@@ -327,7 +327,7 @@ EXPLICIT NEGATIVES: No {inappropriate element 1}, no {inappropriate element 2}.
 OUTPUT: 16:9 LANDSCAPE aspect ratio. Width > Height. Do NOT crop or change ratio.
 ```
 
-**Output →** `ref/scene-{NN}-start.png`
+**Output →** `ref/scene-{NN}.png`
 
 **Required Reference Images (upload all to `{project}/ref/` folder):**
 ```markdown
@@ -687,7 +687,7 @@ Maintain visual continuity with reference frame appearances for all characters.
 
 **BAD — header block refs, no previous scene reference:**
 ```
-#### START Frame → ref/scene-15-start.png
+#### START Frame → ref/scene-15.png
 Using reference image cast-c1-face.png for driver face.
 Using reference image vehicle-truck.png for truck.
 
@@ -697,7 +697,7 @@ WHY BAD: (1) Scene 15 has no reference to Scene 14 end frame — environment, li
 
 **GOOD — inline refs, previous scene anchored:**
 ```
-#### START Frame → ref/scene-15-start.png
+#### START Frame → ref/scene-15.png
 Photorealistic medium shot — continuation from scene-14-end.png — maintaining character position, lighting, and environment from previous scene. The SAME stockpile environment. The driver (Maintain exact facial identity from reference image: cast-c1-face.png) stands beside the truck — EXACTLY matching vehicle-truck.png — at the weighbridge...
 ```
 WHY GOOD: (1) Scene 14 end frame anchors continuity inline. (2) Every ref filename appears INSIDE the scene description, next to the element it applies to. (3) No header block — NB2 knows exactly which ref goes with which element.

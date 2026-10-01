@@ -398,7 +398,7 @@ Total: 15s. 16:9. 1080p.
 ## Production Integration with NB2 Upstream
 
 Kling 3.0 I2V mode = same upstream pattern as VEO First Frame:
-1. NB2 generates anchor keyframe (`scene-NN-start.png`) at TARGET ASPECT RATIO
+1. NB2 generates anchor keyframe (`scene-NN.png`) at TARGET ASPECT RATIO
 2. Aspect ratio MUST match Kling output (mismatch = edge hallucination, same VEO rule)
 3. Kling I2V animates from anchor
 4. For First+Last Frame mode: NB2 generates BOTH `-start.png` and `-end.png` (only for faceless scenes)
@@ -419,7 +419,7 @@ MODE: I2V (single anchor) | First+Last Frame | Multi-Shot Storyboard | Motion Co
 DURATION: 3s | 4s | 5s | 6s | 7s | 8s | 9s | 10s | 11s | 12s | 13s | 14s | 15s (per-second granular)
 RESOLUTION: 720p | 1080p (UI) | 4K (API only)
 ASPECT RATIO: 16:9 | 9:16 | 1:1
-ANCHOR IMAGE: scene-NN-start.png (NB2 output, must match target ratio)
+ANCHOR IMAGE: scene-NN.png (NB2 output, must match target ratio)
 SECOND ANCHOR: scene-NN-end.png (First+Last mode only, faceless scenes only)
 MOTION REF: motion-ref-{name}.mp4 (Motion Control only)
 CHARACTER ORIENTATION: Follow Video | Follow Image (Motion Control only)

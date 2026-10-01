@@ -314,7 +314,7 @@ instead of restating it.
 
 ```jsonc
 { "renders": [
-  { "file": "keyframes/scene-03-start.png", "phase": "4B", "scene": 3,
+  { "file": "keyframes/scene-03.png", "phase": "4B", "scene": 3,
     "model": "nano-banana-2", "prompt_sha256": "<hex>", "refs": ["cast-c1-face.png"],
     "status": "done", "error": null, "cdn_url": "https://...", "rendered_at": "2026-09-13T08:00:00Z" } ] }
 ```
