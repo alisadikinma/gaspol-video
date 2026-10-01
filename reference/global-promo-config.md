@@ -150,6 +150,7 @@ See `reference/image-video-gen/08-kling-production-guide.md` for full Kling 3.0 
 | **No em dash in audio text** | `—` in `says:` or `Voice-over narrator:` text → VEO audio engine mistranslates. Replace with `,` or `. ` |
 | **Every B-Roll has VO** | No silent B-Roll in promo videos. Every B-Roll scene needs `Voice-over narrator` line + `> POST-PROD VO:` backup. |
 | **No face ref filenames in VEO** | `Maintain exact facial identity from reference image: xxx.png` → ONLY in NB2 prompts. VEO prompts use generic: `Maintain visual continuity with reference frame character appearance.` |
+| **(v3.7.0) One keyframe per clip** | Every clip = Single I2V from one NB2 start frame. No END frame / First+Last unless the user explicitly asks for it on a named clip. |
 | **Face-dominant = single I2V** | Scene with face >30% frame → single I2V (start frame only). First+Last Frame mode → only for faceless scenes. Safety filter rejects 2 face images. |
 
 ---
@@ -241,6 +242,7 @@ See `reference/image-video-gen/08-kling-production-guide.md` for full Kling 3.0 
 | Category | Pattern | Example |
 |----------|---------|---------|
 | Cast face | `ref/cast-c{N}-face.png` | `ref/cast-c1-face.png` |
+| Cast face, side (v3.7.0, Pemeran Utama) | `ref/cast-c{N}-face-side.png` | `ref/cast-c1-face-side.png` |
 | Cast body | `ref/cast-c{N}-body.png` | `ref/cast-c1-body.png` |
 | Cast costume | `ref/cast-c{N}-costume.png` | `ref/cast-c1-costume.png` |
 | Product | `ref/product-{name}.png` | `ref/product-hero.png` |
@@ -582,6 +584,7 @@ If a scene shows a gate → the prompt says `match environment from reference im
 | # | Category | Naming Pattern | Example | Typical Dimensions | Notes |
 |---|----------|---------------|---------|-------------------|-------|
 | 1 | Cast face | `ref/cast-c{N}-face.png` | `ref/cast-c1-face.png` | head-and-shoulders crop | Identity anchor |
+| 1b | Cast face side (v3.7.0, Pemeran Utama) | `ref/cast-c{N}-face-side.png` | `ref/cast-c1-face-side.png` | three-quarter/profile, same light | Identity at non-frontal angles |
 | 2 | Cast body | `ref/cast-c{N}-body.png` | `ref/cast-c1-body.png` | full body, ~170cm human | Proportions + wardrobe |
 | 3 | Cast costume | `ref/cast-c{N}-costume.png` | `ref/cast-c1-costume.png` | full body, ~170cm human | Institutional uniform |
 | 4 | Vehicle | `ref/vehicle-{type}-{name}.png` | `ref/vehicle-truck-hino.png` | real-world vehicle dimensions | NEW: recurring vehicles |

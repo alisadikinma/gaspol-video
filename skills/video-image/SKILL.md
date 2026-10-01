@@ -3,7 +3,7 @@ name: video-image
 description: >
   Phase 4 of AI video promotional production. Phase 4A generates the Asset Library — standalone
   reusable assets (faces, bodies, costumes, vehicles, objects, products, environments, UI composites)
-  with dependency graph and tier system. Phase 4B generates Scene Keyframes — start/end frames
+  with dependency graph and tier system. Phase 4B generates Scene Keyframes — one start frame per clip
   composed FROM Phase 4A assets. Batch-by-ACT generation with prompt-reviewer agent validation.
   Triggers on: video image, image prompt, NB2, nb2 prompt, generate image, asset library,
   scene keyframe, buat gambar, keyframe, image generation, gambar video.
@@ -120,7 +120,7 @@ of referencing the file is the same Asset-First violation as Rule 10, applied to
 23. **Narrative arc consistency** — Connected scenes MUST include `NARRATIVE CONTEXT:` block naming connections, visual breadcrumbs, cause-effect chains, shared environment refs. See `script-to-scene-bridge.md` Section 7C.
 24. **(v2.2.0 ENV-GATED) Sequential scene dependency — CONDITIONAL** — Scene N+1 start frame references Scene N end frame (`scene-{NN-1}-end.png`, bare filename, NO ref/ prefix) ONLY IF env(N) == env(N+1). Hard cut between scenes (different location, different lighting Kelvin, different time-of-day) = DROP `scene-{NN-1}-end.png` cross-ref entirely. Character/prop continuity ALONE is NOT sufficient — environment is sole gating criterion. Visual continuity for hard cuts carried by: text SUBJECT spec + standalone identity refs (`cast-c{N}-face.png`) + standalone prop refs + costume verbatim + NARRATIVE CONTEXT block. Validator C4 enforces. See `global-promo-config.md` §27.
 25. **Prop/object scale enforcement** — Every handheld prop or object in NB2/VEO prompts MUST include: (a) exact physical dimensions in cm/mm, (b) real-world size analogy, (c) proportion relative to human hand/body, (d) explicit negative for wrong sizes. "Small" alone is NOT sufficient.
-26. **Camera angle constraint for Frame mode** — START and END frames within one VEO scene MUST have: max 1-step shot size change (CU↔MCU↔MS↔MWS↔WS) and max 15° camera angle change. Drastic camera jumps break VEO interpolation.
+26. **Camera angle constraint for Frame mode** (legacy — only when the user explicitly asks for First+Last on a clip, see Rule 37) — START and END frames within one VEO scene MUST have: max 1-step shot size change (CU↔MCU↔MS↔MWS↔WS) and max 15° camera angle change. Drastic camera jumps break VEO interpolation.
 27. **NB2 identity lock: filename only** — `Maintain exact facial identity from reference image:` MUST use bare filename only (e.g., `cast-c1-face.png`). NEVER add folder prefix like `ref/` or `keyframes/` — NB2 matches uploaded images by filename, and `ref/cast-c1-face.png` fails to match the uploaded `cast-c1-face.png`. Same rule applies to all reference image mentions inside NB2 prompt body text.
 28. **Inline-only reference pattern** — All NB2 reference image filenames MUST appear INLINE with the element they describe, NOT in a separate header block. Each filename appears EXACTLY ONCE per prompt. Three categories: (1) identity lock inline with character: `[Name] (Maintain exact facial identity from reference image: cast-c1-face.png) in blue uniform...`, (2) object/environment ref inline with element: `...the monitor — EXACTLY matching ui-anpr-screen.png: ANPR interface...`, (3) scene continuity inline: `...continuation from scene-{NN-1}-end.png — maintaining character position...`. BANNED: header blocks like `Using reference image xxx.png for [purpose]`, standalone identity lock lines, duplicate filename mentions.
 29. **Multi-POV environment spatial context** — When a scene's upload table has 2+ `env-*` references of the SAME location from DIFFERENT viewpoints (e.g., entry, exit, side, interior, exterior), the prompt MUST include a `SPATIAL CONTEXT` block immediately after the opening line. This block: (a) explicitly states all references show the SAME location from DIFFERENT camera angles, (b) maps each ref to the specific zone/element it depicts, (c) specifies the CAMERA POSITION for this scene relative to the reference angles, (d) clarifies which ref provides PRIMARY layout vs which provide DETAIL for specific zones. Without this block, NB2 may misinterpret multi-POV refs as separate locations or attempt to literally reproduce all angles simultaneously.
@@ -142,6 +142,10 @@ it replaces the folder — use `ffmpeg -vf scale`. Full contract:
 `reference/post-production/10-post-production-pipeline.md` §2.
 
 ---
+
+37. **(v3.7.0) One keyframe per clip — start frame only.** Phase 4B renders ONE NB2 image per clip: its start frame (`keyframes/scene-{NN}-start.png`). No END frame and no First+Last Frame mode, on any platform (VEO, Seedance, Kling), for faces and for faceless shots alike. Every clip is Single I2V, or continues the previous clip (Extend / last frame of the rendered clip as the next start image). The motion and the state change that an end frame used to show are written into the video prompt instead. First+Last only when the user explicitly asks for it on a named clip. Why: user decision 2026-10-02 (Ekaputra film) — end frames doubled the image renders and review time, and F+L was already unusable for any face >30% of frame.
+
+38. **(v3.7.0) Side-view face reference for main cast.** Every Pemeran Utama gets TWO face refs in Phase 3.5: `cast-c{N}-face.png` (front) and `cast-c{N}-face-side.png` (three-quarter/profile, about 45-90° turned, same person, same lighting, neutral expression, generated FROM the front ref). In Phase 4B, whenever that character is framed three-quarter, in profile or partly turned away (two-shot across a table, over-the-shoulder, walking past), the identity lock names BOTH, inline, once each: `Pak Johan (Maintain exact facial identity from reference images: cast-c2-face.png front view and cast-c2-face-side.png side view) — ...`. Both count toward the 5-ref cap. A front-only ref gives a face that is right from the front and drifts at every other angle. Why: Ekaputra scene-02b-start — Pak Johan seen three-quarter from a front-only ref did not resemble him.
 
 ## Workflow
 
@@ -405,9 +409,10 @@ FOR each batch (ACT or sub-batch):
   2. GENERATE prompts for this batch's scenes:
      FOR each scene in this batch:
 
-       **If Frame mode:**
-       - Generate START frame prompt (per `script-to-scene-bridge.md` Section 3)
-       - Generate END frame prompt (maintain consistency checklist)
+       **Single I2V (default, Rule 37):**
+       - Generate ONE start frame prompt per clip (per `script-to-scene-bridge.md` Section 3)
+       - NO end frame prompt. Write the motion/state change in the Phase 5 video prompt instead
+       - Character framed three-quarter / profile / turned away → identity lock names front AND side ref (Rule 38)
        - **Every visual element MUST reference its asset file** — no text-only descriptions
 
        **If Ingredients mode:**
@@ -448,7 +453,7 @@ FOR each batch (ACT or sub-batch):
 
   5.5. RENDER OFFER (only after option A above):
      a. BUILD the render list for this batch's approved keyframe prompts (START
-        and END frames, or ingredient images):
+        frames, one per clip — Rule 37 — or ingredient images):
         - file   = the prompt's `**Output →**` filename
         - model  = "nano-banana-2"
         - aspect = the prompt's first line aspect ratio
@@ -561,6 +566,8 @@ After ALL batches are generated and approved:
 - [ ] Previous scene end frame referenced in upload table and inline in prompt body (for scenes 2+)
 - [ ] Camera angle between start/end max 15° change, shot size max 1 step
 - [ ] Aspect ratio specified in ALL prompts (NB2: triple enforcement; VEO: first + last line)
+- [ ] **(v3.7.0) One keyframe per clip** — no `scene-{NN}-end.png` prompt unless the user asked for First+Last on that clip (Rule 37)
+- [ ] **(v3.7.0) Side-view lock** — every Pemeran Utama framed three-quarter/profile names `cast-c{N}-face.png` AND `cast-c{N}-face-side.png` inline (Rule 38)
 - [ ] NB2 identity lock uses filename only — NO `ref/` or other folder prefix in `Maintain exact facial identity from reference image:` lines or any reference image mention inside prompt body text
 
 ### Cross-Cutting Quality Gate (All Phases 4-5)

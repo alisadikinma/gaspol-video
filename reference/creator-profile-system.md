@@ -149,6 +149,7 @@ AskUserQuestion:
 
 Pemeran Utama (#{N} — {name}):
   ✦ ref/cast-c{N}-face.png — foto wajah (front view, clear, well-lit)
+  ✦ ref/cast-c{N}-face-side.png — wajah dari samping (tiga perempat/profil), dibuat dari foto depan (v3.7.0)
   ✦ ref/cast-c{N}-body.png — foto full body (standing pose)
   ✦ ref/cast-c{N}-costume.png — foto seragam/kostum (jika institutional)
 

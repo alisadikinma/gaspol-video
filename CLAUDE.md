@@ -264,6 +264,8 @@ Need consistent CHARACTER across shots?
             Uses final 1 second as context anchor
 ```
 
+**(v3.7.0) DEFAULT: one keyframe per clip.** Every clip is Single I2V from one NB2 start frame; the tree above applies First+Last only when the user explicitly asks for it on a named clip.
+
 **CRITICAL: Ingredients ≠ First+Last Frame. They are MUTUALLY EXCLUSIVE. Pick ONE per generation.**
 **SAFETY: First+Last Frame with 2 photorealistic face images → rejected as "prominent people." Use single I2V for face-dominant scenes.**
 
@@ -616,6 +618,11 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 **Version:** 3.6.0
 **Last Updated:** 2026-09-29
+
+### v3.7.0 Changelog
+
+- **One keyframe per clip.** Phase 4B renders only the start frame; no END frame and no First+Last mode unless the user explicitly asks for it on a named clip. Motion and state change move into the video prompt. Updated: `video-image` Rule 37, `video-gen` Rule 13, `script-to-scene-bridge.md` Step 3/3b/3c, `global-promo-config.md`, reviewer check D0. Source: Ekaputra film, 2026-10-02.
+- **Side-view face ref for main cast.** Phase 3.5 requires `cast-c{N}-face-side.png` (three-quarter/profile, made from the front ref) for every Pemeran Utama; Phase 4B names front AND side refs inline whenever the character is not facing camera. Updated: `video-script` manifest, `video-image` Rule 38, `01-nb2-image-generation.md`, `creator-profile-system.md`, naming tables, reviewer check D0. Source: Ekaputra scene-02b, a three-quarter face from a front-only ref did not resemble the person.
 
 ### v3.6.0 Changelog
 

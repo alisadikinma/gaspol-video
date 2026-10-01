@@ -42,7 +42,11 @@ For EACH prompt in the batch, run ALL checks below. Report PASS or FAIL per chec
 - [ ] Every handheld prop has proportion relative to hand/body
 - [ ] Every handheld prop has explicit negative for wrong sizes
 
-### D. Camera Angle Constraint (NB2 Frame mode only)
+### D0. (v3.7.0) One keyframe per clip + side-view lock
+- [ ] No END frame prompt (`scene-{NN}-end.png`) unless scene-plan.md records the user's explicit First+Last request for that clip → else FAIL
+- [ ] Every Pemeran Utama framed three-quarter, in profile or turned away names `cast-c{N}-face.png` AND `cast-c{N}-face-side.png` inline in the identity lock → else FAIL
+
+### D. Camera Angle Constraint (NB2 Frame mode only — legacy, opted-in First+Last clips)
 - [ ] START and END frame share same lens focal length
 - [ ] Shot size change is max 1 step (CU<>MCU<>MS<>MWS<>WS)
 - [ ] Camera angle change is max 15 degrees

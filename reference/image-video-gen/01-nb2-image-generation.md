@@ -119,7 +119,9 @@ project-specific: `add` refuses any prompt naming `cast-`, `brand-`, `ui-`, `pro
 
 See `global-promo-config.md` §26.4 + validator C3 (Phase 4B ref count audit).
 
-### Face refs: three angles, or the face drifts (v3.2.1)
+### Face refs: three angles, or the face drifts (v3.2.1, v3.7.0)
+
+**v3.7.0 minimum for every Pemeran Utama:** `cast-c{N}-face.png` (front) + `cast-c{N}-face-side.png` (three-quarter/profile). Any keyframe that frames the character non-frontally names both inline in one identity lock. Field case: Ekaputra scene-02b, Pak Johan three-quarter from a front-only ref — not recognisable.
 
 A front-only reference produces a face that is *plausible* from the front and wrong from every other
 angle — and the clip will move the head. The identity ref is a **sheet**, not a photo:
