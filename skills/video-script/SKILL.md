@@ -268,6 +268,7 @@ Scan `scene-plan.md` + `cast-profile.md` to build reference manifest:
 FOR each character in cast-profile.md:
     IF role == "Pemeran Utama":
         → REQUIRE ref/cast-c{N}-face.png
+        → REQUIRE ref/cast-c{N}-face-side.png   (v3.7.0: three-quarter/profile, made FROM the front ref — Phase 4B locks both when the character is not facing camera)
         → REQUIRE ref/cast-c{N}-body.png
         → IF institution_detected: REQUIRE ref/cast-c{N}-costume.png
     IF role == "Pemeran Pendamping":

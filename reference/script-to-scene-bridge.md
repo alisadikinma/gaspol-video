@@ -64,21 +64,12 @@ FOR each scene:
         ELSE:
             → Ingredients mode (new ref images)
 
-    IF scene shows STATE CHANGE (before→after, open→close):
-        IF face >30% of frame (presenter, talking head, character CU):
-            → Single I2V mode (start frame only)
-            → ⚠️ Safety filter rejects 2 face images in First+Last Frame
-        ELSE (dashboard, product, environment, wide shot):
-            → First+Last Frame mode
-            → Generate START image (NB2) + END image (NB2)
-
-    IF scene is B-ROLL (product/environment, no dominant face):
-        → First+Last Frame mode
-        → Generate START image (NB2) + END image (NB2)
-
-    IF scene is B-ROLL WITH visible character face:
-        → Single I2V mode (start frame only)
-        → ⚠️ Safety filter rejects 2 face images in First+Last Frame
+    (v3.7.0) EVERY other scene — state change, B-roll, faceless or not:
+        → Single I2V mode (ONE NB2 start frame per clip)
+        → The change (before→after, open→close, truck leaves) is written in the
+          video prompt, not drawn as an END image
+        → First+Last Frame ONLY when the user explicitly asks for it on a named clip
+          (user decision 2026-10-02: end frames doubled image renders for little gain)
 
     IF scene CONTINUES previous scene (same location, same action):
         → Extend mode
@@ -86,7 +77,7 @@ FOR each scene:
         → Max: +7s per hop
 
     NEVER combine Ingredients + First+Last Frame in same generation
-    FACE SAFETY: First+Last Frame → ONLY for faceless scenes (face <30% frame)
+    DEFAULT: one start keyframe per clip. FACE SAFETY still applies to an opted-in First+Last: faceless only
 ```
 
 ### Step 3b: Seedance 2.0 Mode Selection per Scene (if `video_model` = `seedance`)
@@ -101,7 +92,7 @@ FOR each scene:
         → CRITICAL: Real face upload BANNED — use AI-generated faces only
 
     IF scene shows STATE CHANGE (before→after, product transform):
-        → First+Last Frame mode (2 NB2 images: start + end)
+        → (v3.7.0) Single Image I2V by default; First+Last only on explicit user request
         → Interpolation-based — model fills between two states
         → Good for low-complexity transitions
 
@@ -145,7 +136,7 @@ FOR each scene:
         → AVOID for high-stakes hero shots / complex dialogue beats / scenes needing extension
 
     IF scene shows STATE CHANGE (before→after, product unbox, environment shift), FACELESS only:
-        → First+Last Frame mode (2 NB2 images: start + end)
+        → (v3.7.0) Single I2V by default; First+Last Frame only on explicit user request
         → ⚠ Same safety filter risk as VEO — 2 photoreal face images = "prominent people" rejection
         → For face-dominant scenes (face >30% frame) → use single I2V instead
 
