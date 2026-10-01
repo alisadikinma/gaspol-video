@@ -85,6 +85,8 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 
 20. **(v3.6.0) Pause tags.** Narration and dialogue text in `av-script.md` may carry `[pause: 1.2s]` or `[jeda: 1.2s]`, 0.2 to 5.0 s, where a beat of silence is wanted. Only in that spoken text, never in an NB2 or platform prompt: `gen_vo.mjs` turns the tag into exact silence, while a platform model would speak it.
 
+21. **(v3.8.0) Customer photos beat category research.** Products and premises come from `strategic-brief.md` → Business Profile + `ref/biz-*.png`. A scene that shows a product or place the customer never confirmed is a script defect — fix the scene, do not generate the product.
+
 ## Workflow
 
 ### Phase 2: SCRIPT GENERATION (Output: av-script.md)
@@ -274,9 +276,18 @@ FOR each character in cast-profile.md:
     IF role == "Pemeran Pendamping":
         → REQUIRE ref/cast-c{N}-face.png
 
+FOR each file in strategic-brief.md → Business Reference Photos (v3.8.0, Step 1.2e):
+    → pre-fill the manifest row as the SOURCE of truth (status ✅ if the file exists in ref/)
+    → ref/biz-site-*.png   satisfies env-{location} for that place
+    → ref/biz-product-*.png satisfies product-{name}
+    → ref/biz-asset-*.png / biz-uniform.png satisfy brand-{asset} / costume refs
+    → source: generated-approved rows keep their flag; do not regenerate them
+
 FOR each scene in scene-plan.md:
     → EXTRACT unique locations → REQUIRE ref/env-{location}.png per unique location
+       (skip when a biz-site photo already covers it — NB2 builds env-* FROM the biz-site photo)
     → IF product mentioned → REQUIRE ref/product-{name}.png (deduplicated)
+       (a product in a scene that is NOT in the brief's Business Profile = STOP, ask the user; never invent a product)
     → IF brand/logo/UI visible → REQUIRE ref/brand-{asset}.png (deduplicated)
 
 IF institution_detected:

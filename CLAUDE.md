@@ -619,6 +619,10 @@ All configurable values live in `reference/global-promo-config.md` — single so
 **Version:** 3.6.0
 **Last Updated:** 2026-09-29
 
+### v3.8.0 Changelog
+
+- **Customer business profile + reference photos.** `video-brainstorm` Step 1.2e asks what the customer sells, where, and what a visitor sees, then collects real product and site photos (`ref/biz-product-*.png`, `ref/biz-site-*.png`, optional asset and uniform). Hard gate before Phase 4A. No photo: web research + NB2 reference the user approves (`source: generated-approved`). `video-script` 3.5.1 pre-fills the manifest from these photos and stops on a product the customer never confirmed. `video-image` prerequisite + Rule 40: env and product assets derive FROM the photos. Test: `tests/consistency/business-reference-contract.sh`. Source: Ekaputra Scenes 11/12a, 2026-10-02.
+
 ### v3.7.2 Changelog
 
 - **Keyframe name without `-start`.** One frame per clip, so the file is `keyframes/scene-{NN}.png` (letters allowed: `scene-02a.png`). Docs updated across `video-image`, `video-gen`, `script-to-scene-bridge.md`, `global-promo-config.md`, Kling guide, post-production pipeline.
