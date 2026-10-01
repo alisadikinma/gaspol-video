@@ -527,7 +527,7 @@ Every generated NB2 prompt MUST include an explicit `**Output →**` line so the
 ```
 
 **Naming for scene keyframes:**
-- Start frame: `ref/scene-{NN}-start.png` (e.g., `ref/scene-07-start.png`)
+- Start frame: `ref/scene-{NN}.png` (e.g., `ref/scene-07.png`)
 - End frame: `ref/scene-{NN}-end.png` (e.g., `ref/scene-07-end.png`)
 - Ingredient: `ref/scene-{NN}-ingredient-{N}.png`
 
@@ -747,7 +747,7 @@ Cross-chain (multi-element scene):
   cast-c1-face ──┐
   cast-c1-body ──┤
   cast-c1-costume┤
-  vehicle-truck ─┤→ scene-07-start.png
+  vehicle-truck ─┤→ scene-07.png
   env-gate ──────┤
   product-cpo ───┘
 ```

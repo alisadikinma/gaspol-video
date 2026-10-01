@@ -619,6 +619,11 @@ All configurable values live in `reference/global-promo-config.md` — single so
 **Version:** 3.6.0
 **Last Updated:** 2026-09-29
 
+### v3.7.2 Changelog
+
+- **Keyframe name without `-start`.** One frame per clip, so the file is `keyframes/scene-{NN}.png` (letters allowed: `scene-02a.png`). Docs updated across `video-image`, `video-gen`, `script-to-scene-bridge.md`, `global-promo-config.md`, Kling guide, post-production pipeline.
+- **Face fix by edit pass** (`video-image` Rule 39): when the face still drifts, edit the keyframe with the front ref only instead of re-rolling the scene.
+
 ### v3.7.1 Changelog
 
 - **Fewest refs that do the job.** The side face ref is used only when the face in the keyframe is turned more than about 45°; a near-frontal face gets `cast-c{N}-face.png` alone. No stacking of real photo, 3-angle sheet or a continuity keyframe that contains the same person — NB2 averages the extra faces into someone else. Updated `video-image` Rule 38, reviewer D0, `01-nb2-image-generation.md`. Source: Ekaputra scene-06, 2026-10-02.
