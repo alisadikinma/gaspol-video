@@ -619,6 +619,10 @@ All configurable values live in `reference/global-promo-config.md` — single so
 **Version:** 3.6.0
 **Last Updated:** 2026-09-29
 
+### v3.9.1 Changelog
+
+- **Logo only where the camera sees it, and checked against the real file.** `video-image` Rule 43: uniform logo only on garment areas that face the camera (no back logo in a shoulder close-up; plain garment there). Rule 44: after each render compare every vehicle, cooler box, carton and uniform logo with `ref/brand-<client>-logo.png`; fix by edit pass, never re-render. `video-prompt-reviewer` C13 fails a forced or unlocked logo. Source: Ekaputra scenes 04a, 07, 12a, 18, 2026-10-02.
+
 ### v3.9.0 Changelog
 
 - **Vehicle variety + one company uniform.** `video-brainstorm` Step 1.2e (Hard Rules 14, 15) asks the delivery-point types and which vehicle serves each (truck/pickup to docks and restaurants, motorbike with cooler box to housing-complex shops and alleys a truck cannot enter), saved as `### Delivery Points & Vehicles`; and the company uniform (garment, colour, logo, placement, roles), saved as `### Company Uniform` plus one verbatim phrase in `cast-profile.md` `## Company Uniform`. `video-script` rules 22-23 + 3.5.1: scene-plan covers every vehicle class marked appears=yes, STOP on a truck at a truck-excluded point, every customer employee in the uniform phrase. `video-image` prerequisite + Rules 41-42: `ref/vehicle-<class>.png` per class, `ref/costume-uniform-<client>.png` (front + back, real logo), uniform phrase in every NB2 prompt with a customer employee. `video-prompt-reviewer` check C13. Test: `tests/consistency/uniform-and-vehicle-contract.sh`. Source: Ekaputra film, 2026-10-02.

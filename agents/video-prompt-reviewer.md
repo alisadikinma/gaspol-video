@@ -293,6 +293,8 @@ Read `strategic-brief.md` (`### Company Uniform`, `### Delivery Points & Vehicle
 - A prompt where the logo must be legible (chest in frame) lacks `costume-uniform-<client>.png` or the logo ref inline = FAIL.
 - scene-plan.md covers EVERY vehicle class marked appears=yes in the brief, at least one scene each. A missing class = FAIL.
 - A scene showing a truck at a delivery point whose access limit excludes trucks = FAIL.
+- A logo placed on a garment area the shot does not show (back logo in a shoulder or phone close-up, chest logo in a back view) = FAIL. A plain uniform garment is correct there. (v3.9.1)
+- A prompt for a vehicle, cooler box or carton whose logo is not locked to `brand-<client>-logo.png` (inline ref or exact-logo phrase) = FAIL. (v3.9.1)
 
 FAIL output names the scene, the employee or vehicle class, and the quoted text.
 

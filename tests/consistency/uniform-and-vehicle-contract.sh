@@ -33,11 +33,14 @@ need "$I" "Vehicle + uniform gate"         "video-image has no vehicle/uniform p
 need "$I" "41. **(v3.9.0)"                 "video-image Rule 41 missing"
 need "$I" "42. **(v3.9.0)"                 "video-image Rule 42 missing"
 need "$I" "costume-uniform-<client>.png"   "video-image does not generate the uniform ref"
+need "$I" "43. **(v3.9.1)"                 "video-image Rule 43 missing (logo only where visible)"
+need "$I" "44. **(v3.9.1)"                 "video-image Rule 44 missing (check logos against the real file)"
 
 R=agents/video-prompt-reviewer.md
 need "$R" "C13."                           "reviewer has no check C13"
 need "$R" "Company Uniform"                "reviewer does not check the uniform"
 need "$R" "vehicle class"                  "reviewer does not check vehicle classes in scene-plan"
+need "$R" "does not show"                  "reviewer does not fail a forced logo"
 
 # pre-existing hooks must survive
 need "$B" "Step 1.2e" "Step 1.2e disappeared"
