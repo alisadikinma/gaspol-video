@@ -13,9 +13,8 @@ Phases 1 to 5 produce a **prompt package**. Phase 6 turns generated clips into a
 
 ```
 Phase 4B  scene keyframes (NB2)          live-action scenes only
-Phase 4.5 /video-explainer               explainer scenes -> Remotion shots
 Phase 5   /video-gen                     platform prompts + audio-source decision
-          per kelompok: VO -> clips -> voice change -> Remotion -> kelompok cut -> approval
+          per kelompok: VO -> VEO clips -> voice change -> Remotion (Phase 4.5, AFTER clips) -> kelompok cut -> approval
 Phase 6   /video-post --final            global tail, once every kelompok is approved
 Phase 7   /video-package                 title, thumbnail bets, description
 ```
@@ -32,7 +31,7 @@ is what the audience sees.
 | K.1 | Pass 1 scoped to this kelompok's lines | VO-first sets clip duration; it cannot come after the clips |
 | K.2 | Render this kelompok's clips (Phase 5 step 5.5) | unchanged |
 | K.3 | Voice change on platform-native dialogue in those clips | needs the clip audio to exist |
-| K.4 | Remotion shots and overlays belonging to this kelompok | independent of clips, needed for the cut |
+| K.4 | Remotion shots and overlays belonging to this kelompok, built AFTER its clips (v3.9.2) | the cut to and from a clip needs the real clip length, light and last frame |
 | K.5 | Pass 2 scoped: `output/kelompok-K{N}.mp4` under the A/V duration gate | the reviewable artefact |
 | K.6 | User approves the kelompok | a fix here is contained to at most 5 scenes |
 

@@ -3,8 +3,8 @@ name: video-full
 description: >
   End-to-end AI video promotional production pipeline. Orchestrates the full 6-phase workflow:
   video-brainstorm (Phase 1) → video-script (Phase 2-3.5) → video-image (Phase 4A+4B) →
-  video-explainer (Phase 4.5, conditional) → video-gen (Phase 5 with Image Review, delivering one
-  kelompok at a time: VO, clips, voice change, Remotion, kelompok cut, approval) →
+  video-gen (Phase 5 with Image Review, delivering one kelompok at a time: VO, VEO clips first,
+  voice change, then Remotion via video-explainer, kelompok cut, approval) →
   video-post --final (Phase 6 tail: edit, SFX, subtitles, music, mix) → video-package (Phase 7). Generates complete 2-3 minute promotional video
   packages for any brand. Supports multi-character cast (max 5), any brand or Ali Sadikin preset.
   Triggers on: video full, full pipeline, end to end, video production, bikin video promosi,
@@ -99,29 +99,17 @@ generating them by hand from the NB2 prompts and saving to `{output_folder}/keyf
 
 ---
 
-### Step 4: Run `/video-explainer` (Phase 4.5) — only if any scene has Render Path `explainer`
+### Step 4: (v3.9.2) No standalone Remotion step — clips first, Remotion after
 
-Read `{output_folder}/scene-plan.md` and look at the **Render Path** column. Scenes marked
-`explainer` are the ones that must be READABLE — metrics, diagrams, tables, UI walkthroughs. No
-video platform renders legible text, so those shots are coded in Remotion rather than generated.
-
-**Skip this step entirely when every scene is `platform`.** Say so out loud; a silent skip looks
-like a bug to anyone reading the run.
-
-Invoke the video-explainer skill for:
-- Remotion workspace scaffold inside the project (first use only)
-- Brand tokens written from `strategic-brief.md`
-- Reveals timed to the narration in `vo-manifest.json`
-- Render, then verify by looking at a still at each cue
-
-**Wait for the Phase 4.5 approval gate.**
-
-**Verify output exists:**
-- `{output_folder}/shots/out/` — one rendered file per explainer scene
+Remotion shots and overlays are built AFTER the VEO clips of their kelompok are rendered, never
+before. A card cut to the clip it follows needs the real clip length, the real light and the real
+last frame; building it first forces a guess that is redone when the clip arrives. `/video-explainer`
+runs inside Step 5 at step 5.1b K.4, per kelompok. Say so out loud when the film has `explainer`
+scenes; a silent skip looks like a bug.
 
 ---
 
-### Step 5: Run `/video-gen` (Phase 5 with Image Review)
+### Step 5: Run `/video-gen` (Phase 5 with Image Review, then Remotion per kelompok)
 
 Invoke the video-gen skill for:
 - Image Review (Step 0) — per-scene collaborative review of actual keyframe images

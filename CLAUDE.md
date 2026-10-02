@@ -619,6 +619,10 @@ All configurable values live in `reference/global-promo-config.md` — single so
 **Version:** 3.6.0
 **Last Updated:** 2026-09-29
 
+### v3.9.2 Changelog
+
+- **VEO clips first, Remotion after.** Within each kelompok the VEO clips are rendered and audited before any Remotion shot or overlay is built. `video-gen` Rule 24 and step 5.1b K.4; `video-explainer` prerequisite refuses to start while the kelompok's clips are missing; `video-full` drops the standalone Step 4 (Remotion before video); pipeline doc diagram and K.4 reason fixed. A card cut to a clip needs the real clip length, light and last frame. Test: `tests/consistency/clips-before-remotion.sh`. Source: Ekaputra film, 2026-10-02.
+
 ### v3.9.1 Changelog
 
 - **Logo only where the camera sees it, and checked against the real file.** `video-image` Rule 43: uniform logo only on garment areas that face the camera (no back logo in a shoulder close-up; plain garment there). Rule 44: after each render compare every vehicle, cooler box, carton and uniform logo with `ref/brand-<client>-logo.png`; fix by edit pass, never re-render. `video-prompt-reviewer` C13 fails a forced or unlocked logo. Source: Ekaputra scenes 04a, 07, 12a, 18, 2026-10-02.

@@ -36,8 +36,8 @@ for f in reference/post-production/*.md; do
   fi
 done
 
-if ! grep -qF '"version": "3.9.1"' .claude-plugin/plugin.json; then
-  echo "FAIL plugin.json version is not 3.9.1"
+if ! grep -qF '"version": "3.9.2"' .claude-plugin/plugin.json; then
+  echo "FAIL plugin.json version is not 3.9.2"
   fail=1
 fi
 

@@ -12,7 +12,7 @@ description: >
   scene angka, bikin shot penjelas, phase 4.5, render shot.
 ---
 
-# Video Explainer — Phase 4.5: Coded Shots for Scenes That Must Be Read
+# Video Explainer — Phase 4.5: Coded Shots for Scenes That Must Be Read (runs AFTER the VEO clips)
 
 ## Overview
 
@@ -25,6 +25,11 @@ what `scene-plan.md` marked `explainer`.
 
 ## Prerequisite
 
+- **(v3.9.2) The VEO clips of this kelompok are rendered first** (`clips/scene-NN.mp4` exists and
+  passed the frame audit). Build a shot only after the clip it follows or sits beside is real:
+  its length, light and last frame set the cut. Refuse to start when the kelompok's clips are
+  missing, and say which. Scenes that are Remotion only (no clip at all) still wait for the
+  kelompok's other clips, so the whole kelompok is judged on one cut.
 - `{output_folder}/scene-plan.md` with a `Render Path` column (Phase 3)
 - `{output_folder}/strategic-brief.md` with the brand section (Phase 1)
 - `{output_folder}/vo/vo-manifest.json` when the audio source is `elevenlabs` or `mixed` (Phase 5

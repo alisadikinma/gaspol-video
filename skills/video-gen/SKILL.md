@@ -98,6 +98,11 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or NB2-
 
 23. **(v3.6.0) Look at the contact sheet, then write the verdict.** After every render batch `tools/qa_frames.py` tiles five frames per clip into `.tmp/qa-scene-NN.jpg` (NN may carry a letter suffix, `01b`) and lists the scene's `PLAUSIBILITY:` answers in `work/visual-qa.md`. Every Verdict cell is `PASS`, `FAIL: <what is visible>` or `UNSURE: <why frames cannot tell>`, written after reading the sheet. `PASS` for something the frames do not show is a false verdict. `python3 tools/qa_frames.py {output_folder} --check` (validator V15) exits 1 on any empty cell or `FAIL:`; `UNSURE:` is listed as a note for a human look. This is the tool form of Rule 22.
 
+24. **(v3.9.2) VEO clips first, Remotion after.** Within a kelompok, render and audit the VEO clips
+(step 5.5, Rule 22) BEFORE `/video-explainer` builds any Remotion shot or overlay (step 5.1b K.4).
+A card or `veo>remotion` cut is timed to the real clip, so building it first means redoing it.
+Never invoke `/video-explainer` for a kelompok whose clips are not rendered.
+
 20. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
 `.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
@@ -496,7 +501,7 @@ FOR the kelompok just approved:
 
   2. K.3 voice change for the on-camera dialogue in these clips, when any scene is platform-native.
 
-  3. K.4 Remotion — invoke /video-explainer for THIS kelompok's explainer scenes and overlays only.
+  3. K.4 Remotion — only now that this kelompok's VEO clips are rendered and audited (Rule 24), invoke /video-explainer for THIS kelompok's explainer scenes and overlays only.
 
   4. K.5 kelompok cut — /video-post assembles output/kelompok-K{N}.mp4 under the A/V duration gate.
 
