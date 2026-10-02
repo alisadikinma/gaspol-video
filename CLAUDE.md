@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 28 CLI tools (26 Python + 2 Node, 4 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 36 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 29 CLI tools (27 Python + 2 Node, 5 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `keyword_cards.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 37 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -64,6 +64,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/composite_logo.py`, `tools/thumb_scrim.py` | Deterministic thumbnail post-process — real logo paste, headline scrim (needs Pillow via `_venv.py`) |
 | `tools/yt_stats.py` | Pulls YouTube Data/Analytics stats into `packaging/calibration.json` (needs the venv + an OAuth client) |
 | `tools/burn_subs.py`, `tools/edit_render.py`, `tools/gen_sfx.py`, `tools/gen_subs.py`, `tools/mix_music.py`, `tools/mix_sfx.py`, `tools/probe_clips.py` | Existing stdlib-only Phase 6 tools (assembly, SFX, subtitles, music mix, clip QA) |
+| `tools/keyword_cards.py` | Animated highlighted keyword text over a clip (stacked, no box, gold serif-italic keyword, fly-in/out) plus optional red flash behind a person mask; Pillow + ffmpeg, no Remotion |
 | `tools/caption_keywords.py` | Scores key phrases in a narration line (number+unit, brand term, acronym, reversal word) for kinetic-caption highlighting |
 | `tools/gen_captions.py` | Builds `work/caption-plan.json` from `vo/vo-manifest.json` words (or AssemblyAI, imported from `gen_subs.py`) plus `caption_keywords.score_spans()`; capped, deterministic, reusable unless `--force` |
 | `tools/plan_motion.py` | Fills the `motion` field on static segments of `work/edit-plan.json` — splits a segment over 5.0s into alternating punch-in/punch-out beats, gives a shorter one a single slow punch-in; never overwrites a hand-written `motion` or a `kind: "shot"` segment |
@@ -126,6 +127,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `post-production/15-packaging.md` | Phase 7 — Views = Reach x CTR, three bets on three levers, honesty guardrail, calibration honesty, hand-off to the image plugin |
 | `post-production/12-remotion-explainer.md` | Phase 4.5 — scaffolding the workspace, the rules that stop a render crashing, brand from the project, timing from the narration, verify-by-looking, cutaway vs overlay |
 | `post-production/18-screencast.md` | Phase 4.5 — screencast shots for scenes whose Screen Source is capture/mock: page/cursor/click API, navigation-vs-filter motion rules, cue timing from vo-manifest.json, qa-frames verification, mock-screen honesty |
+| `post-production/19-keyword-text-overlay.md` | Animated keyword highlight beside a speaker: look (no box, gold serif-italic keyword), fly-in timing from word timestamps, placement off the face, red alarm flash behind the person only |
 | `post-production/17-music-bed.md` | Phase 6 pass 4 — deriving the track from the script's music direction and tone, sitting 12 dB under the voice by measurement, segment fades and short-track handling, why the music pass fails soft while the A/V gate blocks |
 | `post-production/16-subtitles-and-captions.md` | Phase 6 pass 4 — caption text from the script (recognizer times only), derived keyterms, wrap-or-split rule, font and contrast guards, why this does not conflict with the `no subtitles` prompt negative |
 | `post-production/14-sfx-design.md` | Phase 6 pass 3 — deriving cues from DOMAIN CONTEXT and cultural research, library-first sourcing, gain calibration incl. the transient correction, the four ways an audibility measurement lies, density ceiling, hard audit gate |
@@ -619,6 +621,10 @@ All configurable values live in `reference/global-promo-config.md` — single so
 **Version:** 3.6.0
 **Last Updated:** 2026-09-29
 
+### v3.10.0 Changelog
+
+- **Keyword text overlay pattern.** Animated highlight over a speaker, in the look the user approved: stacked lines, no box or pill, small white sans, big gold serif-italic keyword (red for a danger word), soft shadow, 0.35 s fly-in and 0.25 s fly-out on the spoken word, cue times from voice word timestamps, never on the face. Optional red alarm flash on the background only through a person mask (alphamerge; a full-frame drawbox or maskedmerge tints the person). `video-gen` Rule 25, new `reference/post-production/19-keyword-text-overlay.md`, new tool `tools/keyword_cards.py` (needs Pillow, via `_venv`). Test: `tests/consistency/keyword-text-overlay.sh`. Source: Ekaputra film K1, 2026-10-03.
+
 ### v3.9.2 Changelog
 
 - **VEO clips first, Remotion after.** Within each kelompok the VEO clips are rendered and audited before any Remotion shot or overlay is built. `video-gen` Rule 24 and step 5.1b K.4; `video-explainer` prerequisite refuses to start while the kelompok's clips are missing; `video-full` drops the standalone Step 4 (Remotion before video); pipeline doc diagram and K.4 reason fixed. A card cut to a clip needs the real clip length, light and last frame. Test: `tests/consistency/clips-before-remotion.sh`. Source: Ekaputra film, 2026-10-02.
@@ -701,7 +707,7 @@ All configurable values live in `reference/global-promo-config.md` — single so
 - **Docs.** `reference/post-production/11-voice-cast-and-vo.md` (pause tags),
   `13-ffmpeg-edit.md` (dissolves and handles) and `17-music-bed.md` (video bed, fallback) carry the
   detail; `video-post`, `video-gen`, `video-script`, `video-validate` and both agents point at it.
-- **Tool count:** 28 CLI tools (26 Python + 2 Node) — counted from `tools/`; earlier releases stopped updating this number at 19 while `check_vo_duration.py`, `check_overlay_strings.py`, `track_screen.py`, `caption_keywords.py`, `gen_captions.py` and `plan_motion.py` landed. Excluded on purpose: TwelveLabs
+- **Tool count:** 29 CLI tools (27 Python + 2 Node) — counted from `tools/`; earlier releases stopped updating this number at 19 while `check_vo_duration.py`, `check_overlay_strings.py`, `track_screen.py`, `caption_keywords.py`, `gen_captions.py` and `plan_motion.py` landed. Excluded on purpose: TwelveLabs
   analysis, Sonilo, other render adapters, slide/zoom transitions, transitions outside act
   changes.
 

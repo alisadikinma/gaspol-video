@@ -154,6 +154,8 @@ speech-to-speech conversion (Pass 1 edge cases below). Scenes with no on-camera 
 ### K.4 — Remotion
 Render the explainer shots and the overlays that belong to this kelompok's scenes, through
 `/video-explainer`. Do not render the whole film's shots here — only this kelompok's.
+Highlighted keyword text over a speaker (and a red alarm flash behind a person) is built here too, with
+`tools/keyword_cards.py`, see `reference/post-production/19-keyword-text-overlay.md`.
 
 **Before rendering, refresh anything an overlay embeds.** An overlay that plays another clip inside
 itself reads a static COPY under `shots/public/`, which does not change when the source clip is

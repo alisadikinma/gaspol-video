@@ -103,6 +103,13 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or NB2-
 A card or `veo>remotion` cut is timed to the real clip, so building it first means redoing it.
 Never invoke `/video-explainer` for a kelompok whose clips are not rendered.
 
+25. **(v3.10.0) Keyword text overlay pattern.** A phrase the speaker must make memorable
+(a rule, a cost, a danger word) gets an animated highlight beside the speaker: stacked lines, no
+box, small white sans plus a big gold serif-italic keyword (red for a danger word), flying in on the
+spoken word. Build it with `tools/keyword_cards.py` (see `reference/post-production/19-keyword-text-overlay.md`),
+after the clip and voice exist (Rule 24), with cue times from the voice's word timestamps. Never put
+it on the face. A red alarm flash goes on the background only, through a person mask.
+
 20. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
 `.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
