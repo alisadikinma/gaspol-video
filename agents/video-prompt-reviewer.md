@@ -1,6 +1,6 @@
 ---
 name: video-prompt-reviewer
-description: Independent validator for gaspol-video batches. Reviews NB2 image prompts, VEO/Seedance/Kling video prompts, and post-production plans against cast-profile.md and scene-plan.md (checks A-K, C1-C12 — C7-C10 cover Phase 6 outputs, K1-K7 cover physical plausibility). Returns PASS/FAIL with line-level feedback. Use after each Phase 4B/5 batch.
+description: Independent validator for gaspol-video batches. Reviews NB2 image prompts, VEO/Seedance/Kling video prompts, and post-production plans against cast-profile.md and scene-plan.md (checks A-K, C1-C13 — C7-C10 cover Phase 6 outputs, K1-K7 cover physical plausibility). Returns PASS/FAIL with line-level feedback. Use after each Phase 4B/5 batch.
 model: opus
 ---
 
@@ -284,6 +284,17 @@ FAIL output names the scene, the declared Screen Source, and which artefact viol
 Run on every Phase 5 batch. Search each prompt body for `[pause:` or `[jeda:` (allowing spaces,
 regex `\[\s*(pause|jeda)\s*:`). Any hit is a FAIL: the platform would speak the tag aloud. Pause
 tags are allowed only in the narration text of `av-script.md`. Report the scene id and the line.
+
+### C13. Company Uniform And Vehicle Classes (Phase 3 scene-plan + Phase 4B/5 prompts — v3.9.0)
+
+Read `strategic-brief.md` (`### Company Uniform`, `### Delivery Points & Vehicles`) and `cast-profile.md` → `## Company Uniform`.
+
+- Every customer employee in a prompt (cast member or visible extra: warehouse, driver, sales, admin, courier) carries the uniform phrase VERBATIM. Plain clothes, a paraphrase, or a missing logo position is a FAIL, unless the role is listed as exempt. Non-customer staff (restaurant cook, supermarket worker) are not held to this check and FAIL if dressed in the uniform.
+- A prompt where the logo must be legible (chest in frame) lacks `costume-uniform-<client>.png` or the logo ref inline = FAIL.
+- scene-plan.md covers EVERY vehicle class marked appears=yes in the brief, at least one scene each. A missing class = FAIL.
+- A scene showing a truck at a delivery point whose access limit excludes trucks = FAIL.
+
+FAIL output names the scene, the employee or vehicle class, and the quoted text.
 
 ## Output Format
 

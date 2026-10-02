@@ -50,6 +50,8 @@ Total: 4 files. Do NOT preload Phase 2-5 references.
 11. **Location context first** — Video setting/location MUST be confirmed (Step 1.2c) BEFORE domain research. Domain knowledge is location-specific: RS Indonesia ≠ RS USA ≠ RS Japan.
 12. **Domain deep research (MANDATORY, location-aware)** — AI MUST WebSearch `{domain} in {location}` BEFORE scripting (Step 1.2d). 6 queries: local process flow, local equipment brands, local workforce/PPE, local facility layout, product interface, local regulations/signage. See `global-promo-config.md` Section 24.
 13. **(v3.8.0) Customer business profile + reference photos (Step 1.2e)** — for any video that shows a real customer, ask what the business sells and collect product + site photos BEFORE scripting. Environments and products in every later phase derive from these photos, not from the category. No photo → web research + NB2 reference the user approves; never invented silently.
+14. **(v3.9.0) Delivery points & vehicles (Step 1.2e)** — for any distribution/delivery customer, ask which delivery-point types it serves and which vehicle serves each, and which points a truck physically cannot reach. A truck-only film is wrong: last-mile to housing-complex shops and alleys is a motorbike with a cooler box. Saved as `### Delivery Points & Vehicles`.
+15. **(v3.9.0) One company uniform with logo (Step 1.2e)** — every employee of the customer wears the same uniform with the company logo. Ask the garment, colour, logo and logo placement, and which roles wear it; save `### Company Uniform` and one verbatim phrase in `cast-profile.md` → `## Company Uniform`. Only roles explicitly listed as exempt differ. Non-customer staff are not in the uniform.
 
 ---
 
@@ -343,6 +345,15 @@ Rules:
 
 Save to `strategic-brief.md` section `## Business Profile` (what is sold, where, what a visitor sees) and list every photo with `source: user-photo | generated-approved`.
 
+**Delivery points & vehicles (v3.9.0)** — for any distribution/delivery customer, ask, ONE question per turn:
+1. Which delivery-point types does the customer serve (supermarket dock, restaurant, small shop in a housing complex/perumahan, narrow alley, market stall, other)?
+2. Which vehicle serves each (truck, pickup, motorbike with cooler box, other)?
+3. Which points are physically unreachable by a truck (gate width, alley, no loading bay)?
+
+Save to `strategic-brief.md` as `### Delivery Points & Vehicles` (table: delivery point | access limit | vehicle | appears in video yes/no). Every vehicle class marked `yes` becomes a required vehicle asset (`ref/vehicle-<class>.png`) and at least one scene.
+
+**Company uniform (v3.9.0)** — ask, ONE question per turn: garment, colour, logo, logo placement (e.g. left chest, back), and which roles wear it (warehouse, driver, sales, admin, courier). Ask which roles are exempt (e.g. the guide, the customer's boss). Save to `strategic-brief.md` as `### Company Uniform` and write ONE verbatim phrase (garment + colour + logo position + `logo exactly as ref/brand-<client>-logo.png`) into `cast-profile.md` under `## Company Uniform`. Cast-profile Wardrobe Defaults inherit that phrase for every customer role. Non-customer staff (a restaurant cook, a supermarket worker) are NOT in the uniform. The logo file is the user's real logo (`ref/brand-<client>-logo.png`), never invented.
+
 #### Step 1.3: Target Market Selection
 
 ```
@@ -540,6 +551,13 @@ Present the Strategic Brief for approval:
 ### Business Reference Photos
 | File | Content | Source (user-photo / generated-approved) |
 |------|---------|------------------------------------------|
+
+### Delivery Points & Vehicles
+| Delivery point | Access limit | Vehicle | Appears in video (yes/no) |
+|----------------|--------------|---------|---------------------------|
+
+### Company Uniform
+{Garment, colour, logo, logo placement, roles in uniform, exempt roles — Step 1.2e}
 
 ## Cultural Context
 (Populated in Phase 3.5 via web search — see Step 3.5.2a)
