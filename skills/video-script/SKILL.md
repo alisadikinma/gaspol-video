@@ -87,6 +87,10 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 
 21. **(v3.8.0) Customer photos beat category research.** Products and premises come from `strategic-brief.md` → Business Profile + `ref/biz-*.png`. A scene that shows a product or place the customer never confirmed is a script defect — fix the scene, do not generate the product.
 
+22. **(v3.9.0) Every vehicle class in the brief appears in scene-plan.** `strategic-brief.md` → Delivery Points & Vehicles lists the classes. scene-plan covers EVERY class marked `appears = yes`, at least one scene per class. A scene that shows a truck going to a point whose access limit excludes trucks = STOP and ask the user; never film it. Why: Ekaputra film, 2026-10-02 — only trucks, no motorbike to perumahan shops.
+
+23. **(v3.9.0) One company uniform for every customer employee.** Every cast member and visible extra who works for the customer uses the verbatim phrase in `cast-profile.md` → `## Company Uniform`; only roles listed as exempt differ. Non-customer staff are not in the uniform. Why: Ekaputra film, 2026-10-02 — each role wore different plain clothes.
+
 ## Workflow
 
 ### Phase 2: SCRIPT GENERATION (Output: av-script.md)
@@ -289,6 +293,15 @@ FOR each scene in scene-plan.md:
     → IF product mentioned → REQUIRE ref/product-{name}.png (deduplicated)
        (a product in a scene that is NOT in the brief's Business Profile = STOP, ask the user; never invent a product)
     → IF brand/logo/UI visible → REQUIRE ref/brand-{asset}.png (deduplicated)
+
+FOR each vehicle class in strategic-brief.md → Delivery Points & Vehicles with appears = yes (v3.9.0):
+    → REQUIRE ref/vehicle-{class}.png
+    → scene-plan.md MUST contain at least one scene per such class, else STOP and add the scene
+    → a scene with a truck at a point whose access limit excludes trucks = STOP, ask the user
+
+IF strategic-brief.md has ### Company Uniform (v3.9.0):
+    → REQUIRE ref/brand-{client}-logo.png (the real logo file)
+    → REQUIRE ref/costume-uniform-{client}.png (front + back, Phase 4A, logo copied from the logo file)
 
 IF institution_detected:
     → REQUIRE ref/costume-{institution}.png (shared reference)

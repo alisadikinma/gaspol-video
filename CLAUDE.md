@@ -619,6 +619,10 @@ All configurable values live in `reference/global-promo-config.md` — single so
 **Version:** 3.6.0
 **Last Updated:** 2026-09-29
 
+### v3.9.0 Changelog
+
+- **Vehicle variety + one company uniform.** `video-brainstorm` Step 1.2e (Hard Rules 14, 15) asks the delivery-point types and which vehicle serves each (truck/pickup to docks and restaurants, motorbike with cooler box to housing-complex shops and alleys a truck cannot enter), saved as `### Delivery Points & Vehicles`; and the company uniform (garment, colour, logo, placement, roles), saved as `### Company Uniform` plus one verbatim phrase in `cast-profile.md` `## Company Uniform`. `video-script` rules 22-23 + 3.5.1: scene-plan covers every vehicle class marked appears=yes, STOP on a truck at a truck-excluded point, every customer employee in the uniform phrase. `video-image` prerequisite + Rules 41-42: `ref/vehicle-<class>.png` per class, `ref/costume-uniform-<client>.png` (front + back, real logo), uniform phrase in every NB2 prompt with a customer employee. `video-prompt-reviewer` check C13. Test: `tests/consistency/uniform-and-vehicle-contract.sh`. Source: Ekaputra film, 2026-10-02.
+
 ### v3.8.0 Changelog
 
 - **Customer business profile + reference photos.** `video-brainstorm` Step 1.2e asks what the customer sells, where, and what a visitor sees, then collects real product and site photos (`ref/biz-product-*.png`, `ref/biz-site-*.png`, optional asset and uniform). Hard gate before Phase 4A. No photo: web research + NB2 reference the user approves (`source: generated-approved`). `video-script` 3.5.1 pre-fills the manifest from these photos and stops on a product the customer never confirmed. `video-image` prerequisite + Rule 40: env and product assets derive FROM the photos. Test: `tests/consistency/business-reference-contract.sh`. Source: Ekaputra Scenes 11/12a, 2026-10-02.
