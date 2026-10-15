@@ -28,6 +28,8 @@ test("scaffold copies the lib and script files a registry-based workspace needs"
       "src/lib/kit.tsx",
       "src/lib/browser.tsx",
       "src/lib/screencast.tsx",
+      "src/lib/overlay-fx.tsx",
+      "src/lib/overlayFx.mjs",
       "scripts/gen-registry.mjs",
       "scripts/render-all.mjs",
       "scripts/qa-frames.mjs",
