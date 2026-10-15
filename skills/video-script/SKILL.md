@@ -59,7 +59,7 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 
 1. **NEVER skip a phase** — Phase 2, 3, and 3.5 must execute in order
 2. **NEVER proceed without user approval** — every phase ends with approval gate
-3. **Product is NEVER the hero** — customer is hero, product is bridge
+3. **Product is NEVER the hero** — customer is hero, product is bridge. (v3.11.1) Does not apply when `strategic-brief.md` has `video_type: issue` — there is no product.
 4. **First 3 seconds determine everything** — hook must stop the scroll
 5. **Forbidden words** — synergy, leverage, robust, revolutionary, cutting-edge, seamlessly, innovative solution, state-of-the-art
 6. **B-Roll voiceover = Voice-over narrator** — B-Roll uses `Voice-over narrator, [tone]: text` NOT bare `Voiceover:` (which lip-syncs to visible character). Every B-Roll MUST have VO narration + `> POST-PROD VO:` backup.
@@ -71,7 +71,7 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 12. **Cultural accuracy** — when location is specified, web search MUST be performed (Step 3.5.2a) and cultural details MUST be injected into environment NB2 prompts and VEO scene prompts. Wrong license plate / wrong ethnicity / wrong architecture = rejection signal.
 13. **UI text localization** — on-screen text (dashboards, signage, displays) MUST match `narration_language`. Technical abbreviations stay English. See `global-promo-config.md` Section 21.
 14. **Max 5 cast members** — 1-3 Pemeran Utama + 0-2 Pemeran Pendamping (NB2 identity lock limit)
-15. **(v2.2.0+) BODY 1 Pain Coverage HARD GATE** — Phase 2 script output MUST include Pain Coverage Table. `count(pains dramatized in BODY 1 dedicated scenes) >= count(pains identified in Phase 1 emotional core)`. Pairing allowed (max 2/scene, shared root cause). Anchor pain NOT pairable. Validator C1 auto-rejects script if (a) overlay text contains "1 dari N" / "1 of N" while N>1, or (b) BODY 1 coverage <50%. AMBER 50-99% requires user explicit confirmation. See `global-promo-config.md` §25.
+15. **(v2.2.0+) BODY 1 Pain Coverage HARD GATE** — Phase 2 script output MUST include Pain Coverage Table. `count(pains dramatized in BODY 1 dedicated scenes) >= count(pains identified in Phase 1 emotional core)`. Pairing allowed (max 2/scene, shared root cause). Anchor pain NOT pairable. Validator C1 auto-rejects script if (a) overlay text contains "1 dari N" / "1 of N" while N>1, or (b) BODY 1 coverage <50%. AMBER 50-99% requires user explicit confirmation. See `global-promo-config.md` §25. (v3.11.1) Skipped when `video_type: issue`; the script follows Opening → Foreshadow → Body → CTA instead.
 
 ---
 
@@ -90,6 +90,12 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 22. **(v3.9.0) Every vehicle class in the brief appears in scene-plan.** `strategic-brief.md` → Delivery Points & Vehicles lists the classes. scene-plan covers EVERY class marked `appears = yes`, at least one scene per class. A scene that shows a truck going to a point whose access limit excludes trucks = STOP and ask the user; never film it. Why: Ekaputra film, 2026-10-02 — only trucks, no motorbike to perumahan shops.
 
 23. **(v3.9.0) One company uniform for every customer employee.** Every cast member and visible extra who works for the customer uses the verbatim phrase in `cast-profile.md` → `## Company Uniform`; only roles listed as exempt differ. Non-customer staff are not in the uniform. Why: Ekaputra film, 2026-10-02 — each role wore different plain clothes.
+
+24. **(v3.11.1) Every spoken or shown number has a source the viewer could check.** A published article from a reliable outlet, never an unsourced claim. `av-script.md` gets a `Source` note per line that carries a number, and a screenshot of the real article (not AI-generated) is listed in `ref-manifest.md` as `ref/source-{NN}.png` so it can appear on screen.
+
+25. **(v3.11.1) Files refer to each other by scene number, never by seconds.** Seconds live in ONE place — the timing table of `scene-plan.md`. Every other file (brief, script notes, prompts, post-production plan) says "scene 07", not "0:42". When the duration changes, one table changes instead of every file.
+
+26. **(v3.11.1) Rewrite output files clean after each decision.** When a decision changes `strategic-brief.md`, `av-script.md` or `scene-plan.md`, rewrite the affected sections so the file reads as the current truth. Do not append "UPDATE" notes under stale tables. Keep a short `## Riwayat` section at the end: date, what changed, why.
 
 ## Workflow
 
@@ -195,7 +201,7 @@ The Phase 3 approval gate MUST report the split, so the user sees what it saved:
 
 ```
 Render path: {N} live-action, {M} explainer
-Explainer scenes skip NB2 keyframes and platform generation entirely.
+Explainer scenes get one NB2 base keyframe each and no platform generation (video-image Rule 33).
 ```
 
 ### Screen Source per Scene (v3.1.0 — MANDATORY)
@@ -535,7 +541,11 @@ B) Mau review manifest lagi
 - [ ] Hook passes "So What?" in 3 seconds
 - [ ] CTA is specific, time-bound, low-friction
 - [ ] Opening does NOT start with company name/logo
-- [ ] No jargon without translation
+- [ ] No jargon without translation — and (v3.11.1) no everyday word that a lay viewer reads differently from the intended meaning (a word with a common second meaning); replace it or define it on first use
+- [ ] **(v3.11.1) No visual implies an unproven claim** — each visual shows only what the sourced narration states; an image that suggests a consequence nobody has documented is cut. For `video_type: issue`, the brief's `## Honesty Limits` are re-checked line by line
+- [ ] **(v3.11.1) Screen text matches voice** — every keyword on screen is also spoken in that line; one unit per quantity across voice and screen (no switching units mid-claim); one figure per claim, never two competing benchmarks in one line
+- [ ] **(v3.11.1) Foreshadow answered by voice** — every promise made in the Foreshadow ("the answer is at the end") is answered in the spoken narration, not only by on-screen text
+- [ ] **(v3.11.1) Sources** — every number in narration or on screen has a Source note and a real-article screenshot in ref-manifest
 
 ### Reference Collection Quality Gate (Phase 3.5)
 - [ ] All cast face refs uploaded (per role requirements)

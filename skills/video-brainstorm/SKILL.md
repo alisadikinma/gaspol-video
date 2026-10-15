@@ -41,7 +41,7 @@ Total: 4 files. Do NOT preload Phase 2-5 references.
 2. **First 3 seconds determine everything** — hook must stop the scroll
 3. **Forbidden words** — synergy, leverage, robust, revolutionary, cutting-edge, seamlessly, innovative solution, state-of-the-art
 4. **Every feature MUST have human consequence** — no feature listing without "so what?"
-5. **All AskUserQuestion interactions** — NEVER ask questions as plain text, ALWAYS use AskUserQuestion tool with selectable options
+5. **All AskUserQuestion interactions** — NEVER ask questions as plain text, ALWAYS use AskUserQuestion tool with selectable options. (v3.11.1) Exception: when the user chooses to design in the artifact (Rule 18), the artifact carries the design and AskUserQuestion is used only for approval.
 6. **Max 5 cast members** — 1-3 Pemeran Utama + 0-2 Pemeran Pendamping (NB2 identity lock limit)
 7. **Cast ref by role** — Utama: face+body+costume(if institutional) MANDATORY. Pendamping: face MANDATORY, body/costume OPTIONAL.
 8. **Narration language from Step 1.0** — script dialogue and VEO `says:` text MUST be in user's chosen language. NB2/VEO prompt structure stays English.
@@ -52,6 +52,9 @@ Total: 4 files. Do NOT preload Phase 2-5 references.
 13. **(v3.8.0) Customer business profile + reference photos (Step 1.2e)** — for any video that shows a real customer, ask what the business sells and collect product + site photos BEFORE scripting. Environments and products in every later phase derive from these photos, not from the category. No photo → web research + NB2 reference the user approves; never invented silently.
 14. **(v3.9.0) Delivery points & vehicles (Step 1.2e)** — for any distribution/delivery customer, ask which delivery-point types it serves and which vehicle serves each, and which points a truck physically cannot reach. A truck-only film is wrong: last-mile to housing-complex shops and alleys is a motorbike with a cooler box. Saved as `### Delivery Points & Vehicles`.
 15. **(v3.9.0) One company uniform with logo (Step 1.2e)** — every employee of the customer wears the same uniform with the company logo. Ask the garment, colour, logo and logo placement, and which roles wear it; save `### Company Uniform` and one verbatim phrase in `cast-profile.md` → `## Company Uniform`. Only roles explicitly listed as exempt differ. Non-customer staff are not in the uniform.
+16. **(v3.11.1) Video type first (Step 1.0b)** — a promo video and an issue/explainer video are different jobs. `video_type: issue` skips the product gates (Steps 1.2, 1.2b, 1.2e; Rules 1, 4, 13-15) and uses the four-part frame Opening → Foreshadow → Body → CTA instead of the 7-beat promo arc. Forcing an issue video through business profile, uniform and pain-table gates produces questions with no true answer.
+17. **(v3.11.1) Honesty limits for issue videos** — required in the brief when `video_type: issue`: ask, do not accuse; aim at policies and numbers, never at named people; say "belum ada buktinya" (or the language equivalent) before any estimate or projection; no AI-generated face of a real person. Saved as `## Honesty Limits` and checked again in Phase 2.
+18. **(v3.11.1) Offer the design artifact (Step 1.0c)** — some users design faster on one page than through a chain of choice questions. Offer it once; if chosen, publish one design artifact (flow, narration per step, on-screen text, production method per step) and update the SAME artifact on every revision. The strategic brief is still written from it at Step 1.8.
 
 ---
 
@@ -73,6 +76,37 @@ Save selection as `narration_language` in strategic-brief.md.
 This affects: script dialogue (Phase 2), VEO `says:` text (Phase 5), strategic brief language.
 NB2/VEO prompt structure always stays English (per `global-promo-config.md` `prompt_language`).
 
+#### Step 1.0b: Video Type (v3.11.1)
+
+```
+AskUserQuestion:
+"Jenis video apa ini?"
+
+Options:
+A) Promosi produk/layanan (alur standar)
+B) Isu / penjelasan (tidak ada produk yang dipromosikan)
+```
+
+Save as `video_type: promo | issue` in strategic-brief.md.
+
+If `issue`:
+- Skip Step 1.2 (product), 1.2b (institution) and 1.2e (business profile, record `business_profile: none`). Location (1.2c) and domain research (1.2d) still run — research the issue, not a product.
+- Step 1.7 maps the storyline to four parts — Opening, Foreshadow, Body, CTA — instead of the 7-beat arc. The Foreshadow is a question the Body must answer.
+- Hard Rule 17 (honesty limits) becomes part of the brief.
+
+#### Step 1.0c: Design Mode (v3.11.1)
+
+```
+AskUserQuestion:
+"Mau desain video lewat pertanyaan satu per satu, atau lewat satu halaman desain yang bisa kamu revisi?"
+
+Options:
+A) Pertanyaan satu per satu (alur standar)
+B) Halaman desain (artifact) — saya revisi langsung
+```
+
+If B: build one artifact with four sections — flow (steps in order), narration per step, on-screen text per step, production method per step (live-action / explainer / screen recording). Fill it from what is known, mark unknowns, and ask the user to revise. Every revision updates the same artifact, never a new one. Continue with the steps below only for facts the artifact does not settle (cast, references, platform), then write the brief at Step 1.8 from the artifact.
+
 #### Step 1.1: Welcome & Cast Setup
 
 **Read:** `creator-profile-system.md` (Cast Profile System)
@@ -93,6 +127,7 @@ If "Build cast baru" or "Ali Sadikin preset" → follow Cast Builder Flow in `cr
 3. Per-character profile collection (name, gender, age, ethnicity, features)
 4. Ali Sadikin preset assignment (if selected)
 5. Institution detection (auto-scan brand + confirm)
+6. (v3.11.1) Costume per story situation — for each main situation in the story (heat, rain, night, power cut, formal meeting, field work), ask what each Pemeran Utama wears. A preset's Wardrobe Defaults are only the starting value; a costume that ignores the situation is replaced later at keyframe cost.
 
 Save output: `{project}/cast-profile.md`
 
@@ -189,6 +224,8 @@ Save as `video_location`, `video_country`, `video_setting_type` in strategic-bri
 **Trigger:** After product (Step 1.2) + institution (1.2b) + location (1.2c) are known.
 
 **Protocol:** Use WebSearch to build location-specific domain knowledge.
+
+(v3.11.1) If a search or scrape MCP tool fails because its API key is not loaded (a key added to the MCP config is usually read only after Claude Code restarts), call the provider's REST API directly with the key from the environment — never print the key — and tell the user the MCP needs a restart. Do not silently drop to fewer sources.
 
 ```
 ALGORITHM: Domain Deep Research (Location-Aware)
@@ -395,6 +432,12 @@ C) Instagram Reels (9:16, 60-90s)
 D) TikTok (9:16, 60-90s)
 ```
 
+**(v3.11.1) Timing budget.** The target duration is split before any script exists:
+- On-camera slots (a person speaking to camera, usually hook and CTA) at `on_camera_words_per_sec`, not at narration pace.
+- Narration slots at `narration_words_per_sec`.
+- Silent seconds reserved for an opener (black frame, title) and a closer.
+Show the split. A video whose on-camera lines were timed at narration pace runs long and is recut later.
+
 #### Step 1.6: Emotional Core Discovery
 
 ```
@@ -445,7 +488,9 @@ User pastes freeform text in the next message. AI then:
 | Won Day | ❌ Missing | — |
 ```
 
-3. For missing beats, suggest additions:
+3. **(v3.11.1) Word budget per line.** As soon as any narration text exists, show a table — line, seconds, words, limit (`seconds × narration_words_per_sec` from `global-promo-config.md`), status. Lines over the limit are flagged now, not discovered at voice-over time. Count real words; do not estimate.
+
+4. For missing beats, suggest additions:
 
 ```
 AskUserQuestion:
@@ -558,6 +603,9 @@ Present the Strategic Brief for approval:
 
 ### Company Uniform
 {Garment, colour, logo, logo placement, roles in uniform, exempt roles — Step 1.2e}
+
+## Honesty Limits (only when video_type: issue)
+{the four limits from Hard Rule 17, plus any the user adds}
 
 ## Cultural Context
 (Populated in Phase 3.5 via web search — see Step 3.5.2a)

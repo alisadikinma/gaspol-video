@@ -16,7 +16,7 @@ description: >
 
 ## Overview
 
-Orchestrator skill that runs the complete production pipeline, Phase 1 through Phase 7, by invoking 7 specialized skills in sequence. Each skill handles its own context loading, reference files, and approval gates. This skill delegates entirely — it carries no generation logic of its own.
+Orchestrator skill that runs the complete production pipeline, Phase 1 through Phase 7, by invoking 7 specialized skills in sequence. Each skill handles its own context loading, reference files, and approval gates. This skill delegates entirely — it carries no generation logic of its own. (v3.11.1) The production work of each phase runs in `gaspol-video:video-engine-agent` (Hard Rule 10); this session keeps the decisions and the approval gates.
 
 **Output:** Complete production package — 8 planning files, the rendered explainer shots, the mixed master, and its packaging — for a 2-3 minute promotional video.
 
@@ -217,5 +217,12 @@ All hard rules from individual skills apply. Key cross-cutting rules:
 9. **A scene is never spoken twice** — a scene whose `audio_source` is `elevenlabs` carries no
    speech line in its platform prompt. Two voices saying the same line is the failure this rule
    exists to prevent
+10. **(v3.11.1) Each phase runs in `video-engine-agent`; this session holds the gates** — dispatch
+   one agent per phase with a brief that lists every decision the user has made so far (language,
+   cast, video type, tone, approved files and their paths). The agent writes the phase files; this
+   session reads them, runs the approval gate with AskUserQuestion (a subagent cannot ask the user),
+   and records the answer in the next brief. A phase done in the main session fills its context
+   with reference files the later phases cannot afford. An agent that stops on a network error is
+   resumed with SendMessage to the same agent, not restarted from zero
 
 See individual skill files for complete hard rules per phase.

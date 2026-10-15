@@ -82,6 +82,8 @@ See `reference/image-video-gen/07-seedance-production-guide.md` for full Seedanc
 | `kling_negative_prompt` | `deformed hands, extra fingers, asymmetrical facial features, unnatural joint angles, sliding feet, morphing limbs, frozen mouth during speech, no subtitles, no text overlays, no audience sounds` | Universal base. Add 1-2 focused category (human/product/motion/env) per scene. 3-5 focused beats 20 generic |
 | `kling_aspect_ratios` | `16:9, 9:16, 1:1` | 3 options in UI — covers YouTube/LinkedIn (16:9), Reels/TikTok/Shorts (9:16), Instagram square (1:1) |
 | `kling_duration_dialogue_budget` | `~2.5 words/sec` | Use to pick exact duration for dialogue scene. E.g., 12 words ≈ 5s. Exceeds = rushed. |
+| `narration_words_per_sec` | `~2.5 words/sec` | (v3.11.1) Budget for every voice-over line from the first narration draft (Phase 1 Step 1.7). Words over `seconds × rate` = the line is cut or the slot grows, decided before approval. |
+| `on_camera_words_per_sec` | `~2 words/sec` or the speaker's measured pace | (v3.11.1) A person speaking to camera talks slower than a narrator. Budget on-camera slots at this rate, separately from narration. |
 | `kling_lip_sync_languages` | `EN, ZH, JA, KO, ES` (on-screen lip-sync only) | 5 langs for **on-screen lip-sync** (face >30% speaking). **Voice-over narrator** supports MORE languages including **Bahasa Indonesia natively** — use `Voice-over narrator, [tone]: [ID text]` for B-Roll/off-screen, no post-prod dub needed |
 | `kling_vo_languages` | Includes Bahasa Indonesia + 5 lip-sync langs + others | Voice-over narrator (off-screen) renders natively — different model path than lip-sync. Critical for Indonesian B-Roll production |
 | `kling_mixed_language_scene` | `SUPPORTED` | Unique to Kling — different characters can speak different languages in same scene, each lip-syncs correctly |
@@ -1118,6 +1120,12 @@ STEP 2: For each location, ask user
   Options:
   A) Ada foto untuk semua/sebagian → upload ke ref/env-{location}.png
   B) Tidak ada foto → generate pakai NB2 (cultural context will be injected)
+
+  (v3.11.1) A NAMED real place — a specific building, facility, landmark or
+  street the viewer can recognise — needs a real photo (user photo, or a
+  licensed/public photo the user approves). Option B is not offered for it.
+  If no real photo can be found, the scene shows a generic, unnamed place of
+  the same kind instead, and the narration does not name it on that shot.
 
 STEP 3: If user photo → use as ground truth
   → "match environment EXACTLY as shown in env-{location}.png"

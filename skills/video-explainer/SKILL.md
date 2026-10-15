@@ -62,8 +62,8 @@ coded shot.
 
 ## Hard Rules (NON-NEGOTIABLE)
 
-1. **Build only what Phase 3 marked `explainer`.** Reclassifying a scene here means the keyframes
-   for it were already paid for; if the classification is wrong, say so and go back.
+1. **Build only what Phase 3 marked `explainer`.** Reclassifying a scene here means Phase 4B already
+   rendered the wrong kind of keyframe for it; if the classification is wrong, say so and go back.
 2. **No palette ships in this plugin.** Colours and fonts come from `strategic-brief.md` into
    `brand.json`. A hardcoded brand colour in a template is a bug.
 3. **Frame-based animation only.** No `useState`, no `useEffect`, no `setTimeout`, no unseeded
@@ -90,6 +90,12 @@ coded shot.
    measurable. Under 120px wide, or a screen that faces away from the camera → floating card. A
    guard-post monitor measured 60x45px in a 1920x1080 frame; a panel tracked onto a monitor facing
    the actor rendered behind the device. `track_screen.py` exits 2 below the width floor.
+
+11. **(v3.11.1) Focus markers are Remotion layers, never baked into the image.** A highlight,
+   circle, underline or arrow drawn into the base image cannot move, fade or follow the narration.
+   Keep the base image clean and draw every marker as a Remotion layer timed to the cue word. For
+   a news-clipping image, store each sentence line as a box (`x, y, w, h` in image pixels) in a
+   sidecar `<image-name>.lines.json` next to the image, so a marker can land on the exact line.
 
 8. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
@@ -118,7 +124,7 @@ has to make readable. Present the list before building anything:
 {N} explainer scenes:
   Scene 5  — 5s  — before/after gate waiting time (42 min -> 6 min)
   Scene 11 — 7s  — three-step rollout timeline
-Estimated NB2 credits saved by not keyframing these: {N} x 2 frames
+Base images ready in keyframes/: {M}/{N}   (missing = go back to Phase 4B, Rule 33)
 ```
 
 ### Step 4.5.1: Scaffold the workspace (first use only)
@@ -134,6 +140,10 @@ placeholder value — they exist only so the scaffold renders before a brand is 
 Tell the user about the one-time `npm install` (about 300MB) rather than running it silently.
 
 ### Step 4.5.2: Author one shot per scene
+
+(v3.11.1) Start from the scene's base keyframe `keyframes/scene-{NN}.png`: cut it into sprites, one per
+element the narration names, saved under `work/sprites/scene-{NN}/`, and animate each sprite on its
+cue word. Do not redraw in shapes what the base image already shows.
 
 Copy `templates/remotion/Shot.template.tsx`, rename the component and `compositionConfig.id` to
 match the scene, and build the content. Pull the cue times from `vo-manifest.json`:
@@ -229,6 +239,7 @@ See `skills/video-post/SKILL.md` Pass 4.1 for that workflow.
 - [ ] Cue times trace to `vo-manifest.json` where narration exists
 - [ ] No shot carries its own audio track
 - [ ] Shot ids recorded in `scene-plan.md`
+- [ ] **(v3.11.1)** No highlight, circle or arrow baked into a base image; every marker is a timed Remotion layer, and clipping images have a `.lines.json` sidecar
 - [ ] **(v3.4.0)** Screen-attached panels use `QuadScreenTracked` with a `track_screen.py` track, and the QA frames were inspected
 - [ ] **(v3.4.0)** Every surface under 120px wide, or facing away from camera, became a floating card instead of a tracked panel
 - [ ] **(v3.4.0)** On-screen strings pass `python3 tools/check_overlay_strings.py shots/src --from-markdown av-script.md --heading "Blok 4"`

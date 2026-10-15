@@ -241,12 +241,13 @@ Options:
 A) VEO 3.1 (Google) — broadcast cinematic, prompt-faithful, lip-sync EN/ID, 8s/clip + extend ke 148s
 B) Seedance 2.0 (ByteDance) — native 2K, @ reference system (12 assets), unlimited extension, audio reference input
 C) Kling 3.0 (Kuaishou) — native 4K, multi-shot storyboard (6 shots/15s), mixed-language scene, photoreal human motion (Bahasa Indonesia: ✅ Voice-over narrator native, ❌ on-screen lip-sync 5 langs only)
-D) Mixed (pilih per-scene) — set `platform` column per scene in scene-plan.md
+D) Mixed (pilih per-scene) — only when the user explicitly wants it (v3.11.1, see rule below)
 ```
 
 **Platform selection rules:**
 - Save `video_platform` to `{output_folder}/scene-plan.md` (header line or per-scene column for Mixed mode)
 - If Bahasa Indonesia dialogue is mandatory: Kling 3.0 OK for **B-Roll + off-screen Voice-over narrator** (native ID support). Only switch to VEO/Seedance for **on-screen lip-sync ID dialogue** scenes (face >30% frame speaking ID)
+- (v3.11.1) **One model for every clip by default.** Clips from different models differ in colour, grain and motion, and the cut shows it. Recommend A, B or C for the whole project; offer D only when one model cannot do a required scene, and name that scene.
 - If user picks Mixed → engine suggests per-scene platform via heuristic table in `reference/image-video-gen/08-kling-production-guide.md` "Phase 5 Decision Matrix"
 - Platform-specific mode selection (VEO Ingredients vs First+Last Frame; Seedance Omni vs First/Last; Kling I2V vs Multi-Shot vs Motion Control) happens per-scene during Image Review (Step 0)
 - Subsequent VEO-named steps in this skill (Step 5.1-5.4) apply to all three platforms — substitute mode/audio/safety rules from the matching platform guide
@@ -263,8 +264,15 @@ D) Mixed (pilih per-scene) — set `platform` column per scene in scene-plan.md
 - **Voice-over consistency** — for any video >1 scene, follow `09-voice-consistency-workflow.md` (pick Path A/B/C, lock voice description verbatim across all prompts, single emotion per scene)
 
 **Platform-specific divergences (load matching guide for full rules):**
+
+(v3.11.1) Check the four limit rows below against the scenes BEFORE offering Step 5.0 options. A model that cannot take the project's keyframes as first frames, or rejects its faces, is not offered as a whole-project choice. Access through a reseller or a lower tier can be stricter than the vendor model: confirm the tier's limits with one test call before committing a project to it.
+
 | Aspect | VEO 3.1 | Seedance 2.0 | Kling 3.0 |
 |--------|---------|--------------|-----------|
+| Real-person photo as input | Recognisable face can trip `PROMINENT_PEOPLE_FILTER_FAILED` (GROK failover, `02-veo-production-guide.md`) | Real faces rejected (`07-seedance-production-guide.md`) | Not documented — test one call first |
+| Image as first frame | Yes (I2V; one face image per call) | Yes on the full model (1 start image); some tiers take images only as references | Yes (I2V) |
+| Allowed durations | 4 / 6 / 8 s | 4-15 s; some tiers only fixed lengths | 3-15 s |
+| Prompt language | Structure English; `says:` in narration language | Structure English; `(Language: XX)` tag for dialogue | Structure English |
 | Resolution | 720p (extend) / 1080p (final) | Native 2K | Native 4K |
 | Clip duration | 8s + extension ~148s | 4-15s + unlimited extend | **3-15s per-second granular** (no native extend) |
 | Modes | Ingredients / First+Last / Extend / I2V | T2V / I2V / First-Last / Omni / Video Ext | T2V / I2V / First-Last / Multi-Shot / Motion Control |

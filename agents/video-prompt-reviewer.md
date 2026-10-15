@@ -198,8 +198,9 @@ Cross-check `scene-plan.md`'s `Render Path` column against what was actually pro
 
 - Every scene has a `Render Path`, either `live-action` or `explainer`. A blank cell is a FAIL, not a
   default.
-- An `explainer` scene has **no** NB2 keyframe prompt and **no** platform prompt. Either one present
-  is a FAIL — it means credits were spent on an artefact nothing consumes.
+- (v3.11.1) An `explainer` scene has exactly ONE NB2 base-keyframe prompt (`keyframes/scene-{NN}.png`,
+  no text, no highlight/circle/arrow) and **no** platform prompt. A missing base keyframe, a second
+  frame, text or markers in the prompt, or any platform prompt is a FAIL.
 - A `live-action` scene has BOTH, as before.
 - A scene recorded as `live-action + overlay:<shot-id>` is checked as `live-action`, and the named
   shot id must exist in the Phase 4.5 shot list.

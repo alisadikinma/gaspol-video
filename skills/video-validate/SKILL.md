@@ -128,13 +128,14 @@ E) All — validate everything
 
 ### Part B: Actual Image Checks (Multimodal)
 
-### Check I17: Explainer Scenes Have No Keyframe (v3.0.0)
+### Check I17: Explainer Scenes Have One Base Keyframe (v3.11.1; was "no keyframe" v3.0.0)
 
 Read `scene-plan.md`. For every scene whose `Render Path` is `explainer`, assert `image-prompts.md`
-contains NO prompt for it. An explainer scene is built as a Remotion shot in Phase 4.5; a keyframe
-for it is spend with no consumer.
+contains exactly ONE prompt for it — the base keyframe `keyframes/scene-{NN}.png` — with no text and
+no highlight, circle or arrow, and that no platform prompt exists for it (video-image Rule 33).
 
-FAIL lists the scene numbers that have both. Mirrors reviewer check C6.
+FAIL lists the scene numbers with zero or more than one base prompt, text or markers in the prompt,
+or a platform prompt. Mirrors reviewer check C6.
 
 ### Check I11: Read Keyframe Images
 **How:** READ each .png file in keyframes/ folder (multimodal)

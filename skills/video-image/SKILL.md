@@ -65,21 +65,22 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or VEO 
 
 ---
 
-### Rule 33: Explainer scenes are skipped in Phase 4B (v3.0.0)
+### Rule 33: Explainer scenes get one base keyframe in Phase 4B (v3.11.1; skipped v3.0.0-v3.11.0)
 
-`scene-plan.md` gives every scene a `Render Path`. Phase 4B generates keyframes for `live-action`
-scenes ONLY. An `explainer` scene is built as a Remotion shot by `/video-explainer` in Phase 4.5, so
-generating an NB2 keyframe for it spends credits on an image nothing will ever use.
+`scene-plan.md` gives every scene a `Render Path`. A `live-action` scene gets its keyframes as below.
+An `explainer` scene gets exactly ONE full keyframe, `keyframes/scene-{NN}.png`: the clean base image
+the Remotion shot is built from. Every element the narration names is visible in it; it carries no
+text and no highlight, circle or arrow (markers are Remotion layers — explainer Rule 11). Phase 4.5
+cuts it into sprites and animates each sprite on its cue word. An explainer drawn from flat shapes
+with no base image reads as a slide, not as part of the film. No platform prompt for explainer scenes.
 
 **Phase 4A is NOT filtered.** An explainer shot still needs its assets — a logo, a product photo, a
-UI reference, a face for a portrait inset. Generate those in Phase 4A exactly as before; only the
-scene keyframes in 4B are skipped.
+UI reference, a face for a portrait inset. Generate those in Phase 4A exactly as before.
 
-The batch summary must name the skipped scenes, so a scene that is `explainer` by mistake is visible
-rather than silently missing:
+The batch summary names both kinds, so a scene on the wrong path is visible:
 
 ```
-Batch {N}: {X} keyframes generated, {Y} scenes skipped (explainer): {list}
+Batch {N}: {X} live-action keyframes, {Y} explainer base images: {list}
 ```
 
 ### Rule 34: Screen Source scenes never get an NB2 UI prompt (v3.1.0)
@@ -160,6 +161,8 @@ it replaces the folder — use `ffmpeg -vf scale`. Full contract:
 42. **(v3.9.0) One company uniform with the real logo.** Phase 4A generates `ref/costume-uniform-<client>.png` (front + back), logo copied from `ref/brand-<client>-logo.png`, never invented. Phase 4B: every NB2 prompt with a customer employee includes the verbatim phrase from `cast-profile.md` → `## Company Uniform`, and, when the logo must be legible (chest in frame), the uniform ref or logo ref inline (still within the 5-reference limit). Non-customer staff are not in the uniform. Why: Ekaputra film, 2026-10-02 — each role in different plain clothes.
 43. **(v3.9.1) Show the uniform logo only where the camera sees that part of the garment.** Chest logo only when the chest faces the camera; back logo only in back-facing medium or wide shots. When the shot crops the shoulder, neck or back (over-the-shoulder close-up, hand-and-phone close-up), the employee still wears the uniform garment, but the prompt says plain and carries NO logo. Never force a logo onto an area the frame cannot show. Why: Ekaputra scene 12a, 2026-10-02 — a back logo on a shoulder close-up looked forced.
 44. **(v3.9.1) Check every logo against the real logo file after each render.** Compare vehicle sides, cooler boxes, cartons and uniforms with `ref/brand-<client>-logo.png`: shape, colours, spelling, upright. A wrong or garbled logo is fixed by an edit pass (keyframe + the logo file as references), not by re-rendering the scene. Cartons and props that show a made-up logo are changed to the real logo or left plain. A keyframe reused as a reference carries its logo errors into the next one, so fix the source first. Why: Ekaputra scenes 04a, 07 and 18, 2026-10-02.
+45. **(v3.11.1) The image model is a choice, not a constant.** `image_model` lives in `strategic-brief.md`. If it is missing, ask once at the start of Phase 4A, offering the models `list_image_models` returns (default `nano-banana-2`), and save the answer to the brief. Model-specific parameters (CFG, denoise, thinking level) go on one `PARAMS:` line after the prompt body, never inside it, so the same body works on another model.
+46. **(v3.11.1) Show one, then render many.** Order is fixed: reference images (4A) → one pilot start frame the user approves (Step 4B.2 b2) → the rest of the batch. A bulk render before anyone has seen a single frame spends credits on a look nobody approved.
 
 ## Workflow
 
@@ -277,7 +280,7 @@ After the asset library is approved (option A above), offer to render it through
 1. BUILD the render list for the approved batch (all Phase 4A asset prompts):
    FOR each prompt:
      - file      = the prompt's `**Output →**` filename
-     - model     = "nano-banana-2"
+     - model     = `image_model` from strategic-brief.md (Rule 45; default "nano-banana-2")
      - aspect    = the prompt's first line aspect ratio
      - refs      = every bare filename in the prompt's Required Reference Images
                    table, resolved to `{output_folder}/ref/<name>`
@@ -319,7 +322,7 @@ After the asset library is approved (option A above), offer to render it through
 
 3. ASK (only if the render list is non-empty):
    AskUserQuestion:
-   "Render batch {N} sekarang? ({k} gambar, model nano-banana-2)"
+   "Render batch {N} sekarang? ({k} gambar, model {image_model})"
    Options:
    A) Render sekarang
    B) Nanti, simpan prompt saja
@@ -332,14 +335,14 @@ After the asset library is approved (option A above), offer to render it through
         indusia-image-gen"; continue to the next prompt.
    b. ELSE call:
         mcp__indusia-image-gen__generate_image(
-          prompt=<full prompt body text>, model="nano-banana-2",
+          prompt=<full prompt body text>, model=<image_model>,
           aspect=<aspect>, resolution="2K", output_format="png",
           output_dir="{output_folder}/.tmp", refs=[<resolved ref paths>])
       - ON success: move the returned local file to the prompt's `**Output →**`
         path (create parent directories first), then:
            python3 tools/renders.py {output_folder} record --json \
              '{"file": "<file>", "phase": "4A", "status": "done", \
-               "cdn_url": "<cdn_url>", "refs": [<refs>], "model": "nano-banana-2"}' \
+               "cdn_url": "<cdn_url>", "refs": [<refs>], "model": "<image_model>"}' \
              --prompt-file <temp-file>
         (`record` computes and stores the prompt's sha256 from `--prompt-file`
         and strips any query string off `cdn_url` before writing.)
@@ -353,7 +356,7 @@ After the asset library is approved (option A above), offer to render it through
       its prompt), offer in one line: "simpan ke library untuk project lain?".
       On yes:
         python3 tools/asset_library.py add --file <file> \
-          --prompt-file <temp-file> --aspect <aspect> --model nano-banana-2 \
+          --prompt-file <temp-file> --aspect <aspect> --model <image_model> \
           --tags <a,b> --description "<short>" --project {output_folder}
       Exit 2 = the prompt is project-specific; say so and move on.
 
@@ -409,9 +412,10 @@ Build scene-to-asset mapping from scene-plan.md.
 Group scenes by ACT from scene-plan.md. Each ACT = 1 batch. If an ACT has >5 scenes, split into sub-batches of max 5.
 
 ```
-FILTER scenes: keep only rows whose Render Path is `live-action`
-  (an `explainer` scene is built as a Remotion shot in Phase 4.5 and gets NO keyframe here —
-   skip it, and list what was skipped in the batch summary)
+ROUTE scenes by Render Path (Rule 33):
+  `live-action` → keyframes as below
+  `explainer`   → ONE base keyframe: the full composition, clean, no text, no markers;
+                  no platform prompt. List both kinds in the batch summary
 
 FOR each batch (ACT or sub-batch):
 
@@ -437,7 +441,7 @@ FOR each batch (ACT or sub-batch):
        - Cinematography lookup (emotion → lighting/lens/film stock)
        - Apply creator reference phrase **per character** from `cast-profile.md` (verbatim)
        - For multi-character scenes, use Cast Interaction Templates from `creator-profile-system.md` Section 8
-       - NB2 technical parameters (CFG 5-7, denoise 0.35-0.45)
+       - Model parameters on a separate `PARAMS:` line after the prompt body, never inside it (Rule 45; NB2: CFG 5-7, denoise 0.35-0.45)
        - **Aspect ratio triple enforcement** (first line, TECHNICAL, last line)
        - Central 60% rule
        - **`Output →` filename** per prompt (keyframes/scene-{NN}.png — one per clip, no -end file, Rule 37)
@@ -469,7 +473,7 @@ FOR each batch (ACT or sub-batch):
      a. BUILD the render list for this batch's approved keyframe prompts (START
         frames, one per clip — Rule 37 — or ingredient images):
         - file   = the prompt's `**Output →**` filename
-        - model  = "nano-banana-2"
+        - model  = `image_model` from strategic-brief.md (Rule 45; default "nano-banana-2")
         - aspect = the prompt's first line aspect ratio
         - refs   = every bare filename in the prompt's Required Reference Images
                    table, resolved to `{output_folder}/ref/<name>`
@@ -481,9 +485,14 @@ FOR each batch (ACT or sub-batch):
         the same prompt hash, say "sudah up to date, dilewati", drop from the
         render list. Whole batch `up-to-date` → skip to step 6 (no question,
         no render).
+     b2. (v3.11.1, Rule 46) PILOT — first 4B batch of the project only, and only
+        when no keyframe is `done` yet: render ONE start frame (the scene that
+        carries the most cast and refs), Read it, show it, and ask
+        "Gambar uji sudah sesuai? A) Ya, lanjut render batch  B) Revisi prompt dulu".
+        B → fix the prompt and re-render the pilot. Never render the batch first.
      c. ASK (only if the render list is non-empty):
         AskUserQuestion:
-        "Render batch {N} sekarang? ({k} gambar, model nano-banana-2)"
+        "Render batch {N} sekarang? ({k} gambar, model {image_model})"
         Options:
         A) Render sekarang
         B) Nanti, simpan prompt saja
@@ -493,7 +502,7 @@ FOR each batch (ACT or sub-batch):
         - aspect outside `1:1 16:9 9:16 4:3 3:4` → `skipped`, error
           "aspect <x> not supported by indusia-image-gen"; next prompt.
         - ELSE call `mcp__indusia-image-gen__generate_image(prompt=<full
-          prompt body>, model="nano-banana-2", aspect=<aspect>,
+          prompt body>, model=<image_model>, aspect=<aspect>,
           resolution="2K", output_format="png",
           output_dir="{output_folder}/.tmp", refs=[<resolved ref
           paths>])`. Success → move the returned local file to the
@@ -563,7 +572,7 @@ After ALL batches are generated and approved:
 - [ ] **(v3.4.0) Two axes of separation** between any two same-gender, same-build characters in one frame
 - [ ] **(v3.4.0) Overlay surface measured** in px and classified tracked-panel vs floating card (Rule 36)
 - [ ] NB2 aspect ratio triple enforcement (first line, TECHNICAL, last line)
-- [ ] CFG 5-7, Denoise 0.35-0.45
+- [ ] Model parameters on the `PARAMS:` line only (NB2: CFG 5-7, Denoise 0.35-0.45)
 - [ ] Start/End frames share same lighting Kelvin
 - [ ] Cast reference phrase verbatim per character from cast-profile.md
 - [ ] Central 60% rule applied
