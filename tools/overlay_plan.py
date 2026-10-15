@@ -52,6 +52,8 @@ REMOTION_NAME = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 LEAD_S = 0.10
 HOLD_DEFAULT_S = 0.3
 OVERLAP_MAX_S = 0.1
+# Keywords, not subtitles: text may be on screen for at most this share of a scene's speech.
+TEXT_SHARE_MAX = 0.5
 MASK_STAMP = "source.json"
 SCAFFOLD_HINT = ("scaffold the Remotion workspace first: "
                  "node templates/remotion/scaffold.mjs <project>")
@@ -232,6 +234,7 @@ def _plan_scene(out, sc, problems_all):
     prev_end_idx = 0
     prev_out_s = None
     seen_ids = set()
+    visible = []        # (in_s, out_s) of every timed cue
 
     for cue in cues:
         cid = str(cue.get("id", "?"))
@@ -274,6 +277,7 @@ def _plan_scene(out, sc, problems_all):
             if duration is not None and out_s > duration + 1e-9:
                 add(f"ends at {out_s:.2f}s, past the clip length {duration:.2f}s", cid)
             prev_out_s = out_s
+            visible.append((in_s, out_s))
 
         # Write every default the composition reads. It matches layer exactly and reads pos.x,
         # so a cue that validated as "front" by default was otherwise silently never drawn.
@@ -314,6 +318,24 @@ def _plan_scene(out, sc, problems_all):
             # Always present, even empty: the composition maps over all three lists.
             entry[group] = items
         out_cues.append(entry)
+
+    if words and visible:
+        speech_s = (words[-1]["end_ms"] - words[0]["start_ms"]) / 1000
+        shown_s, cur = 0.0, None
+        for a, b in sorted(visible):
+            if cur and a <= cur[1]:
+                cur = (cur[0], max(cur[1], b))
+            else:
+                if cur:
+                    shown_s += cur[1] - cur[0]
+                cur = (a, b)
+        shown_s += cur[1] - cur[0]
+        if speech_s > 0 and shown_s / speech_s > TEXT_SHARE_MAX + 1e-9:
+            problems.append(
+                f"scene {scene}: text is on screen {shown_s:.1f}s of {speech_s:.1f}s of speech "
+                f"({shown_s / speech_s:.0%}, max {TEXT_SHARE_MAX:.0%}). These are keywords, not "
+                f"subtitles: keep only the words that matter (a number, a contrast, the main "
+                f"claim, a danger word) and leave gaps with no text")
 
     mask_pngs = None
     if needs_mask:

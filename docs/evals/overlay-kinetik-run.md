@@ -77,6 +77,15 @@ fixed frames again after each fix:
 7. Plan placement (not the tool): c4 at x=330 put "nya" on the side of the face; moved to x=120.
    The tool cannot measure text width, so placement stays a QA-by-looking step.
 
+## Keywords, not subtitles (follow-up, same day)
+
+Ali: only the important keywords are highlighted; this is not a subtitle. The 5-cue plan above put
+text on screen 5.7 s of 7.0 s of speech. `overlay_plan.py` now refuses that:
+`refused: scene 25: text is on screen 5.7s of 7.0s of speech (82%, max 50%). These are keywords,
+not subtitles: ...`. Re-planned with two keywords only — c1 **gudang** (main claim) and c2 **1**
+(number) — accepted and re-rendered: `docs/evals/overlay-kinetik/qa-keywords-only.jpg` (frames 24,
+66, 110, 170: text on the two keywords, the second half of the scene has no text).
+
 ## Known limits
 
 - Ali is bald: the mask edge on curly hair was not tested. A faint mask bleed onto the table near

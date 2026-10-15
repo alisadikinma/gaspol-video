@@ -9,10 +9,20 @@ from tests.py import media
 from tools import overlay_plan
 
 FPS = 30
-# "bukan cerita soal kebakaran besar di hutan kita" -> 0.5 s per word from 1.0 s.
-SENTENCE = "bukan cerita soal kebakaran besar di hutan kita"
+# "bukan cerita soal kebakaran besar di hutan kita ..." -> 0.5 s per word from 1.0 s, 16 words,
+# speech 1.0-8.9 s, so a normal cue stays well under the 50% keyword-not-subtitle limit.
+SENTENCE = ("bukan cerita soal kebakaran besar di hutan kita "
+            "tapi soal siapa yang untung dari asap tiap tahun")
 WORDS = [{"text": w, "start_ms": 1000 + i * 500, "end_ms": 1000 + i * 500 + 400}
          for i, w in enumerate(SENTENCE.split())]
+
+
+def _pad(words, n=12):
+    """Append n filler words after `words`, so a short test sentence keeps its cues under the
+    50% text-share limit (keywords, not subtitles) without changing any timing it asserts."""
+    end = words[-1]["end_ms"]
+    return words + [{"text": f"isi{i}", "start_ms": end + 100 + i * 500,
+                     "end_ms": end + 500 + i * 500} for i in range(n)]
 
 
 def _cue(**over):
@@ -98,7 +108,7 @@ class OverlayPlanTest(unittest.TestCase):
     def test_repeated_anchor_picks_one_after_previous_cue(self):
         words = [{"text": w, "start_ms": i * 500, "end_ms": i * 500 + 400}
                  for i, w in enumerate("kita sama kita sama".split())]
-        self.write_manifest([{"id": "s03-host", "scene": "03", "words": words}])
+        self.write_manifest([{"id": "s03-host", "scene": "03", "words": _pad(words)}])
         c1 = _cue(id="c1", words="kita sama", lead="kita", keyword="sama", hold_s=0)
         c2 = _cue(id="c2", words="kita sama", lead="kita", keyword="sama")
         self.run_plan(_scene(cues=[c1, c2]))
@@ -115,7 +125,7 @@ class OverlayPlanTest(unittest.TestCase):
     def test_punctuation_and_case_match(self):
         words = [{"text": t, "start_ms": i * 500, "end_ms": i * 500 + 400}
                  for i, t in enumerate(["Bukan,", "CERITA", "soal.", "Kebakaran!"])]
-        self.write_manifest([{"id": "s03-host", "scene": "03", "words": words}])
+        self.write_manifest([{"id": "s03-host", "scene": "03", "words": _pad(words)}])
         self.run_plan(_scene())
         self.assertEqual(self.result()["cues"][0]["keyF"], round(1.5 * FPS))
 
@@ -129,6 +139,21 @@ class OverlayPlanTest(unittest.TestCase):
         cue = self.result()["cues"][0]
         self.assertEqual(cue["keyF"], round(2.0 * FPS))
         self.assertEqual(cue["keyword"], "1 dari 3")
+
+    def test_text_over_half_the_speech_is_refused_as_subtitles(self):
+        # Speech runs 1.0-8.9 s (7.9 s). Visible 0.9-3.2, 3.4-5.2, 5.4-7.7 = 6.4 s > 50%.
+        c1 = _cue(id="c1")
+        c2 = _cue(id="c2", words="di hutan kita", lead="di", keyword="hutan")
+        c3 = _cue(id="c3", words="siapa yang untung dari", lead="siapa yang", keyword="untung")
+        msg = self.refused(_scene(cues=[c1, c2, c3]))
+        self.assertIn("not subtitles", msg)
+        self.assertIn("scene 03", msg)
+
+    def test_text_under_half_the_speech_passes(self):
+        # One one-word cue visible 2.4-2.9 s of 7.9 s speech.
+        self.run_plan(_scene(cues=[_cue(words="kebakaran", lead="soal", keyword="kebakaran",
+                                        hold_s=0)]))
+        self.assertEqual(len(self.result()["cues"]), 1)
 
     def test_output_writes_defaults_the_composition_relies_on(self):
         # A cue with no layer/pos validated as "front" but was never drawn (the template
@@ -220,7 +245,7 @@ class OverlayPlanTest(unittest.TestCase):
     def test_fx3_with_digit_ok(self):
         words = [{"text": t, "start_ms": i * 500, "end_ms": i * 500 + 400}
                  for i, t in enumerate(["ada", "40", "titik"])]
-        self.write_manifest([{"id": "s03-host", "scene": "03", "words": words}])
+        self.write_manifest([{"id": "s03-host", "scene": "03", "words": _pad(words)}])
         self.run_plan(_scene(cues=[_cue(words="ada 40", lead="ada", keyword="40", fx=3)]))
         self.assertEqual(self.result()["cues"][0]["fx"], 3)
 

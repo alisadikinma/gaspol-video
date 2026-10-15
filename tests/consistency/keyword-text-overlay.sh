@@ -16,6 +16,9 @@ need "$doc" "KineticOverlay" "overlay doc does not name KineticOverlay"
 need "$doc" "No box, no pill" "overlay doc lost the no-box rule"
 need "$doc" "alphamerge" "overlay doc lost the background-only flash rule"
 need "$doc" "key_words" "overlay doc does not explain key_words"
+need "$doc" "not subtitles" "overlay doc does not say keywords are not subtitles"
+need "$doc" "50%" "overlay doc does not state the text-share limit"
+need skills/video-gen/SKILL.md "only the important keywords" "video-gen Rule 25 does not limit text to important keywords"
 for fx in "Blur-to-sharp" "Glitch slices" "Count-up" "Handwrite" "Stroke draw" "Exit"; do
   need "$doc" "$fx" "overlay doc does not describe effect: $fx"
 done

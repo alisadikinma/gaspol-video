@@ -103,8 +103,10 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or NB2-
 A card or `veo>remotion` cut is timed to the real clip, so building it first means redoing it.
 Never invoke `/video-explainer` for a kelompok whose clips are not rendered.
 
-25. **(v3.11.0) Kinetic text overlay.** A phrase the speaker must make memorable (a rule, a cost,
-a number, a danger word) gets two-tier animated text beside the speaker: small lead words plus a big
+25. **(v3.11.0) Kinetic text overlay.** This is not a subtitle: only the important keywords are
+highlighted (a number, a contrast, the main claim, a danger word), most of the speech gets no text,
+and `tools/overlay_plan.py` refuses a scene whose text is on screen for more than half the speech. A
+highlighted phrase gets two-tier animated text beside the speaker: small lead words plus a big
 heavy keyword, highlight colour for numbers and hard words, no box. Text is never static: every cue
 has an enter effect (blur-to-sharp, glitch slices, count-up, handwrite) and an exit. Image or video
 panels, a carousel and round photo bubbles may sit BEHIND the speaker's head through a per-frame

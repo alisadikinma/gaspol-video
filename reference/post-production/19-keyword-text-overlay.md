@@ -14,6 +14,20 @@ Real run: `docs/evals/overlay-kinetik-run.md`.
 v3.10.0's gold-serif fly-in cards (`tools/keyword_cards.py`) are SUPERSEDED by this pattern. The
 tool stays until the new style has shipped in one real video; do not use it for new work.
 
+## 0. What to show — keywords, not subtitles
+
+Most of what the speaker says gets NO text. Only the important keywords are highlighted:
+
+- a **number** (a cost, a share, a count: "1%", "221", "4x"),
+- a **contrast** or reversal ("bukan cerita soal kebakaran" → *discount*),
+- the **main claim** of the scene,
+- a **danger word** (rugi, expired, telat).
+
+One keyword per block, three to five words at most. Leave gaps with no text between blocks; the
+speaker's face carries those seconds. `tools/overlay_plan.py` refuses a scene where text is on
+screen for more than **50%** of the speech (first word to last word), naming the share it found.
+Cut cues; never raise the limit to pass.
+
 ## 1. Look
 
 - **Two tiers.** Lead words small regular sans in the ink colour (~40 px at 1080 wide), the
@@ -93,8 +107,8 @@ Over a red flash keep the keyword in `ink` or `highlight`, never red.
 
 ## 7. Workflow (per kelompok, after the clips and voice exist)
 
-1. Pick the phrases with the user, or from the script lines marked keyword. Three to five words
-   per block, one keyword per block.
+1. Pick only the important keywords (section 0) with the user, or from the script lines marked
+   keyword. Three to five words per block, one keyword per block, gaps with no text.
 2. `python3 tools/person_mask.py <output_folder> <scene> clips/scene-<NN>.mp4` for every scene
    with a `behind` element.
 3. Write `work/overlay-plan.json` (schema in `tools/overlay_plan.py`'s docstring), with media as
