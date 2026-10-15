@@ -7,3 +7,4 @@ __pycache__/
 media/sfx/library/clips/
 media/music/library/tracks/
 media/music/library/catalog.json
+graphify-out/
