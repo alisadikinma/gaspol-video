@@ -8,6 +8,9 @@ import brand from '../shots/brand.json';
 type BrandFile = typeof brand & {
   onAccent?: string;
   browserChrome?: Partial<Record<string, string>>;
+  // Kinetic overlay (GV-17). Optional so a brand.json written before it still type-checks.
+  highlight?: string;
+  scriptFont?: string;
 };
 
 export const COLORS = {
@@ -19,6 +22,9 @@ export const COLORS = {
   line: `${brand.inkSoft}55`,
   warn: brand.accent,
   cream: brand.background,
+  // Numbers and hard words in the kinetic overlay. Falls back to the accent for a brand.json
+  // written before the key existed.
+  highlight: (brand as BrandFile).highlight ?? brand.accent,
   // Mark drawn ON an accent fill (e.g. the check in ImageRevealShot's tag). White unless the
   // project's brand.json sets "onAccent" for an accent too light to carry white.
   onAccent: (brand as BrandFile).onAccent ?? '#ffffff',
@@ -47,6 +53,7 @@ export const CHROME_COLORS = { ...CHROME_DEFAULTS, ...((brand as BrandFile).brow
 
 export const FONT_DISPLAY = brand.displayFont;
 export const FONT_BODY = brand.bodyFont;
+export const FONT_SCRIPT = (brand as BrandFile).scriptFont ?? "'Caveat', cursive";
 export const FONT_MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 export const EASINGS = {
   easeOut: Easing.bezier(0.16, 1, 0.3, 1),

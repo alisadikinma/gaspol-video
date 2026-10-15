@@ -4,6 +4,8 @@
   "ink": "#f2f6f7",
   "inkSoft": "#9fb4bd",
   "accent": "#5fd0c4",
+  "highlight": "#F5E625",
   "displayFont": "Inter, system-ui, sans-serif",
-  "bodyFont": "Inter, system-ui, sans-serif"
+  "bodyFont": "Inter, system-ui, sans-serif",
+  "scriptFont": "'Caveat', cursive"
 }
