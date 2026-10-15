@@ -45,6 +45,7 @@ ICONS = ("fire", "gavel", "chart", "cloud", "question", "arrow", "circle")
 FX_KEYWORD = (1, 2, 3, 4)
 COLORS = ("white", "yellow")
 LAYERS = ("front", "behind")
+ANCHORS = ("top", "left", "right")
 KINDS = ("image", "video")
 PREFIXES = ("user:", "ref:", "remotion:")
 REMOTION_NAME = re.compile(r"^[A-Z][A-Za-z0-9]*$")
@@ -166,7 +167,10 @@ def _validate_cue_fields(cue, label, problems):
         problems.append(f"{label}: color {cue.get('color')!r} not in {list(COLORS)}")
     if cue.get("layer", "front") not in LAYERS:
         problems.append(f"{label}: layer {cue.get('layer')!r} not in {list(LAYERS)}")
-    if "icon" in cue and cue["icon"] not in ICONS:
+    anchor = (cue.get("pos") or {}).get("anchor", "top")
+    if anchor not in ANCHORS:
+        problems.append(f"{label}: pos anchor {anchor!r} not in {list(ANCHORS)}")
+    if cue.get("icon") is not None and cue["icon"] not in ICONS:
         problems.append(f"{label}: icon {cue['icon']!r} not in {list(ICONS)}")
     if fx == 3 and not re.search(r"\d", str(cue.get("keyword", ""))):
         problems.append(f"{label}: fx 3 needs a digit in keyword")
@@ -271,7 +275,17 @@ def _plan_scene(out, sc, problems_all):
                 add(f"ends at {out_s:.2f}s, past the clip length {duration:.2f}s", cid)
             prev_out_s = out_s
 
+        # Write every default the composition reads. It matches layer exactly and reads pos.x,
+        # so a cue that validated as "front" by default was otherwise silently never drawn.
         entry = dict(cue)
+        entry.setdefault("fx", 1)
+        entry.setdefault("color", "white")
+        entry.setdefault("script", False)
+        entry.setdefault("layer", "front")
+        entry.setdefault("icon", None)
+        entry.setdefault("source", "")
+        pos = dict(cue.get("pos") or {})
+        entry["pos"] = {"anchor": pos.get("anchor", "top"), "x": pos.get("x"), "y": pos.get("y")}
         if timing:
             entry["inF"], entry["keyF"], entry["outF"] = (round(t * fps) for t in timing)
 
@@ -281,6 +295,10 @@ def _plan_scene(out, sc, problems_all):
             items = []
             for item in cue.get(group) or []:
                 item = dict(item)
+                if group == "panels":
+                    item.setdefault("kind", "image")
+                    item.setdefault("layer", "front")
+                    item.setdefault("caption", "")
                 what = f"{group[:-1] if group != 'carousel' else 'carousel item'}"
                 sub = []
                 if default_kind and item.get("kind", default_kind) not in KINDS:

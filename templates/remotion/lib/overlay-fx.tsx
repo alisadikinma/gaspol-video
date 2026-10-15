@@ -39,6 +39,8 @@ export type PanelSpec = {
   w: number;
   h: number;
   layer: 'front' | 'behind';
+  // Short text drawn on the panel's lower edge (e.g. "Foto: ANTARA"); empty = none.
+  caption?: string;
 };
 
 export type BubbleSpec = {
@@ -365,6 +367,25 @@ export const Panel: React.FC<{
       }}
     >
       <Media src={panel.src} kind={panel.kind} registry={registry} />
+      {panel.caption ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            padding: '28px 20px 14px',
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
+            color: COLORS.ink,
+            fontFamily: FONT_BODY,
+            fontSize: 26,
+            fontWeight: 600,
+            textShadow: TEXT_SHADOW,
+          }}
+        >
+          {panel.caption}
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -34,7 +34,13 @@ node scripts/render-all.mjs KineticOverlay                             # out/Kin
 ## Looked at
 
 QA stills at enter-mid, hold and exit-mid of every cue (15 frames, one contact sheet), then the
-fixed frames again after each fix.
+fixed frames again after each fix:
+
+- `docs/evals/overlay-kinetik/qa-15-stills.jpg` — rows c1..c5, columns enter-mid / hold / exit-mid
+  (frames 20,24,30 / 60,66,73 / 91,98,107 / 130,135,141 / 156,164,173), first render, before
+  fixes 3 and 4.
+- `docs/evals/overlay-kinetik/qa-defaults-caption.jpg` — frames 24 and 135 of the last render:
+  panel caption on c1, c4 drawn with no `layer` in its plan (default front), handwriting font.
 
 - **Never static:** all five cues differ across their three stills. fx 1 sharpens, fx 2 shows
   offset slices on "datang" then snaps together, fx 3 lands on "1", fx 4 reveals "masala" then
@@ -61,7 +67,14 @@ fixed frames again after each fix.
 4. The script font `'Caveat'` is not installed in a fresh workspace, so fx 4 fell back to Times.
    The placeholder chain is now `'Caveat', 'Bradley Hand', 'Noteworthy', cursive`; a project that
    wants Caveat still has to load it.
-5. Plan placement (not the tool): c4 at x=330 put "nya" on the side of the face; moved to x=120.
+5. Found by the plan-verifier audit: a cue (or panel) with no `layer`/`pos` validated as the
+   default "front" but the output carried no `layer`, and the composition matches it exactly, so
+   the cue was silently never drawn. `overlay_plan.py` now writes every default the composition
+   reads (`layer`, `fx`, `color`, `script`, `icon`, `source`, `pos`, panel `kind`/`layer`/
+   `caption`) and refuses an unknown `pos.anchor`. Re-rendered with c4's `layer` removed: drawn.
+6. Spec "caption text may sit on the panel" was not built; added as optional `caption` on a panel
+   (lower edge, gradient, body font). Shown on c1 ("Gudang Ekaputra").
+7. Plan placement (not the tool): c4 at x=330 put "nya" on the side of the face; moved to x=120.
    The tool cannot measure text width, so placement stays a QA-by-looking step.
 
 ## Known limits

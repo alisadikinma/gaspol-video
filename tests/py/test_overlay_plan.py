@@ -130,6 +130,28 @@ class OverlayPlanTest(unittest.TestCase):
         self.assertEqual(cue["keyF"], round(2.0 * FPS))
         self.assertEqual(cue["keyword"], "1 dari 3")
 
+    def test_output_writes_defaults_the_composition_relies_on(self):
+        # A cue with no layer/pos validated as "front" but was never drawn (the template
+        # matches layer exactly, and reads pos.x).
+        (self.out / "ref" / "a.png").write_bytes(b"png")
+        self.run_plan(_scene(cues=[_cue(panels=[{"src": "ref:a.png", "x": 0, "y": 0,
+                                                 "w": 10, "h": 10}])]))
+        cue = self.result()["cues"][0]
+        self.assertEqual((cue["layer"], cue["fx"], cue["color"], cue["script"], cue["source"]),
+                         ("front", 1, "white", False, ""))
+        self.assertEqual(cue["pos"], {"anchor": "top", "x": None, "y": None})
+        self.assertIsNone(cue["icon"])
+        self.assertEqual((cue["panels"][0]["layer"], cue["panels"][0]["kind"],
+                          cue["panels"][0]["caption"]), ("front", "image", ""))
+
+    def test_pos_without_anchor_defaults_to_top(self):
+        self.run_plan(_scene(cues=[_cue(pos={"x": 500, "y": 300})]))
+        self.assertEqual(self.result()["cues"][0]["pos"], {"anchor": "top", "x": 500, "y": 300})
+
+    def test_unknown_pos_anchor_refused(self):
+        msg = self.refused(_scene(cues=[_cue(pos={"anchor": "bottom"})]))
+        self.assertIn("pos anchor", msg)
+
     def test_output_cue_always_carries_the_three_media_lists(self):
         # KineticOverlay maps over all three; a missing key crashed the first real render.
         self.run_plan(_scene())
