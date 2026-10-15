@@ -103,12 +103,16 @@ Total: 4 reference files + filtered output data. NEVER load storytelling or NB2-
 A card or `veo>remotion` cut is timed to the real clip, so building it first means redoing it.
 Never invoke `/video-explainer` for a kelompok whose clips are not rendered.
 
-25. **(v3.10.0) Keyword text overlay pattern.** A phrase the speaker must make memorable
-(a rule, a cost, a danger word) gets an animated highlight beside the speaker: stacked lines, no
-box, small white sans plus a big gold serif-italic keyword (red for a danger word), flying in on the
-spoken word. Build it with `tools/keyword_cards.py` (see `reference/post-production/19-keyword-text-overlay.md`),
-after the clip and voice exist (Rule 24), with cue times from the voice's word timestamps. Never put
-it on the face. A red alarm flash goes on the background only, through a person mask.
+25. **(v3.11.0) Kinetic text overlay.** A phrase the speaker must make memorable (a rule, a cost,
+a number, a danger word) gets two-tier animated text beside the speaker: small lead words plus a big
+heavy keyword, highlight colour for numbers and hard words, no box. Text is never static: every cue
+has an enter effect (blur-to-sharp, glitch slices, count-up, handwrite) and an exit. Image or video
+panels, a carousel and round photo bubbles may sit BEHIND the speaker's head through a per-frame
+person mask. Build it after the clip and voice exist (Rule 24): `tools/person_mask.py` →
+`work/overlay-plan.json` → `tools/overlay_plan.py` (times from the voice's words, never by eye) →
+Remotion `KineticOverlay`. See `reference/post-production/19-keyword-text-overlay.md`. Never put it
+on the face. A red alarm flash goes on the background only, through the same mask.
+`tools/keyword_cards.py` (v3.10.0 gold-serif cards) is superseded; do not use it for new work.
 
 20. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`

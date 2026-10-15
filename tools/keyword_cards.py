@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Animated highlighted keyword text over a clip: stacked lines, no box, big gold serif-italic
+"""SUPERSEDED by GV-17 (KineticOverlay); kept until the new style ships in one real video.
+
+Animated highlighted keyword text over a clip: stacked lines, no box, big gold serif-italic
 keyword, small white sans for plain words, soft shadow, fly-in/out. Optional red flash behind a
 person. Pillow PNG cards + ffmpeg overlay, no Remotion needed.
 
