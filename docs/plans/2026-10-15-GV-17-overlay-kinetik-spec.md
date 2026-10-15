@@ -50,11 +50,11 @@ BEHIND the speaker's head and in front of the room. Text must never be static.
 | 1 | **Blur-to-sharp**: opacity 0→1, blur ~12 px→0, scale 1.06→1, ~0.3 s | "ekonomi kita", "baru 1 layer" | default keyword |
 | 2 | **Glitch slices**: glyphs cut into horizontal slices offset sideways, snap together ~0.3 s | "LEBIH TEGAS" | hard / warning word |
 | 3 | **Count-up**: number ticks from 0 to its value, ~0.6 s, final value held | "221", "1.9%", "1%" | statistics |
-| 4 | **Handwrite**: script word drawn stroke by stroke | "cerita", "sekarang" | personal accent |
+| 4 | **Handwrite**: script word revealed left to right in the handwriting face (decided 2026-10-15: true per-glyph stroke drawing is a separate ticket) | "cerita", "sekarang" | personal accent |
 | 5 | **Stroke draw**: icon, arrow or scribble circle draws itself | fire icon, chart icon, circle on "hukumannya" | decoration |
 | 6 | **Exit**: fade + blur out ~0.2 s, next block may overlap ~0.1 s | every block | every cue |
 
-Lead words enter first (fade + 8 px rise); the keyword enters exactly on its spoken word.
+Lead words enter first (fade + 8 px rise); the keyword enters exactly on its spoken word; an icon (effect 5) starts drawing 0.1 s before the keyword (decided 2026-10-15).
 Panels and bubbles enter with a spring (scale 0.9→1, opacity) and drift slowly (±6 px) while held.
 A cue without `fx` gets effect 1 in and effect 6 out. The renderer has no "static" path.
 
@@ -138,5 +138,6 @@ ref/, user files ────┘
 
 - Deleting `keyword_cards.py` (later ticket, after one real video).
 - Auto-choosing which words become cues (the plan is written by Claude per scene, as today).
+- True stroke-by-stroke handwriting (per-glyph SVG paths); effect 4 is a left-to-right reveal.
 - Map animation as a built-in component (a map is a `remotion:<Component>` the project writes,
   or a user/ref video).

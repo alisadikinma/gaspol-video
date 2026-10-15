@@ -221,7 +221,7 @@ Allowed values: `fx` ∈ {1,2,3,4} for the keyword (5 = stroke draw applies to `
 | 2 glitch slices | `glitch(f, start, fps, seed)` → `[{y0, y1, dx}]` 6 slices | 0.30 s; |dx| ≤ 40 px decaying to 0; seeded (mulberry32) so frame N is identical across processes |
 | 3 count-up | `countUp(f, start, fps, text)` → string | 0.60 s ease-out; keeps prefix/suffix and decimals: "1.9%" → "0.0%"…"1.9%", "221" → "0"…"221", "4x" → "0x"…"4x" |
 | 4 handwrite | `strokeProgress(f, start, fps, dur=0.5)` → 0..1 | used as SVG `strokeDashoffset` |
-| 5 stroke draw | same function, dur 0.4 s, starts 0.1 s before the lead words | icons, arrows, scribble circles |
+| 5 stroke draw | same function, dur 0.4 s, starts 0.1 s before the keyword (decided 2026-10-15, was "before the lead words") | icons, arrows, scribble circles |
 | 6 exit | `exitFx(f, end, fps)` → `{opacity, blurPx}` | 0.20 s; opacity 1→0, blur 0→8 |
 | lead words | `leadIn(f, start, fps)` → `{opacity, dy}` | 0.25 s; dy 8→0 |
 | panels/bubbles | `springIn(f, start, fps)` → `{opacity, scale}`; `drift(f, seed)` → `{dx, dy}` | scale 0.9→1 spring; drift ±6 px, period ~4 s |
