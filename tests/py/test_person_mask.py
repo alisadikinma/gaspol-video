@@ -242,7 +242,7 @@ HAS_MODEL = person_mask.model_path().is_file() and (
 
 @unittest.skipUnless(HAS_MODEL and media.FFMPEG, "venv mediapipe model or ffmpeg not installed")
 class RealModelTest(unittest.TestCase):
-    # tests/fixtures/speaker-2s.mp4 = 2 s of Ekaputra scene 25 (presenter to camera), 360 px.
+    # tests/fixtures/speaker-2s.mp4 = 2 s of a presenter-to-camera clip (Ali, the repo owner), 360 px.
     def test_real_model_on_reference_clip(self):
         with tempfile.TemporaryDirectory() as d:
             proc = subprocess.run(

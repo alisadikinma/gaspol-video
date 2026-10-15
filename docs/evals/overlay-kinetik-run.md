@@ -1,11 +1,11 @@
 # KineticOverlay — real render (GV-17 Phase G)
 
-Date: 2026-10-15. Machine: macOS arm64, Node 26.0.0, Remotion 4 (node_modules of the Ekaputra
-workspace, symlinked read-only), Python 3.14.7 venv with mediapipe 1.0.1.
+Date: 2026-10-15. Machine: macOS arm64, Node 26.0.0, Remotion 4 (node_modules of a client
+project's workspace, symlinked read-only), Python 3.14.7 venv with mediapipe 1.0.1.
 
 ## Input
 
-- Clip: Ekaputra film `clips/scene-25.mp4` (Ali to camera, chest-up, 1920x1080, 24 fps, 8.0 s),
+- Clip: a client film's `clips/scene-25.mp4` (Ali to camera, chest-up, 1920x1080, 24 fps, 8.0 s),
   copied into a scratch project so the client project was not written to.
 - Words: platform-native dialogue, so no `vo-manifest.json` words. `vo/vc-25.mp3` transcribed once
   with AssemblyAI (`tools/gen_subs.transcribe_assemblyai`) into `.tmp/asr-25.json`, 15 words,
@@ -34,13 +34,9 @@ node scripts/render-all.mjs KineticOverlay                             # out/Kin
 ## Looked at
 
 QA stills at enter-mid, hold and exit-mid of every cue (15 frames, one contact sheet), then the
-fixed frames again after each fix:
-
-- `docs/evals/overlay-kinetik/qa-15-stills.jpg` — rows c1..c5, columns enter-mid / hold / exit-mid
-  (frames 20,24,30 / 60,66,73 / 91,98,107 / 130,135,141 / 156,164,173), first render, before
-  fixes 3 and 4.
-- `docs/evals/overlay-kinetik/qa-defaults-caption.jpg` — frames 24 and 135 of the last render:
-  panel caption on c1, c4 drawn with no `layer` in its plan (default front), handwriting font.
+fixed frames again after each fix (15 stills: c1..c5 at enter-mid / hold / exit-mid, frames
+20,24,30 / 60,66,73 / 91,98,107 / 130,135,141 / 156,164,173; then frames 24 and 135 after the
+defaults and caption fix). The stills show client assets and are kept out of this public repo.
 
 - **Never static:** all five cues differ across their three stills. fx 1 sharpens, fx 2 shows
   offset slices on "datang" then snaps together, fx 3 lands on "1", fx 4 reveals "masala" then
@@ -73,7 +69,7 @@ fixed frames again after each fix:
    reads (`layer`, `fx`, `color`, `script`, `icon`, `source`, `pos`, panel `kind`/`layer`/
    `caption`) and refuses an unknown `pos.anchor`. Re-rendered with c4's `layer` removed: drawn.
 6. Spec "caption text may sit on the panel" was not built; added as optional `caption` on a panel
-   (lower edge, gradient, body font). Shown on c1 ("Gudang Ekaputra").
+   (lower edge, gradient, body font). Shown on c1.
 7. Plan placement (not the tool): c4 at x=330 put "nya" on the side of the face; moved to x=120.
    The tool cannot measure text width, so placement stays a QA-by-looking step.
 
@@ -83,8 +79,7 @@ Ali: only the important keywords are highlighted; this is not a subtitle. The 5-
 text on screen 5.7 s of 7.0 s of speech. `overlay_plan.py` now refuses that:
 `refused: scene 25: text is on screen 5.7s of 7.0s of speech (82%, max 50%). These are keywords,
 not subtitles: ...`. Re-planned with two keywords only — c1 **gudang** (main claim) and c2 **1**
-(number) — accepted and re-rendered: `docs/evals/overlay-kinetik/qa-keywords-only.jpg` (frames 24,
-66, 110, 170: text on the two keywords, the second half of the scene has no text).
+(number) — accepted and re-rendered, looked at frames 24, 66, 110, 170 (stills not committed: text on the two keywords, the second half of the scene has no text).
 
 ## Known limits
 
