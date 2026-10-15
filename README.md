@@ -1,8 +1,16 @@
 # gaspol-video
 
-**v3.6.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
+**v3.11.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
 
 Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
+
+> **v3.11.0 — keywords that move, and pictures behind the speaker.**
+> Only the important keywords are highlighted — not subtitles: `tools/overlay_plan.py` refuses text
+> on screen for more than half a scene's speech. Each keyword animates in (blur-to-sharp, glitch
+> slices, count-up, handwrite) and out, timed from the voice's words. Image and video panels, a
+> sliding carousel and round photo bubbles sit BEHIND the speaker's head through a per-frame person
+> mask (`tools/person_mask.py`), rendered by the Remotion composition `KineticOverlay`.
+> See [v3.11.0 Changelog](#v3110-changelog).
 
 > **v3.6.0 — pauses you can write, dissolves at act changes, a look at every clip, and a bed composed to the picture.**
 > `[pause: 1.2s]` in narration renders as sample-exact silence (`tools/gen_vo.mjs`) and is stripped
@@ -228,6 +236,100 @@ Run any phase independently:
 > Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.
 
 The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
+
+## v3.11.0 Changelog
+
+- **Kinetic text overlay replaces the gold-serif keyword cards (GV-17).** Style taken from a 9:16 explainer the user supplied. Keywords, not subtitles: only the important words are highlighted and `overlay_plan.py` refuses text on screen for more than 50% of a scene's speech. Two-tier text (small lead words, big heavy keyword, highlight colour for numbers and hard words, an occasional handwriting word, line icons), never static: six effects (blur-to-sharp, glitch slices, count-up, handwrite, stroke draw, exit). Image/video panels, a sliding carousel and round photo bubbles sit BEHIND the speaker through a per-frame person mask, plus a source box. New `tools/person_mask.py` (MediaPipe selfie segmenter `mediapipe==1.0.1`, model fetched by `tools/setup.sh` with a pinned sha256), `tools/overlay_plan.py` (cues timed from `vo-manifest.json` words or ASR `words_file`; `key_words` for a keyword shown differently than spoken), Remotion `KineticOverlay` (`Overlay.template.tsx`, `lib/overlay-fx.tsx`, `lib/overlayFx.mjs`), brand tokens `highlight` and `scriptFont`. `video-gen` Rule 25 and `video-post` K.4 rewritten, doc 19 rewritten. `tools/keyword_cards.py` kept, marked superseded. Real render on a client scene: `docs/evals/overlay-kinetik-run.md`. Tests: `tests/consistency/{keyword-text-overlay,person-mask-setup,overlay-template-contract,overlay-evidence}.sh`, `tests/py/test_{person_mask,overlay_plan}.py`, `tests/node/overlay-fx.test.mjs`.
+
+## v3.10.0 Changelog
+
+- **Keyword text overlay pattern.** Animated highlight over a speaker, in the look the user approved: stacked lines, no box or pill, small white sans, big gold serif-italic keyword (red for a danger word), soft shadow, 0.35 s fly-in and 0.25 s fly-out on the spoken word, cue times from voice word timestamps, never on the face. Optional red alarm flash on the background only through a person mask (alphamerge; a full-frame drawbox or maskedmerge tints the person). `video-gen` Rule 25, new `reference/post-production/19-keyword-text-overlay.md`, new tool `tools/keyword_cards.py` (needs Pillow, via `_venv`). Test: `tests/consistency/keyword-text-overlay.sh`. Source: Ekaputra film K1, 2026-10-03.
+
+## v3.9.2 Changelog
+
+- **VEO clips first, Remotion after.** Within each kelompok the VEO clips are rendered and audited before any Remotion shot or overlay is built. `video-gen` Rule 24 and step 5.1b K.4; `video-explainer` prerequisite refuses to start while the kelompok's clips are missing; `video-full` drops the standalone Step 4 (Remotion before video); pipeline doc diagram and K.4 reason fixed. A card cut to a clip needs the real clip length, light and last frame. Test: `tests/consistency/clips-before-remotion.sh`. Source: Ekaputra film, 2026-10-02.
+
+## v3.9.1 Changelog
+
+- **Logo only where the camera sees it, and checked against the real file.** `video-image` Rule 43: uniform logo only on garment areas that face the camera (no back logo in a shoulder close-up; plain garment there). Rule 44: after each render compare every vehicle, cooler box, carton and uniform logo with `ref/brand-<client>-logo.png`; fix by edit pass, never re-render. `video-prompt-reviewer` C13 fails a forced or unlocked logo. Source: Ekaputra scenes 04a, 07, 12a, 18, 2026-10-02.
+
+## v3.9.0 Changelog
+
+- **Vehicle variety + one company uniform.** `video-brainstorm` Step 1.2e (Hard Rules 14, 15) asks the delivery-point types and which vehicle serves each (truck/pickup to docks and restaurants, motorbike with cooler box to housing-complex shops and alleys a truck cannot enter), saved as `### Delivery Points & Vehicles`; and the company uniform (garment, colour, logo, placement, roles), saved as `### Company Uniform` plus one verbatim phrase in `cast-profile.md` `## Company Uniform`. `video-script` rules 22-23 + 3.5.1: scene-plan covers every vehicle class marked appears=yes, STOP on a truck at a truck-excluded point, every customer employee in the uniform phrase. `video-image` prerequisite + Rules 41-42: `ref/vehicle-<class>.png` per class, `ref/costume-uniform-<client>.png` (front + back, real logo), uniform phrase in every NB2 prompt with a customer employee. `video-prompt-reviewer` check C13. Test: `tests/consistency/uniform-and-vehicle-contract.sh`. Source: Ekaputra film, 2026-10-02.
+
+## v3.8.0 Changelog
+
+- **Customer business profile + reference photos.** `video-brainstorm` Step 1.2e asks what the customer sells, where, and what a visitor sees, then collects real product and site photos (`ref/biz-product-*.png`, `ref/biz-site-*.png`, optional asset and uniform). Hard gate before Phase 4A. No photo: web research + NB2 reference the user approves (`source: generated-approved`). `video-script` 3.5.1 pre-fills the manifest from these photos and stops on a product the customer never confirmed. `video-image` prerequisite + Rule 40: env and product assets derive FROM the photos. Test: `tests/consistency/business-reference-contract.sh`. Source: Ekaputra Scenes 11/12a, 2026-10-02.
+
+## v3.7.2 Changelog
+
+- **Keyframe name without `-start`.** One frame per clip, so the file is `keyframes/scene-{NN}.png` (letters allowed: `scene-02a.png`). Docs updated across `video-image`, `video-gen`, `script-to-scene-bridge.md`, `global-promo-config.md`, Kling guide, post-production pipeline.
+- **Face fix by edit pass** (`video-image` Rule 39): when the face still drifts, edit the keyframe with the front ref only instead of re-rolling the scene.
+
+## v3.7.1 Changelog
+
+- **Fewest refs that do the job.** The side face ref is used only when the face in the keyframe is turned more than about 45°; a near-frontal face gets `cast-c{N}-face.png` alone. No stacking of real photo, 3-angle sheet or a continuity keyframe that contains the same person — NB2 averages the extra faces into someone else. Updated `video-image` Rule 38, reviewer D0, `01-nb2-image-generation.md`. Source: Ekaputra scene-06, 2026-10-02.
+
+## v3.7.0 Changelog
+
+- **One keyframe per clip.** Phase 4B renders only the start frame; no END frame and no First+Last mode unless the user explicitly asks for it on a named clip. Motion and state change move into the video prompt. Updated: `video-image` Rule 37, `video-gen` Rule 13, `script-to-scene-bridge.md` Step 3/3b/3c, `global-promo-config.md`, reviewer check D0. Source: Ekaputra film, 2026-10-02.
+- **Side-view face ref for main cast.** Phase 3.5 requires `cast-c{N}-face-side.png` (three-quarter/profile, made from the front ref) for every Pemeran Utama; Phase 4B names front AND side refs inline whenever the character is not facing camera. Updated: `video-script` manifest, `video-image` Rule 38, `01-nb2-image-generation.md`, `creator-profile-system.md`, naming tables, reviewer check D0. Source: Ekaputra scene-02b, a three-quarter face from a front-only ref did not resemble the person.
+
+## v3.6.0 Changelog
+
+- **Pause tags in narration.** `[pause: 1.2s]` or `[jeda: 1.2 detik]` inside a layer's `text` in
+  `audio-plan.json` now renders as silence. `tools/gen_vo.mjs` splits the text at each tag, sends
+  one ElevenLabs request per speech chunk (chained through `previousIds` so delivery stays warm),
+  decodes each chunk to PCM, joins them with zero samples and encodes once, so a pause is exact to
+  the sample and word offsets come from sample counts, not from probing an mp3 with encoder
+  padding. A length outside 0.2-5.0s or a broken bracket is refused. `strip_pause_tags()` in
+  `tools/gen_subs.py` is imported by `tools/gen_captions.py` and `tools/verify_render.py`, so
+  captions, subtitles and the P6 diff never see the tag. Adapted from MoneyPrinterTurbo.
+- **Dissolves at act changes.** A segment in `work/edit-plan.json` may carry
+  `transition_in: {dur_s}`. `tools/edit_render.py` renders the segment BEFORE it `dur_s` longer,
+  from source frames past its `out_s` (the handle), and merges the pair with an ffmpeg `xfade`
+  under a `-t` cap equal to the planned length, so the timeline does not move by a frame and the
+  A/V gate still holds. The plan is refused when there is no previous segment, the previous source
+  has too little handle, or the previous segment ends in a freeze pad (nothing to dissolve over).
+  Motion on the handle is clamped so the zoom does not overshoot.
+- **Visual QA of rendered clips (V15).** New `tools/qa_frames.py` tiles five frames per rendered
+  clip into `.tmp/qa-scene-NN.jpg` and writes `work/visual-qa.md`, one section per scene with its
+  `PLAUSIBILITY:` block and a seven-row verdict table that Claude fills after looking at the sheet.
+  Verdicts survive a re-run for an unchanged clip and are cleared for a changed one. `--check`
+  reads only the Verdict cells and exits 1 on a missing, empty or `FAIL:` cell. Validator check
+  V15 and `video-gen` Rule 23. Catches the defects the plausibility gate names but only a picture
+  can confirm, before the edit is paid for.
+- **Video-to-music bed.** `tools/gen_music.py video` sends a picture-only proxy of the master
+  (`.tmp/music-proxy.mp4`) to ElevenLabs and writes `output/music.mp3` sized to the master, logged
+  in `renders.json` as phase 6 so an unchanged result is reused and not re-billed. Any failure
+  (HTTP error, missing key, bad TLS) exits 3 with `FALLBACK palette: <reason>`; the tool never
+  rewrites a plan it did not write, so `video-post` keeps the palette segments. On success the plan
+  gets `"bed_source": "video"` (`palette` otherwise). Adapted from MoneyPrinterTurbo.
+- **V16.** A pause tag inside a platform prompt in `video-prompts.md` is a FAIL: the platform
+  would speak it. Reviewer check V16 and `video-validate` V16.
+- **Nothing general is generated twice.**
+  - `tools/gen_vo.mjs` fingerprints each layer (text, voice env, a sha256 of the voice id, model,
+    settings) into `vo-manifest.json` and reuses an unchanged layer with no request. The speech
+    chunks around pause tags are cached flat in `.tmp/vocache-*.mp3`, so changing only a pause
+    length re-requests nothing.
+  - Generated SFX clips and music tracks moved out of the versioned plugin cache (where the next
+    update would have dropped them) into `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/{sfx,music}`
+    via the new `tools/asset_home.py`. Adoption copies whatever an older version dir already holds,
+    and music plans may name a track as `library:<id>`.
+  - New `tools/asset_library.py` keeps a cross-project library of generic images, matched only on
+    the exact normalised prompt plus aspect. It refuses anything that names `cast-`, `brand-`,
+    `ui-`, `product-`, `costume-`, `env-`, an identity lock or a scene continuity frame, because
+    those are project-specific by definition. `video-image` checks the library before a Phase 4A
+    render and offers to add a generic asset after one.
+- **Real scene naming in QA.** `qa_frames.py` reads `### S01b —` headings and `scene-01b.mp4` clips
+  as their own scenes (`qa-scene-01b.jpg`) instead of folding `01`, `01b` and `01c` into one — found
+  on a real project before release.
+- **Docs.** `reference/post-production/11-voice-cast-and-vo.md` (pause tags),
+  `13-ffmpeg-edit.md` (dissolves and handles) and `17-music-bed.md` (video bed, fallback) carry the
+  detail; `video-post`, `video-gen`, `video-script`, `video-validate` and both agents point at it.
+- **Tool count:** 29 CLI tools (27 Python + 2 Node) — counted from `tools/`; earlier releases stopped updating this number at 19 while `check_vo_duration.py`, `check_overlay_strings.py`, `track_screen.py`, `caption_keywords.py`, `gen_captions.py` and `plan_motion.py` landed. Excluded on purpose: TwelveLabs
+  analysis, Sonilo, other render adapters, slide/zoom transitions, transitions outside act
+  changes.
 
 ## v3.5.0 Changelog
 
@@ -566,8 +668,8 @@ reference/
   storytelling_script_gen/           # 12 storytelling & script reference files
   image-video-gen/                  # 13 image & video production reference files (incl. 10-physical-plausibility-gate.md)
   post-production/                  # 9 post-production & packaging reference files (incl. 18-screencast.md)
-tools/                              # 29 CLI tools: 27 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
-  _venv.py, setup.sh                # Dependency guard + venv builder for the 4 tools below that need libs
+tools/                              # 31 CLI tools: 29 python3 (mostly stdlib) + 2 node (ffmpeg throughout)
+  _venv.py, setup.sh                # Dependency guard + venv builder (incl. mediapipe + its model) for the tools that need libs
   gen_app_screen.py                 # capture (Playwright) / mock (Remotion renderStill) app screens
   composite_logo.py, thumb_scrim.py # Deterministic thumbnail post-process (needs Pillow)
   yt_stats.py                       # YouTube stats into packaging calibration (needs the venv + OAuth)
