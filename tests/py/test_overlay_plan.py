@@ -123,6 +123,23 @@ class OverlayPlanTest(unittest.TestCase):
         msg = self.refused(_scene(cues=[_cue(keyword="banjir")]))
         self.assertIn("keyword", msg)
 
+    def test_key_words_times_a_keyword_that_is_not_spoken_verbatim(self):
+        # Shown "1 dari 3" while the voice says "soal"; the number is never spoken as a digit.
+        self.run_plan(_scene(cues=[_cue(keyword="1 dari 3", key_words="soal", fx=3)]))
+        cue = self.result()["cues"][0]
+        self.assertEqual(cue["keyF"], round(2.0 * FPS))
+        self.assertEqual(cue["keyword"], "1 dari 3")
+
+    def test_output_cue_always_carries_the_three_media_lists(self):
+        # KineticOverlay maps over all three; a missing key crashed the first real render.
+        self.run_plan(_scene())
+        cue = self.result()["cues"][0]
+        self.assertEqual((cue["panels"], cue["bubbles"], cue["carousel"]), ([], [], []))
+
+    def test_key_words_not_inside_words_refused(self):
+        msg = self.refused(_scene(cues=[_cue(keyword="1", key_words="banjir", fx=3)]))
+        self.assertIn("key_words 'banjir' is not inside words", msg)
+
     def test_vo_offset_shifts_times(self):
         self.run_plan(_scene(vo_offset_s=2.0))
         cue = self.result()["cues"][0]

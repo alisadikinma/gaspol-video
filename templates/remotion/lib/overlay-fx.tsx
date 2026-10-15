@@ -211,9 +211,21 @@ const useOwnedMotion = (cue: CueSpec, seed: number) => {
 // =============================================================================
 const anchorBox = (pos: CuePos, width: number): React.CSSProperties => {
   if (pos.x !== null && pos.y !== null && pos.x !== undefined && pos.y !== undefined) {
+    // x is the text block's LEFT edge for anchor "left", its RIGHT edge for "right", and its
+    // centre only for "top". Centring a left-anchored block pushed a long keyword off the
+    // frame in the first real render (scene 25, "masalahnya").
+    if (pos.anchor === 'left') {
+      return { left: pos.x, top: pos.y, maxWidth: width - pos.x - SAFE_PX,
+        transform: 'translateY(-50%)', alignItems: 'flex-start', textAlign: 'left' };
+    }
+    if (pos.anchor === 'right') {
+      return { right: width - pos.x, top: pos.y, maxWidth: pos.x - SAFE_PX,
+        transform: 'translateY(-50%)', alignItems: 'flex-end', textAlign: 'right' };
+    }
     return {
       left: pos.x,
       top: pos.y,
+      maxWidth: 2 * Math.min(pos.x, width - pos.x) - 2 * SAFE_PX,
       transform: 'translate(-50%, -50%)',
       alignItems: 'center',
       textAlign: 'center',

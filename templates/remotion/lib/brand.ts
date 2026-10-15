@@ -53,7 +53,7 @@ export const CHROME_COLORS = { ...CHROME_DEFAULTS, ...((brand as BrandFile).brow
 
 export const FONT_DISPLAY = brand.displayFont;
 export const FONT_BODY = brand.bodyFont;
-export const FONT_SCRIPT = (brand as BrandFile).scriptFont ?? "'Caveat', cursive";
+export const FONT_SCRIPT = (brand as BrandFile).scriptFont ?? "'Caveat', 'Bradley Hand', 'Noteworthy', cursive";
 export const FONT_MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 export const EASINGS = {
   easeOut: Easing.bezier(0.16, 1, 0.3, 1),

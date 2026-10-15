@@ -12,7 +12,7 @@ fps and size, one word source, and its cues in spoken order. The word source is 
 
 A cue's `words` is found as a contiguous run (case and punctuation ignored, first occurrence after
 the previous cue's run). in = run start + vo_offset_s - 0.10 (not below 0), keyword = start of the
-keyword inside the run, out = run end + vo_offset_s + hold_s (default 0.3). Cues may overlap by at
+keyword (or of `key_words`, the spoken tokens for a keyword shown differently) inside the run, out = run end + vo_offset_s + hold_s (default 0.3). Cues may overlap by at
 most 0.1 s and must end inside the clip.
 
 Writes `shots/src/shots/overlay-<scene>.json` (cues with inF / keyF / outF frames and public media
@@ -249,9 +249,12 @@ def _plan_scene(out, sc, problems_all):
                 add(f"words {cue['words']!r} not found in the spoken words "
                     f"after the previous cue", cid)
             else:
-                kidx = _find_keyword(words, run, cue["keyword"])
+                # A shown keyword is often not what was said ("1" for "pertama", "221" for
+                # "dua ratus dua puluh satu"), so key_words names the spoken tokens to time it on.
+                key_field = "key_words" if cue.get("key_words") else "keyword"
+                kidx = _find_keyword(words, run, cue[key_field])
                 if kidx is None:
-                    add(f"keyword {cue['keyword']!r} is not inside words {cue['words']!r}", cid)
+                    add(f"{key_field} {cue[key_field]!r} is not inside words {cue['words']!r}", cid)
                 else:
                     prev_end_idx = run[1] + 1
                     hold = float(cue.get("hold_s", HOLD_DEFAULT_S))
@@ -290,8 +293,8 @@ def _plan_scene(out, sc, problems_all):
                 item["src"] = _resolve_src(out, item.get("src"), f"{label}: {what}", sub, files)
                 problems.extend(sub)
                 items.append(item)
-            if group in cue:
-                entry[group] = items
+            # Always present, even empty: the composition maps over all three lists.
+            entry[group] = items
         out_cues.append(entry)
 
     mask_pngs = None
