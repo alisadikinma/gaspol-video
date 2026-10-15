@@ -1,4 +1,5 @@
 import importlib.util
+import re
 import subprocess
 import tempfile
 import unittest
@@ -232,6 +233,28 @@ class CliTest(unittest.TestCase):
                 capture_output=True, text=True)
         self.assertEqual(proc.returncode, 1)
         self.assertIn("does not exist", proc.stderr)
+
+
+FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "speaker-2s.mp4"
+HAS_MODEL = person_mask.model_path().is_file() and (
+    Path.home() / ".gaspol-video" / "venv" / "bin" / "python").exists()
+
+
+@unittest.skipUnless(HAS_MODEL and media.FFMPEG, "venv mediapipe model or ffmpeg not installed")
+class RealModelTest(unittest.TestCase):
+    # tests/fixtures/speaker-2s.mp4 = 2 s of Ekaputra scene 25 (presenter to camera), 360 px.
+    def test_real_model_on_reference_clip(self):
+        with tempfile.TemporaryDirectory() as d:
+            proc = subprocess.run(
+                ["python3", "tools/person_mask.py", d, "25", str(FIXTURE)],
+                capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            stamp = (Path(d) / ".tmp" / "mask-25" / "source.json").read_text()
+        m = re.search(r"mask 25: (\d+) frames, (\d+) without person", proc.stdout)
+        self.assertIsNotNone(m, proc.stdout)
+        frames, misses = int(m.group(1)), int(m.group(2))
+        self.assertGreater(frames, 0, stamp)
+        self.assertGreaterEqual((frames - misses) / frames, 0.95, proc.stdout)
 
 
 if __name__ == "__main__":
