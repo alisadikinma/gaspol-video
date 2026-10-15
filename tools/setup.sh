@@ -47,4 +47,30 @@ echo "installing requirements..."
 echo "installing Playwright chromium..."
 "$VENV_DIR/bin/python" -m playwright install chromium
 
+# Person segmentation model for tools/person_mask.py (GV-17). Versioned URL plus a pinned
+# hash: "latest" can change under us, and a swapped model would silently change every mask.
+MODEL_DIR="${GASPOL_VIDEO_HOME:-$HOME/.gaspol-video}/models"
+MODEL="$MODEL_DIR/selfie_segmenter.tflite"
+MODEL_URL="https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite"
+MODEL_SHA256="191ac9529ae506ee0beefa6b2c945a172dab9d07d1e802a290a4e4038226658b"
+mkdir -p "$MODEL_DIR"
+if [ -f "$MODEL" ] && [ "$(shasum -a 256 "$MODEL" | cut -d' ' -f1)" = "$MODEL_SHA256" ]; then
+  echo "model ok $MODEL"
+else
+  tmp="$(mktemp "$MODEL_DIR/.selfie.XXXXXX")"
+  if ! curl -fsSL -o "$tmp" "$MODEL_URL"; then
+    rm -f "$tmp"
+    echo "model download failed: $MODEL_URL" >&2
+    exit 1
+  fi
+  got="$(shasum -a 256 "$tmp" | cut -d' ' -f1)"
+  if [ "$got" != "$MODEL_SHA256" ]; then
+    rm -f "$tmp"
+    echo "model sha256 mismatch: expected $MODEL_SHA256 got $got" >&2
+    exit 1
+  fi
+  mv "$tmp" "$MODEL"
+  echo "model downloaded $MODEL"
+fi
+
 echo "interpreter: $VENV_DIR/bin/python"
