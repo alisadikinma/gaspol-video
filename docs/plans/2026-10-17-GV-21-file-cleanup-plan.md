@@ -60,12 +60,26 @@ messy.
   pytest on purpose; the real unit command is `python3 -m unittest <module> -q`, and the full
   gate is `bash tests/run.sh`. `static:` and `lint:` printed UNKNOWN: this stdlib-only repo has
   no static checker, so the plan-declared check is `python3 -m py_compile <changed .py>`.
-- **Coordination:** branch `GV-20-tool-registry` (worktree `.claude/worktrees/gv-20-tool-registry`)
-  adds `tools/registry.json`, `tools/registry_build.py`, `tests/py/test_registry.py` and edits
-  `CLAUDE.md`; it does not touch `tools/vidkit/__main__.py` or `tools/renders.py`. If GV-20 has
-  merged into `main` before this ticket merges, rebase, then register `vidkit tidy` and
-  `renders.py archive` in the registry the way
-  `docs/plans/2026-10-17-GV-20-tool-registry-plan.md` specifies, and re-run `bash tests/run.sh`.
+- **Coordination with GV-20 (read before Phase D):** branch `GV-20-tool-registry` (worktree
+  `.claude/worktrees/gv-20-tool-registry`) was at Phase H of 9 when this plan was written and is
+  expected to merge into `main` first. It adds `tools/registry.json`, `tools/registry_build.py`,
+  `tests/py/test_registry.py`, `tests/consistency/tool-registry-contract.sh`, and edits
+  `CLAUDE.md` and `docs/tool-routing.md`. It does not touch `tools/vidkit/__main__.py` or
+  `tools/renders.py`, so Phases A-C do not conflict. Three consequences for this ticket:
+  1. **Version.** GV-20 Phase I bumps the plugin to `3.18.0`. If GV-20 has merged, this ticket
+     releases `3.19.0`; only if GV-20 has not merged does it release `3.18.0`. Wherever this plan
+     says `<NEXT>`, use that number. `tests/consistency/tools-index.sh` hardcodes the version and
+     is bumped with the rest.
+  2. **Routing table is generated.** After GV-20, the table in `docs/tool-routing.md` sits
+     between `<!-- registry:routes:begin -->` and `<!-- registry:routes:end -->` and is written by
+     `python3 tools/registry_build.py render`. A hand-added row is drift:
+     `registry_build.py render --check` exits 1. `validate --coverage` also exits 1 for any file
+     under `tools/vidkit/*.py` that has no registry entry, so `tidy.py` fails it until registered.
+  3. **Order.** Before Phase D starts, run `git fetch` / check `git log main --oneline | grep GV-20`.
+     If GV-20 is in `main`: `git rebase main` in this worktree, run `bash tests/run.sh`, then do
+     Phase D in its "GV-20 merged" form (registry entries, not hand rows). If GV-20 is not in
+     `main`: do Phase D in its "GV-20 not merged" form (hand rows) and note in the ledger that the
+     registry entries are owed at rebase time.
   The `CLAUDE.md` line `Last ticket:` is set to `GV-21` in this worktree; a conflict there with
   GV-20 (`GV-20`) resolves to the higher number, `GV-21`.
 
@@ -84,6 +98,9 @@ Python 3 stdlib only (`argparse`, `hashlib`, `json`, `os`, `pathlib`, `re`, `shu
 | Duplicate detection | real file bytes (sha256, size-grouped) | `hashlib` | Yes | New `tidy.duplicates()` |
 | Stale ledger entries | `renders.json` via `renders.load()` | `tools/renders.py` | Yes | Import `tools.renders` from `tidy` |
 | Old `.tmp` files | file mtime | `os.stat` | Yes | New `tidy.old_tmp()` |
+| Stray subfolders | real listing of `ref keyframes clips vo sfx _arsip output` | `os.scandir` | Yes | `unknown_subdirs` in `scan()` |
+| MCP copy already home | sha256 of `.tmp/image|video` media vs `DUP_DIRS` index | `hashlib` | Yes | `mcp_already_home` in `scan()` |
+| Routing after GV-20 | `tools/registry.json` | `tools/registry_build.py render` | Only after GV-20 merges | Registry entries, not hand rows |
 | CLI `tidy` | argv | `tools/vidkit/__main__.py` | Yes | Add parser + dispatch |
 | Skill instructions | `skills/*/SKILL.md` | n/a | Yes | Add lines |
 | Routing docs | `docs/tool-routing.md`, `docs/vidkit.md`, pipeline doc §2.4 | n/a | Yes | Add rows/section |
@@ -93,7 +110,8 @@ No placeholder anywhere: every row reads or writes the real file system or the r
 ## Phases
 
 Every phase: commit at the end with the message shown; commit trailer
-`Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
+`Co-Authored-By: <the model that wrote the code> <noreply@anthropic.com>` (the executing agent's
+own model name, e.g. `Claude Opus 5.5` or `Claude Sonnet 5.5`; do not copy a name blindly).
 
 ### Phase A: `renders.py archive`
 
@@ -114,9 +132,12 @@ Every phase: commit at the end with the message shown; commit trailer
     (`.mp4`/`.mov` → `klip`, `.mp3`/`.wav` → `audio`, else `gambar`).
   - reason slug: lowercase, every run of non `[a-z0-9]` → `-`, strip `-`, cut to 40 chars,
     empty → `diganti`.
-  - destination `_arsip/<kind>-<stem>-v<N>-<slug><ext>`, `N` = smallest integer ≥ 1 such that
-    no file in `_arsip/` starts with `<kind>-<stem>-v<N>-`. Create `_arsip/` if missing. Move
-    with `os.replace`. Return the destination.
+  - destination `_arsip/<kind>-<stem>-v<N>-<slug><ext>`, `N` = (largest `M` among files in
+    `_arsip/` matching `re.escape(f"{kind}-{stem}-v") + r"(\d+)-"` at the start of the name) + 1,
+    or 1 when none match. Numbers only go up, so a higher `v` is always the more recent archive,
+    even after someone deletes an older one. Create `_arsip/` if missing. If the computed
+    destination exists anyway, raise `ValueError` (never overwrite). Move with `os.replace`.
+    Return the destination.
 - CLI: `renders.py <project> archive --file F [--reason R]` prints
   `archived <file> -> _arsip/<name>` or `nothing to archive: <file>`; exit 0 both. A
   `ValueError` prints `renders: <msg>` to stderr, exit 1.
@@ -136,7 +157,9 @@ Every phase: commit at the end with the message shown; commit trailer
 file is a directory; file is a symlink; `renders.json` invalid JSON while looking up the phase
 (fall back to the extension, do not crash).
 **Edge cases covered (each a test):** file missing → `None`; second archive of the same stem →
-`v2`; third → `v3`; `v1` removed from `_arsip/` leaves `v2` present → next is `v1`; empty reason
+`v2`; third → `v3`; `v1` removed from `_arsip/` leaves `v2` present → next is `v3` (never
+reuses `v1`); `keyframe-scene-03-v10-x.png` present → next is `v11` (numeric, not string, max);
+a stem that is a prefix of another (`scene-0` vs `scene-03`) does not share numbering; empty reason
 → `diganti`; reason `"Prompt Berubah!! / wajah"` → `prompt-berubah-wajah`; reason longer than 40
 chars is cut; `_arsip/` absent → created; non-ASCII reason → slug without it; `phase` given
 overrides ledger lookup; extension fallback for `.mp4`, `.wav`, `.png`.
@@ -161,18 +184,34 @@ time, and `os.replace` is atomic for the single move.
 
 **Contract (write exactly this):**
 - Constants: `CONTRACT_DIRS = {"ref", "keyframes", "shots", "clips", "vo", "sfx", "work", "output", "_arsip", ".tmp", "screens", "packaging"}`; `DUP_DIRS = ("ref", "keyframes", "clips", "vo", "sfx", "output", "_arsip")` (never walk `shots/`, it holds `node_modules`); `MCP_SUBDIRS = (".tmp/image", ".tmp/video")`; `MEDIA_EXT = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".mp3", ".wav"}`.
+- `FLAT_DIRS = ("ref", "keyframes", "clips", "vo", "sfx", "_arsip")`: folders that must hold
+  files only. `ALLOWED_SUBDIRS = {"output": {"stems"}}`. Every other contract folder (`shots`,
+  `work`, `screens`, `packaging`, `.tmp`, and `output` beyond `stems`) is not checked for
+  subfolders except `output`. Reason: pipeline doc §2.3 records the real damage as subfolders
+  INSIDE contract folders (`keyframes/_up/`, `clips/_ov/`, `clips/_final/`, `keyframes/_gen/`),
+  not as new top-level folders, and §2.1 says variants are a filename suffix, never a subfolder.
 - `scan(project, tmp_days=7, now=None) -> dict` with keys, all lists of strings
   (paths relative to `project`, sorted):
   - `unknown_dirs`: top-level directories not in `CONTRACT_DIRS` and not starting with `.`
     (other dotted dirs like `.git` are ignored; `.tmp` is in the contract).
+  - `unknown_subdirs`: direct sub-directories of each `FLAT_DIRS` folder, plus sub-directories
+    of `output/` not in `ALLOWED_SUBDIRS["output"]` (e.g. `keyframes/_up`, `clips/_ov`,
+    `output/old`). One level deep is enough: moving the subfolder moves everything below it.
+    Symlinked sub-directories are listed (they break the rule too) but never followed.
   - `duplicates`: list of lists, each a group of ≥ 2 files in `DUP_DIRS` with identical sha256
     (group by size first; skip size 0; symlinks not followed; an unreadable file goes to
     `unreadable`, never raises).
   - `stale_ledger`: `renders.json` entries with status `done` whose `file` does not exist.
   - `old_tmp`: files under `.tmp/` with mtime older than `tmp_days` days (`now` injectable).
-  - `unmoved_mcp`: media files (by `MEDIA_EXT`) under `MCP_SUBDIRS`: paid renders still waiting
-    to be moved to their home.
+  - `unmoved_mcp`: media files (by `MEDIA_EXT`) under `MCP_SUBDIRS` whose bytes do NOT match any
+    file in `DUP_DIRS`: paid renders still waiting to be moved to their home.
+  - `mcp_already_home`: media files under `MCP_SUBDIRS` whose sha256 equals a file in
+    `DUP_DIRS` (it was copied, not moved). Each entry is `"<tmp path> = <home path>"`. These are
+    safe to delete because the paid bytes live on in their home. Reuses the same size-then-sha256
+    index as `duplicates` (one hashing pass, no second read of the home files).
   - `unreadable`: files that could not be read.
+- `.tmp` itself being a symlink raises `ValueError(".tmp is a symlink: ...")`, both in `scan` and
+  in `empty_tmp`, because emptying it would empty the link's target outside the project.
 - `format_report(report) -> str`: one section per non-empty key, a count line each, and a
   final line `clean` when everything is empty. Plain words, no jargon.
 - Uses `tools.renders.load` for the ledger; a `RenderLedgerError` becomes a report entry
@@ -183,20 +222,26 @@ time, and `os.replace` is atomic for the single move.
 1. Write failing test for `tidy.scan` reporting an unknown top-level folder `_up/`. Expected error: `ImportError: cannot import name 'tidy' from 'tools.vidkit'`
 2. Run test, confirm it fails for the expected reason: `python3 -m unittest tests.py.test_vidkit.TidyScanTest -q`
 3. Implement `tidy.py` with `scan` (unknown dirs first)
-4. Add one failing test + implementation per remaining key: `duplicates`, `stale_ledger`, `old_tmp`, `unmoved_mcp`, `unreadable`
+4. Add one failing test + implementation per remaining key: `unknown_subdirs`, `duplicates`, `stale_ledger`, `old_tmp`, `unmoved_mcp`, `mcp_already_home`, `unreadable`; plus the `.tmp` symlink `ValueError`
 5. Add `format_report` with its test (empty report → `clean`)
 6. Commit: `feat(GV-21): vidkit tidy scan reports unknown folders, duplicates, stale entries, old tmp`
 
-**Error paths covered:** project missing or a file → `ValueError`; invalid `renders.json` →
-reported, not raised; unreadable file (chmod 000 in a temp dir; skip the test when running as
-root) → in `unreadable`.
+**Error paths covered:** project missing or a file → `ValueError`; `.tmp` is a symlink →
+`ValueError`; invalid `renders.json` → reported, not raised; unreadable file (chmod 000 in a temp
+dir; skip the test when running as root) → in `unreadable`.
 **Edge cases covered:** empty project → `clean`; dotted dir `.git` ignored; a dir symlink at top
 level is not followed; two identical files, three identical files (one group of 3), two files
 same size but different bytes (no group), zero-byte files (ignored); `shots/node_modules`
 never walked (test plants a duplicate pair inside it and expects no group); file exactly
 `tmp_days` old is not old, one second older is; `.tmp/image/a.png` in `unmoved_mcp` but
 `.tmp/a.png` is not; non-media file in `.tmp/image/` not in `unmoved_mcp`; ledger entry with
-status `failed` and missing file is not stale; ledger entry whose file exists is not stale.
+status `failed` and missing file is not stale; ledger entry whose file exists is not stale;
+`keyframes/_up/` and `clips/_ov/` in `unknown_subdirs`; `output/stems/` not listed, `output/old/`
+listed; `shots/src/` and `work/x/` not listed; a file (not dir) directly in `keyframes/` not
+listed; `.tmp/image/a.png` identical to `keyframes/scene-01.png` → in `mcp_already_home`, NOT in
+`unmoved_mcp`; same name but different bytes → in `unmoved_mcp`, not in `mcp_already_home`;
+a `.tmp/image` file identical to a home file is not reported as a `duplicates` group (`.tmp` is
+not a `DUP_DIRS` member).
 **Observability:** `format_report` is the output a person reads; it names every path.
 **Concurrency:** not applicable, with the reason: read-only scan.
 
@@ -216,20 +261,30 @@ status `failed` and missing file is not stale; ledger entry whose file exists is
 
 **Contract (write exactly this):**
 - `apply_unknown_dirs(project, report) -> list[tuple[str, str]]`: moves each `unknown_dirs`
-  entry `X` to `_arsip/folder-X`; when that exists, `_arsip/folder-X-2`, `-3`, … Creates
-  `_arsip/` if missing. Returns `(src, dst)` pairs (relative).
-- `empty_tmp(project, include_mcp=False) -> dict` returns `{"deleted": [...], "kept_mcp": [...]}`:
-  deletes every file and sub-folder inside `.tmp/` (keeps `.tmp/` itself) EXCEPT media files
-  under `MCP_SUBDIRS`, which are kept and listed in `kept_mcp` unless `include_mcp=True`.
-  Empty sub-folders left over are removed. A missing `.tmp/` → empty result, no error. Never
-  follows symlinks (a symlink is unlinked, its target untouched). Never touches anything outside
+  entry `X` to `_arsip/folder-X`, and each `unknown_subdirs` entry `P/X` to
+  `_arsip/folder-P-X` (e.g. `keyframes/_up` → `_arsip/folder-keyframes-_up`); when the
+  destination exists, `-2`, `-3`, … are appended. Never overwrites. Creates `_arsip/` if missing.
+  A symlinked entry is moved as the link itself (`os.replace` on the link), the target is
+  untouched. Returns `(src, dst)` pairs (relative).
+- `empty_tmp(project, include_mcp=False) -> dict` returns
+  `{"deleted": [...], "kept_mcp": [...]}`: first calls `scan` to get `mcp_already_home` and
+  `unmoved_mcp`. Deletes every file and sub-folder inside `.tmp/` (keeps `.tmp/` itself)
+  EXCEPT the `unmoved_mcp` files, which are kept and listed in `kept_mcp` unless
+  `include_mcp=True`. `mcp_already_home` files ARE deleted by default (their bytes exist in their
+  home). Empty sub-folders left over are removed. A missing `.tmp/` → empty result, no error.
+  `.tmp` that is a symlink → `ValueError` before anything is deleted. Never follows symlinks
+  inside `.tmp/` (a symlink is unlinked, its target untouched). Never touches anything outside
   `.tmp/`.
 - CLI in `__main__.py`: `tidy <project> [--tmp-days N] [--apply] [--empty-tmp] [--include-mcp]`.
   No flag → print `format_report(scan(...))`, exit 0, change nothing. `--apply` → move unknown
-  dirs, print each `moved A -> B`. `--empty-tmp` → run `empty_tmp`, print the deleted count and
-  each kept MCP file with the words `paid render not moved yet, kept`. `--include-mcp` without
-  `--empty-tmp` → argparse error (exit 2). `ValueError` from `scan` → the existing
-  `FAIL: ...` path, exit 1.
+  dirs and subdirs, print each `moved A -> B`, or `nothing to move`. `--empty-tmp` → run
+  `empty_tmp`, print the deleted count, each deleted already-home copy as
+  `deleted <tmp> (copy of <home>)`, and each kept MCP file with the words
+  `paid render not moved yet, kept`. `--apply --empty-tmp` together is allowed and runs in that
+  order: move first, then empty. `--apply` never touches `.tmp/` (it is a contract folder), and
+  `empty_tmp` re-scans after the move, so the already-home check sees the final layout.
+  `--include-mcp` without `--empty-tmp` → argparse error (exit 2). `ValueError` from `scan`
+  or `empty_tmp` → the existing `FAIL: ...` path, exit 1.
 - `_arsip/`, `shots/out/` and every contract folder other than `.tmp/` are never deleted or
   emptied by any flag.
 
@@ -243,13 +298,19 @@ status `failed` and missing file is not stale; ledger entry whose file exists is
 7. Commit: `feat(GV-21): vidkit tidy --apply and --empty-tmp`
 
 **Error paths covered:** `--include-mcp` without `--empty-tmp`; project not a directory; `.tmp`
-missing; destination `_arsip/folder-X` already exists (suffix, no overwrite).
+missing; `.tmp` is a symlink to a folder outside the project (`ValueError`, the target folder's
+files all survive, sha256 compared); destination `_arsip/folder-X` already exists (suffix, no
+overwrite).
 **Edge cases covered:** no unknown dirs → `--apply` prints `nothing to move`; two unknown dirs
 with the same name cannot exist, but `_up` and `_arsip/folder-_up` both existing → `-2`;
-`.tmp` holding a file, a nested folder and a symlink to a file outside the project (the target
-survives); `.tmp/image/a.png` kept by default, deleted with `--include-mcp`;
-`.tmp/image/notes.txt` (non-media) deleted; `_arsip/` content untouched after `--empty-tmp`
-(sha256 compared); `shots/out/` untouched; running `--empty-tmp` twice is a no-op the second time.
+`keyframes/_up/a.png` → `_arsip/folder-keyframes-_up/a.png` with bytes kept; `keyframes/_up` and
+`clips/_up` both present → two distinct destinations; a symlinked subdir is moved as a link, its
+target untouched; `.tmp` holding a file, a nested folder and a symlink to a file outside the
+project (the target survives); `.tmp/image/a.png` with no home copy kept by default, deleted with
+`--include-mcp`; `.tmp/image/a.png` identical to `keyframes/scene-01.png` deleted by default and
+`keyframes/scene-01.png` untouched; `.tmp/image/notes.txt` (non-media) deleted; `_arsip/` content
+untouched after `--empty-tmp` (sha256 compared); `shots/out/` untouched; `--apply --empty-tmp`
+in one run does both in that order; running `--empty-tmp` twice is a no-op the second time.
 **Observability:** every move and every kept file is printed; the deleted count is printed.
 **Concurrency:** not applicable, with the reason: one session drives a project; stated in the
 help text ("do not run while a render is writing to `.tmp/`").
@@ -263,10 +324,15 @@ help text ("do not run while a render is writing to `.tmp/`").
 
 ### Phase D: skills, docs, routing, consistency check, release
 
-**Estimated time:** 20 minutes
+**Estimated time:** 25 minutes
+
+**Gate before starting:** do step 3 of "Coordination with GV-20" (check `main`, rebase if GV-20
+merged, run `bash tests/run.sh`, write in the ledger which form of Phase D applies and which
+version `<NEXT>` is).
 
 **Files:**
-- Modify: `skills/video-image/SKILL.md`, `skills/video-gen/SKILL.md`, `skills/video-post/SKILL.md`, `skills/video-explainer/SKILL.md`, `docs/tool-routing.md`, `docs/vidkit.md`, `reference/post-production/10-post-production-pipeline.md`, `CLAUDE.md`, `CHANGELOG.md`, plugin version files (find them with `grep -rn "3.17.0" --include=*.json --include=*.md .` and follow how GV-18 bumped them)
+- Modify: `skills/video-image/SKILL.md`, `skills/video-gen/SKILL.md`, `skills/video-post/SKILL.md`, `skills/video-explainer/SKILL.md`, `docs/tool-routing.md`, `docs/vidkit.md`, `reference/post-production/10-post-production-pipeline.md`, `CLAUDE.md`, `CHANGELOG.md`, `README.md`, `.claude-plugin/plugin.json`, `tests/consistency/tools-index.sh`, `tests/consistency/plugin-identity.sh` (the files holding the current version; confirm with `grep -rlF "<current version>" . --include='*.json' --include='*.md' --include='*.sh' | grep -v docs/plans`, quoting the globs because zsh expands them)
+- GV-20 merged form only: Modify `tools/registry.json` (then regenerate `docs/tool-routing.md` with `python3 tools/registry_build.py render`)
 - Create: `tests/consistency/tidy-contract.sh`
 
 **Text to add (adapt wording to each file's voice, keep it to one short paragraph each):**
@@ -278,35 +344,57 @@ help text ("do not run while a render is writing to `.tmp/`").
 - `video-image`, `video-gen`, `video-post`, `video-explainer`, in the folder-contract paragraph,
   and at the end of each batch: "Run `python3 -m tools.vidkit tidy {output_folder}` (report
   only) and show the user anything it lists."
-- `docs/tool-routing.md` two rows: "Keep the project folder clean / find stray folders and
-  duplicates" → `python3 -m tools.vidkit tidy <project>`; "Re-render a paid asset without
-  losing the old one" → `python3 tools/renders.py <project> archive --file F --reason R`.
+- Same four folder-contract paragraphs: the heading says "nine folders" and the list omits
+  `sfx/`, while pipeline doc §2 has `sfx/` (Phase 6 cues) and `CLAUDE.md` names `screens/` and
+  `packaging/`. Make the paragraph match `CONTRACT_DIRS` exactly: list `ref/ keyframes/ shots/
+  clips/ vo/ sfx/ work/ output/ _arsip/ .tmp/ screens/ packaging/`, change the heading count to
+  match (twelve), and add "subfolders are not allowed inside `ref/ keyframes/ clips/ vo/ sfx/
+  _arsip/`; `output/` allows only `stems/`". Check pipeline doc §2/§2.1 says the same; if its
+  list differs, fix it in the same commit so the doc, the skills and `tidy.py` agree.
+- Routing, two entries: "Keep the project folder clean / find stray folders and duplicates" →
+  `python3 -m tools.vidkit tidy <project>`; "Re-render a paid asset without losing the old one"
+  → `python3 tools/renders.py <project> archive --file F --reason R`.
+  - **GV-20 merged form:** add a `tools/vidkit/tidy.py` entry to `tools/registry.json` (purpose,
+    phase, tasks, cli, routes with the first text above) modelled on an existing vidkit entry
+    such as `tools/vidkit/beats.py`; add the second route to the existing `tools/renders.py`
+    entry. Run `python3 tools/registry_build.py render` to rewrite the table, then
+    `python3 tools/registry_build.py validate --coverage` and `render --check`, both exit 0. Do
+    NOT edit the table between the `registry:routes` markers by hand.
+  - **GV-20 not merged form:** add the two rows to the `| I want to... | Use |` table by hand.
 - `docs/vidkit.md` table: row `tidy` ("scan, move unknown folders to `_arsip/`, empty `.tmp/`
   except unmoved MCP renders").
-- Pipeline doc: new `### 2.4 Cleaning up` after §2.3: the three commands, what each can delete
-  (only `.tmp/` content, MCP renders kept unless `--include-mcp`), and that `_arsip/` is never
-  touched.
+- Pipeline doc: new `### 2.4 Cleaning up` after §2.3: the three commands, what `--apply` moves
+  (unknown top-level folders and subfolders inside flat folders, into `_arsip/folder-...`), what
+  `--empty-tmp` can delete (only `.tmp/` content; an MCP render is deleted only when the same
+  bytes already sit in its home, otherwise kept unless `--include-mcp`), and that `_arsip/` is
+  never touched.
 - `CLAUDE.md`: Architecture table gets a `tools/vidkit/tidy.py` mention in the `tools/vidkit/`
-  row and the `renders.py` row mentions `archive`; Version + Last Updated; a `v3.18.0` changelog
+  row and the `renders.py` row mentions `archive`; Version + Last Updated; a `v<NEXT>` changelog
   entry; tool counts only if the repo counts them in text you edited.
-- `CHANGELOG.md`: matching entry.
+- `CHANGELOG.md` and `README.md` (version line + changelog): matching `<NEXT>` entry.
+- Version: `.claude-plugin/plugin.json`, `tests/consistency/tools-index.sh`,
+  `tests/consistency/plugin-identity.sh`, `README.md`, `CLAUDE.md` all to `<NEXT>`. If the
+  marketplace file in the parent `gaspol-one` repo lists this plugin's version, report it to the
+  user as a follow-up; it is outside this repo.
 
 **Consistency check `tests/consistency/tidy-contract.sh`:** model it on the nearest existing
 script in `tests/consistency/` (read one first, keep its output style). It must `exit 1` with a
 message naming the file when any of these is missing: `archive --file` in `video-image` and
-`video-gen` SKILL.md; `vidkit tidy` in those two plus `video-post` and `video-explainer`; a
-`tidy` row and an `archive` row in `docs/tool-routing.md`; `### 2.4` in the pipeline doc.
+`video-gen` SKILL.md; `vidkit tidy` in those two plus `video-post` and `video-explainer`; `sfx/`
+in the folder-contract paragraph of all four skills; a `tidy` row and an `archive` row in
+`docs/tool-routing.md` (holds in both forms, since the rendered table contains them); `### 2.4`
+in the pipeline doc.
 
 **Steps:**
 1. Write failing test: create `tests/consistency/tidy-contract.sh` as above. Expected error: the script exits 1 naming `skills/video-image/SKILL.md` as missing `archive --file`
 2. Run it, confirm it fails for that reason: `bash tests/consistency/tidy-contract.sh`
-3. Edit the two render-offer skills (`video-image`, `video-gen`)
-4. Edit `video-post` and `video-explainer`
-5. Edit `docs/tool-routing.md`, `docs/vidkit.md`, the pipeline doc §2.4
-6. Run the consistency check, confirm it passes
-7. Edit `CLAUDE.md`, `CHANGELOG.md`, version files (the existing version-gate consistency checks fail until all agree; run `bash tests/run.sh consistency`)
+3. Edit the two render-offer skills (`video-image`, `video-gen`), including the folder-contract paragraph
+4. Edit `video-post` and `video-explainer`, including the folder-contract paragraph
+5. Routing in the form that applies (registry + `render`, or hand rows); edit `docs/vidkit.md` and the pipeline doc §2.4 (and §2/§2.1 if its folder list differs)
+6. Run the consistency check, confirm it passes; GV-20 merged form: also `bash tests/consistency/tool-registry-contract.sh`
+7. Edit `CLAUDE.md`, `CHANGELOG.md`, `README.md`, version files to `<NEXT>` (the existing version-gate consistency checks fail until all agree; run `bash tests/run.sh consistency`)
 8. Run the full gate: `bash tests/run.sh` and record the counts
-9. Commit: `feat(GV-21): skills, routing docs and release v3.18.0 for tidy and archive`
+9. Commit: `feat(GV-21): skills, routing docs and release v<NEXT> for tidy and archive`
 
 **Error paths covered:** the consistency script fails loudly per missing item (not just the
 first); the version gates catch a half-done bump.
@@ -314,7 +402,8 @@ first); the version gates catch a half-done bump.
 `tidy` line; `video-post` likewise.
 **Observability:** not applicable, with the reason: docs and a check script; the script prints
 which file lacks which text.
-**Concurrency:** if GV-20 merged first, see "Coordination" above.
+**Concurrency:** GV-20 is handled by the gate at the top of this phase and "Coordination with
+GV-20" above.
 
 **Verification:**
 - [ ] static: no checker configured for this stdlib repo; `bash -n tests/consistency/tidy-contract.sh` passes
@@ -322,7 +411,10 @@ which file lacks which text.
 - [ ] `grep -rn "archive --file" skills/video-image/SKILL.md skills/video-gen/SKILL.md` finds both
 - [ ] Real end-to-end by hand in a temp project: make `keyframes/scene-01.png`, run
       `renders.py <tmp> archive --file keyframes/scene-01.png --reason "wajah beda"`, see it in
-      `_arsip/`; create `_up/x.png`, run `vidkit tidy <tmp>` (report), then `--apply` (moved)
+      `_arsip/`; create `_up/x.png` and `keyframes/_ov/y.png`, run `vidkit tidy <tmp>` (report
+      lists both), then `--apply` (both moved); copy `keyframes/scene-01.png` to
+      `.tmp/image/scene-01.png`, run `--empty-tmp`, see the copy deleted and the home file kept
+- [ ] GV-20 merged form: `python3 tools/registry_build.py validate --coverage` and `render --check` exit 0
 - [ ] No placeholder/TODO comments in new code or docs
 
 ## Out of scope
