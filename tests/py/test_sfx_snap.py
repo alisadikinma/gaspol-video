@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,6 +37,33 @@ class SfxSnapTest(unittest.TestCase):
 
     def _times(self):
         return [e["at_s"] for e in json.loads(self.out.read_text())["events"]]
+
+    def test_relative_paths_resolve_against_project_not_cwd(self):
+        self._write([{"sfx_id": "hit", "at_s": 1.55}])
+        decoy = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(decoy, ignore_errors=True))
+        (decoy / "work").mkdir()
+        decoy_plan = decoy / "work" / "sfx-plan.json"
+        decoy_plan.write_text(json.dumps({"events": [{"sfx_id": "decoy", "at_s": 3.0}]}))
+        (decoy / "music.wav").write_bytes(b"not audio")
+        before = os.getcwd()
+        os.chdir(decoy)
+        self.addCleanup(os.chdir, before)
+        rc, text = self._run(music="music.wav")
+        self.assertEqual(rc, 0, text)
+        self.assertEqual(json.loads(decoy_plan.read_text())["events"][0]["sfx_id"], "decoy")
+        self.assertFalse((decoy / "work" / "sfx-plan.snapped.json").exists())
+        self.assertAlmostEqual(self._times()[0], 1.5, delta=0.03)
+
+    def test_absolute_paths_stay_absolute(self):
+        elsewhere = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(elsewhere, ignore_errors=True))
+        plan = elsewhere / "p.json"
+        plan.write_text(json.dumps({"events": [{"sfx_id": "hit", "at_s": 1.55}]}))
+        out = elsewhere / "o.json"
+        rc, text = self._run("--plan", str(plan), "--out", str(out))
+        self.assertEqual(rc, 0, text)
+        self.assertTrue(out.exists())
 
     def test_snaps_near_cue_and_leaves_far_cue(self):
         self._write([{"sfx_id": "hit", "at_s": 1.55}, {"sfx_id": "whoosh", "at_s": 3.0}])

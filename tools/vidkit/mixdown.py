@@ -89,7 +89,8 @@ def run(plan, workdir=None):
     # two steps: gain first, then a limiter, because AAC encoding overshoots a one-step peak
     ff.ffmpeg("-i", raw, "-af", f"volume={gain}dB,alimiter=limit={plan.get('limit', 0.78)}:level=false", fin)
     muxed = str(work / "muxed.mp4")
-    chain = ([f"ass={plan['ass']}"] if plan.get("ass") else []) + [color.TAG_FILTER]
+    chain = (color.source_filters(video) + ([f"ass={plan['ass']}"] if plan.get("ass") else [])
+             + [color.TAG_FILTER])
     vf = ["-vf", ",".join(chain)]
     ff.ffmpeg("-i", video, "-i", fin, *vf, "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-crf", 17,
               "-preset", "medium", "-pix_fmt", "yuv420p", *color.ENCODE_FLAGS, "-c:a", "aac", "-b:a", "192k",

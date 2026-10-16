@@ -436,7 +436,9 @@ FOR each batch (ACT or sub-batch):
         and saves the downloaded file as `{output_folder}/work/verdict.json`. Then
         `python3 tools/verdict_page.py check {output_folder}` MUST exit 0 (add
         `--allow-maybe` only if the owner accepts MAYBE scenes). Exit 1 lists scenes
-        to fix or re-render as stills first; exit 2 means the file is missing or
+        to fix or re-render as stills first (including a keyframe that changed after it was
+        judged, or a verdict without sha256: build a fresh page and re-judge; pass the same
+        `--keyframes` to `page` and `check`); exit 2 means the file is missing or
         broken. No render offer until exit 0. Skipping needs an explicit owner
         statement, recorded in the ledger/project notes with its date.
      a. FOR each approved scene, build `{platform, mode, duration_s, aspect, refs}`

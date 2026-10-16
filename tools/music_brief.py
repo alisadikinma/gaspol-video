@@ -18,15 +18,18 @@ Stdlib only.
 import argparse
 import hashlib
 import json
+import math
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 PALETTE_DEFAULTS = PLUGIN_ROOT / "media" / "music" / "library" / "palette.json"
 
 PROMPT_CAP = 400
-# The API's accepted length range is not documented anywhere in this repo; these bounds are the
-# plan's working values. A longer segment loops in mix_music.fit_track.
+# ElevenLabs accepts music_length_ms 3,000 to 600,000 (docs checked 2026-10-16). These tighter
+# bounds keep a bed useful as one track; a longer segment loops in mix_music.fit_track.
 MIN_LENGTH_S = 10
 MAX_LENGTH_S = 120
 
@@ -122,6 +125,8 @@ def validate(brief):
             value = seg.get(field)
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise BriefError(f"segment {i}: {field} missing or not a number")
+            if not math.isfinite(value):
+                raise BriefError(f"segment {i}: {field} must be a finite number, got {value}")
             times[field] = float(value)
         if times["to_s"] <= times["from_s"]:
             raise BriefError(
@@ -170,6 +175,19 @@ def _load_brief(path):
         raise BriefError(f"{path.name} is not valid JSON: {exc}") from exc
 
 
+def _write_atomic(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("project")
@@ -194,18 +212,32 @@ def main(argv=None):
         return 0
 
     work = project / "work"
-    work.mkdir(parents=True, exist_ok=True)
     plan_path = work / "music-plan.json"
-    out = "output/master-mixed.mp4"
+    plan = {"out": "output/master-mixed.mp4"}
     if plan_path.exists():
         try:
-            out = json.loads(plan_path.read_text(encoding="utf-8")).get("out", out)
-        except (json.JSONDecodeError, AttributeError):
-            pass
-    (work / "music-palette.json").write_text(
-        json.dumps(palette, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    plan_path.write_text(
-        json.dumps({"out": out, "segments": segments}, indent=2) + "\n", encoding="utf-8")
+            existing = json.loads(plan_path.read_text(encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            print(f"music_brief: {plan_path.name} is not valid JSON, nothing written: {exc}",
+                  file=sys.stderr)
+            return 2
+        if not isinstance(existing, dict):
+            print(f"music_brief: {plan_path.name} must be a JSON object, nothing written",
+                  file=sys.stderr)
+            return 2
+        plan = existing
+        if plan.get("bed_source") == "video":
+            print('music_brief: warning: plan has bed_source "video"; its segments were '
+                  "replaced by the palette segments from this brief", file=sys.stderr)
+    plan["segments"] = segments
+    plan.setdefault("out", "output/master-mixed.mp4")
+    try:
+        _write_atomic(work / "music-palette.json",
+                      json.dumps(palette, indent=2, ensure_ascii=False) + "\n")
+        _write_atomic(plan_path, json.dumps(plan, indent=2) + "\n")
+    except OSError as exc:
+        print(f"music_brief: could not write: {exc}", file=sys.stderr)
+        return 2
     print(f"wrote {len(segments)} segments: {work / 'music-palette.json'}, {plan_path}")
     return 0
 

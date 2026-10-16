@@ -101,6 +101,7 @@ def main(argv=None):
     s.add_argument("--max-gain", type=float, default=0.15)
     s.add_argument("--min-delta", type=float, default=0.03)
     s.add_argument("--apply", metavar="OUTDIR", help="write matched clips here; without it nothing is written")
+    s.add_argument("--force", action="store_true", help="with --apply, overwrite files already in OUTDIR")
 
     s = sub.add_parser("beats", help="beat times of a music file, as JSON seconds")
     s.add_argument("file")
@@ -177,7 +178,7 @@ def main(argv=None):
             for w in speech.words_from_alignment(_json(a.alignment)):
                 print(f"{w['word']}@{w['start']:.2f}-{w['end']:.2f}")
         elif a.cmd == "colormatch":
-            print(colormatch.report(a.clips, a.reference, a.max_gain, a.min_delta, a.apply))
+            print(colormatch.report(a.clips, a.reference, a.max_gain, a.min_delta, a.apply, a.force))
         elif a.cmd == "beats":
             print(json.dumps(beats.detect(a.file, min_gap_s=a.min_gap, threshold=a.threshold)))
         elif a.cmd == "energy":

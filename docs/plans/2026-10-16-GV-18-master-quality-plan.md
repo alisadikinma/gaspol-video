@@ -52,7 +52,7 @@ Python 3 stdlib + ffmpeg/ffprobe (already required); `unittest`; bash consistenc
 | Colour match | per-clip mean RGB (ffmpeg downscale to 1x1) | new `tools/vidkit/colormatch.py` | No | Create |
 | Verdict gate | `keyframes/*.png` + `work/verdict.json` | new `tools/verdict_page.py` | No | Create |
 | Cost log | `work/cost-log.json` + `media/pricing.json` (owner-maintained prices) | new `tools/cost_log.py` | No | Create; REFUSE when a price is missing, never guess |
-| Thumbnail menu | own wording; source read from `/Users/alisadikin/Drive-D/claude-plugin/claude-youtube-editor/.claude/skills/thumbnail/references/style-elements.md` | new reference doc + `tools/thumb_verify.py` | No | Create |
+| Thumbnail menu | own wording; source read from `<claude-youtube-editor checkout>/.claude/skills/thumbnail/references/style-elements.md` | new reference doc + `tools/thumb_verify.py` | No | Create |
 | Stage cache | `.tmp/stages.json` in the project | new `tools/vidkit/stages.py` | No | Create; wire into `edit_render.render` |
 | Encoder probe | `ffmpeg -encoders` | new `tools/vidkit/encoder.py` | No | Create; opt-in via env |
 | Loudness profiles | `media/loudness-profiles.json` with a required `source` per entry | `vidkit.loudness` | No | Create; entries without `source` are refused |
@@ -512,7 +512,7 @@ Phase labels: Phase 0 pre-flight, then A–O. Every phase's step 1 is the failin
 **Contract:**
 - `media/loudness-profiles.json`: `{"profiles": {"default": {"lufs": -14, "true_peak": -1.0, "source": "plugin default since v3.12.0, YouTube normalisation reference"}}}`. Any other profile (e.g. `short-vertical`) may be added ONLY with a non-empty `source` URL or document title; `loudness.profile(name)` raises `ProfileError` for a profile without `source`, an unknown name, or a `lufs` outside `[-24, -6]`.
 - `vidkit normalize --profile NAME` and mixdown plan key `"loudness_profile"` select it; absent → `default` (today's -14 behaviour, no change).
-- The Samuel Christ measurement (12 Shorts, -24.1 to -7.8 LUFS, median -11.8; 11 of 12 between -13.6 and -7.8) is recorded as EVIDENCE in `docs/evals/short-form-loudness-measurement.md` (descriptors only, no client assets), clearly labelled "one channel, not a platform rule". It does NOT create a profile by itself.
+- The reference-channel measurement (12 Shorts, -24.1 to -7.8 LUFS, median -11.8; 11 of 12 between -13.6 and -7.8) is recorded as EVIDENCE in `docs/evals/short-form-loudness-measurement.md` (descriptors only, no client assets), clearly labelled "one channel, not a platform rule". It does NOT create a profile by itself.
 
 **Steps:**
 1. Write failing test: `loudness.profile("default")` returns `-14.0` and `-1.0`; `profile("nope")` raises `ProfileError`; a temp profile file with a profile lacking `source` raises `ProfileError`; `lufs` of -3 raises. Expected error: `AttributeError: module 'tools.vidkit.loudness' has no attribute 'profile'`.

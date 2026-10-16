@@ -2,12 +2,14 @@
 """Stills-first verdict page and gate for keyframes, before any clip is rendered.
 
     python3 tools/verdict_page.py page  <project> [--keyframes keyframes] [--out output/verdict.html] [--max-mb 16]
-    python3 tools/verdict_page.py check <project> [--allow-maybe]
+    python3 tools/verdict_page.py check <project> [--keyframes keyframes] [--allow-maybe]
 
 `page` builds ONE self-contained HTML file: a card per `keyframes/scene-*.png` with the image
 inlined as a downscaled JPEG data URI, PASS / MAYBE / NO buttons (keys 1/2/3), a note field and
 a "Download verdict.json" button. The owner opens it in a browser and saves the file into
-`work/verdict.json`: {"scenes": {"<id>": {"verdict": "PASS|MAYBE|NO", "note": str}}}.
+`work/verdict.json`: {"scenes": {"<id>": {"verdict": "PASS|MAYBE|NO", "note": str, "sha256": str}}}.
+The sha256 of each keyframe's bytes travels with the verdict, so `check` fails a scene whose image
+changed after it was judged, and treats an entry without a sha256 as unverifiable.
 
 `check` exits 0 only when every keyframe has PASS (or MAYBE with --allow-maybe); 1 listing each
 missing / NO / MAYBE scene; 2 when the file is missing, malformed or holds a bad verdict value.
@@ -17,6 +19,7 @@ Stdlib only. Needs ffmpeg (no Pillow, no venv).
 
 import argparse
 import base64
+import hashlib
 import html
 import json
 import os
@@ -43,6 +46,10 @@ def scene_ids(project, keyframes="keyframes"):
     for p in d.glob("scene-*.png"):
         ids.append(p.stem[len("scene-"):])
     return sorted(ids, key=natural_key)
+
+
+def file_sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def to_jpeg(src, level):
@@ -108,7 +115,7 @@ JS = """
     var out={scenes:{}};
     cards.forEach(function(card){
       var id=card.getAttribute('data-scene');
-      if(state[id]){out.scenes[id]={verdict:state[id],note:card.querySelector('textarea').value};}
+      if(state[id]){out.scenes[id]={verdict:state[id],note:card.querySelector('textarea').value,sha256:card.getAttribute('data-sha256')};}
     });
     var blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
     var a=document.createElement('a');
@@ -122,10 +129,10 @@ JS = """
 
 def build_html(entries):
     cards = []
-    for sid, b64 in entries:
+    for sid, b64, sha in entries:
         e = html.escape(sid, quote=True)
         cards.append(
-            f'<section class="card" data-scene="{e}" tabindex="0" aria-label="Scene {e}">'
+            f'<section class="card" data-scene="{e}" data-sha256="{html.escape(sha, quote=True)}" tabindex="0" aria-label="Scene {e}">'
             f'<img alt="Keyframe scene {e}" src="data:image/jpeg;base64,{b64}">'
             f'<div class="id">Scene {e}</div>'
             f'<div class="btns">'
@@ -170,11 +177,13 @@ def cmd_page(a):
     if not ids:
         print(f"no keyframes/scene-*.png under {project / a.keyframes}", file=sys.stderr)
         return 2
+    shas = {i: file_sha(project / a.keyframes / f"scene-{i}.png") for i in ids}
     cap = int(a.max_mb * 1024 * 1024)
     level = 0
     while True:
         try:
-            entries = [(i, to_jpeg(project / a.keyframes / f"scene-{i}.png", level)) for i in ids]
+            entries = [(i, to_jpeg(project / a.keyframes / f"scene-{i}.png", level),
+                        shas[i]) for i in ids]
         except RuntimeError as e:
             print(str(e), file=sys.stderr)
             return 2
@@ -214,16 +223,22 @@ def cmd_check(a):
         if not isinstance(v, dict) or v.get("verdict") not in VERDICTS:
             print(f"{vf}: scene {sid}: verdict must be one of {'/'.join(VERDICTS)}", file=sys.stderr)
             return 2
-    ids = scene_ids(project)
+    ids = scene_ids(project, a.keyframes)
     if not ids:
         print("no keyframes/scene-*.png to check", file=sys.stderr)
         return 2
     bad = []
     for i in ids:
-        v = scenes.get(i, {}).get("verdict")
-        if v == "PASS" or (v == "MAYBE" and a.allow_maybe):
+        entry = scenes.get(i, {})
+        v = entry.get("verdict")
+        if not (v == "PASS" or (v == "MAYBE" and a.allow_maybe)):
+            bad.append(f"{i}: {v or 'MISSING'}")
             continue
-        bad.append(f"{i}: {v or 'MISSING'}")
+        sha = entry.get("sha256")
+        if not isinstance(sha, str) or not sha:
+            bad.append(f"{i}: {v} but no sha256, unverifiable; re-judge with a fresh page")
+        elif sha != file_sha(project / a.keyframes / f"scene-{i}.png"):
+            bad.append(f"{i}: changed since judged (image bytes differ from the judged ones)")
     if bad:
         print("FAIL verdict gate:")
         for b in bad:
@@ -243,6 +258,7 @@ def main(argv=None):
     pg.add_argument("--max-mb", type=float, default=16)
     ck = sub.add_parser("check")
     ck.add_argument("project")
+    ck.add_argument("--keyframes", default="keyframes")
     ck.add_argument("--allow-maybe", action="store_true")
     a = p.parse_args(argv)
     return cmd_page(a) if a.cmd == "page" else cmd_check(a)

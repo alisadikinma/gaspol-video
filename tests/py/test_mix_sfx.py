@@ -183,6 +183,53 @@ class StackTest(unittest.TestCase):
         ids = ("sub-boom", "hit-heavy", "tail-air")
         return [{"sfx_id": ids[i], "offset_s": o} for i, o in enumerate(offsets)]
 
+    def assertPlanError(self, events, *needles):
+        with self.assertRaises(mix_sfx.PlanError) as ctx:
+            mix_sfx.load_plan(self._plan(events), self.project, master_duration_s=30.0)
+        for n in needles:
+            self.assertIn(n, str(ctx.exception))
+
+    def test_gain_db_injection_string_rejected_plain_event(self):
+        self.assertPlanError([{"at_s": 1.0, "sfx_id": "sub-boom",
+                               "gain_db": "0dB[x];amovie=file=/etc/passwd"}], "event 1", "gain_db")
+
+    def test_gain_db_non_finite_rejected_plain_event(self):
+        for bad in (float("nan"), float("inf"), "nan"):
+            with self.subTest(bad=bad):
+                self.assertPlanError([{"at_s": 1.0, "sfx_id": "sub-boom", "gain_db": bad}],
+                                     "event 1", "gain_db")
+
+    def test_gain_db_bad_in_layer_and_parent_rejected(self):
+        layers = self._layers(0)
+        layers[0]["gain_db"] = "0dB[x];anull"
+        self.assertPlanError([{"at_s": 1.0, "stack": layers}], "event 1", "layer 1", "gain_db")
+        self.assertPlanError([{"at_s": 1.0, "gain_db": "evil", "stack": self._layers(0)}],
+                             "event 1", "gain_db")
+        layers = self._layers(0)
+        layers[0]["gain_db"] = float("inf")
+        self.assertPlanError([{"at_s": 1.0, "stack": layers}], "layer 1", "gain_db")
+
+    def test_numeric_string_gain_becomes_float(self):
+        plan = mix_sfx.load_plan(self._plan([{"at_s": 1.0, "sfx_id": "sub-boom", "gain_db": "-6"}]),
+                                 self.project)
+        self.assertEqual(plan.events[0]["gain_db"], -6.0)
+
+    def test_at_s_non_finite_rejected(self):
+        for bad in (float("nan"), float("inf"), "inf"):
+            with self.subTest(bad=bad):
+                self.assertPlanError([{"at_s": bad, "sfx_id": "sub-boom"}], "event 1", "at_s")
+
+    def test_offset_non_finite_rejected(self):
+        for bad in (float("nan"), float("inf")):
+            with self.subTest(bad=bad):
+                self.assertPlanError([{"at_s": 5.0, "stack": [{"sfx_id": "sub-boom", "offset_s": bad}]}],
+                                     "event 1", "layer 1", "offset_s")
+
+    def test_layer_not_an_object_rejected(self):
+        for bad in ("sub-boom", 3, None, ["x"]):
+            with self.subTest(bad=bad):
+                self.assertPlanError([{"at_s": 5.0, "stack": [bad]}], "event 1", "layer 1")
+
     def test_stack_expands_to_one_event_per_layer_at_offset_times(self):
         plan = mix_sfx.load_plan(self._plan([
             {"at_s": 5.0, "stack": self._layers(-0.2, 0, 0.1)}]), self.project,

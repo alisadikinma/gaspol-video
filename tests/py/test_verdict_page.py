@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import io
 import json
 import re
@@ -45,6 +46,15 @@ class PageTest(unittest.TestCase):
             self.assertLessEqual(len(html.encode()), 16 * 1024 * 1024)
             self.assertLess(html.index('data-scene="01"'), html.index('data-scene="02a"'))
             self.assertLess(html.index('data-scene="02a"'), html.index('data-scene="10"'))
+
+    def test_page_carries_sha256_per_scene_and_json_includes_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            make_project(d, ["01"])
+            run(["page", d])
+            html = (Path(d) / "output" / "verdict.html").read_text(encoding="utf-8")
+            sha = hashlib.sha256((Path(d) / "keyframes" / "scene-01.png").read_bytes()).hexdigest()
+            self.assertIn(f'data-sha256="{sha}"', html)
+            self.assertIn("sha256", html.split("<script>")[1])
 
     def test_script_in_scene_id_is_escaped(self):
         with tempfile.TemporaryDirectory() as d:
@@ -94,9 +104,36 @@ class CheckTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def write(self, scenes):
-        (Path(self.d) / "work" / "verdict.json").write_text(
-            json.dumps({"scenes": {k: {"verdict": v, "note": ""} for k, v in scenes.items()}}))
+    def sha(self, i, kf="keyframes"):
+        return hashlib.sha256((Path(self.d) / kf / f"scene-{i}.png").read_bytes()).hexdigest()
+
+    def write(self, scenes, with_sha=True, kf="keyframes"):
+        (Path(self.d) / "work" / "verdict.json").write_text(json.dumps({"scenes": {
+            k: ({"verdict": v, "note": "", "sha256": self.sha(k, kf)} if with_sha
+                else {"verdict": v, "note": ""}) for k, v in scenes.items()}}))
+
+    def test_replaced_image_after_pass_exit_1(self):
+        self.write({"01": "PASS", "02a": "PASS"})
+        (Path(self.d) / "keyframes" / "scene-02a.png").write_bytes(b"different")
+        code, out = run(["check", self.d])
+        self.assertEqual(code, 1)
+        self.assertIn("changed since judged", out)
+        self.assertIn("02a", out)
+
+    def test_entry_without_sha_unverifiable_exit_1(self):
+        self.write({"01": "PASS", "02a": "PASS"}, with_sha=False)
+        code, out = run(["check", self.d])
+        self.assertEqual(code, 1)
+        self.assertIn("re-judge", out)
+
+    def test_check_keyframes_option(self):
+        alt = Path(self.d) / "kf2"
+        alt.mkdir()
+        for i in ("01", "02a"):
+            (alt / f"scene-{i}.png").write_bytes(b"alt" + i.encode())
+        self.write({"01": "PASS", "02a": "PASS"}, kf="kf2")
+        self.assertEqual(run(["check", self.d, "--keyframes", "kf2"])[0], 0)
+        self.assertEqual(run(["check", self.d])[0], 1)
 
     def test_all_pass_exit_0(self):
         self.write({"01": "PASS", "02a": "PASS"})

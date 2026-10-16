@@ -295,19 +295,17 @@ def _motion_filter(motion, duration_s, width, height, clamp=False):
 
 
 def _source_color_filter(src, warned):
-    """Conversion filter for one source clip ('' when none is needed or it cannot be
-    probed). A warning is printed once per file, naming the value left unconverted."""
-    try:
-        probe = color.probe_color(str(src))
-    except (color.ff.FFError, OSError, ValueError):
-        return ""
-    found = []
-    flt = color.convert_filter(probe, found, str(src))
-    if str(src) not in warned:
-        warned.add(str(src))
-        for w in found:
-            print(f"warning: {w}; tagged bt709 anyway", file=sys.stderr)
-    return flt
+    """Comma-joined colour filters for one source clip ('' when none is needed or it cannot
+    be probed). Each problem is printed once per file, naming the value left unconverted."""
+    key = str(src)
+
+    def warn(msg):
+        if key not in warned:
+            print(f"warning: {msg}; tagged bt709 anyway", file=sys.stderr)
+
+    filters = color.source_filters(key, warn=warn)
+    warned.add(key)
+    return ",".join(filters)
 
 
 def _dissolve_dur(seg):
@@ -633,15 +631,24 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False,
                 continue
         print("+ " + " ".join(cmd))
         used = [cmd]
+        # The old entry goes BEFORE the encode and the encode lands in a temp file that is
+        # renamed into place only on success, so a crash can never leave an old fingerprint
+        # vouching for a half-written or foreign part.
+        if caching:
+            part_cache.drop(stage)
+        tmp_output = output.with_name(output.stem + ".tmp" + output.suffix)
 
-        def build(name, cmd=cmd, used=used):
+        def build(name, cmd=cmd, used=used, tmp_output=tmp_output):
             used[0] = _swap_encoder(cmd, name, enc_height)
-            return used[0]
+            return used[0][:-1] + [str(tmp_output)]
         try:
             encoder.run_with_fallback(build, enc, _run_encode)
+            os.replace(tmp_output, output)
         except ff.FFError as exc:
             what = "a dissolve merge" if kind == "group" else "a segment"
             raise PlanError(f"ffmpeg failed on {what}:\n{str(exc)[-800:]}") from exc
+        finally:
+            tmp_output.unlink(missing_ok=True)
         if caching and used[0] != cmd:
             try:
                 fp = _stage_fingerprint(plan, used[0], stage, parts_dir)
@@ -656,13 +663,17 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False,
             print(f"skipped {skipped['group']} of {totals['group']} dissolve merges (cached)")
 
     listfile = work / "concat.txt"
-    listfile.write_text("".join(f"file '{p.resolve()}'\n" for p in parts))
+    # concat demuxer quoting: a single quote inside '...' is written '\''
+    listfile.write_text("".join(
+        "file '{}'\n".format(str(p.resolve()).replace("'", "'\\''")) for p in parts))
     concat = [FFMPEG, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(listfile),
               "-c", "copy", str(plan.out)]
     print("+ " + " ".join(concat))
     proc = subprocess.run(concat, capture_output=True, text=True)
     if proc.returncode != 0:
-        raise PlanError(f"concat failed:\n{proc.stderr.strip()[-800:]}")
+        hint = ("\nIf a cached part is damaged, re-run with --no-cache, or delete "
+                ".tmp/edit-parts/ in the project." if caching else "")
+        raise PlanError(f"concat failed:\n{proc.stderr.strip()[-800:]}{hint}")
 
     ok, message = check_av_gate(plan.out)
     print(message)

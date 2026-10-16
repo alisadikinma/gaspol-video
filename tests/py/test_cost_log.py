@@ -2,6 +2,8 @@ import contextlib
 import hashlib
 import io
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,6 +33,43 @@ class Base(unittest.TestCase):
 
     def log_path(self):
         return Path(self.proj) / "work" / "cost-log.json"
+
+
+ROOT = Path(__file__).resolve().parents[2]
+WORKER = ("import sys\nfrom tools import cost_log\n"
+          "for n in range(20):\n"
+          "    assert cost_log.main([sys.argv[1], 'add', '--kind', 'nb2-image', '--units', '1',"
+          " '--scene', sys.argv[2] + '-' + str(n)]) == 0\n")
+
+
+class SafetyTest(Base):
+    def test_two_processes_adding_concurrently_lose_nothing(self):
+        procs = [subprocess.Popen([sys.executable, "-c", WORKER, self.proj, tag], cwd=ROOT,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                 for tag in ("a", "b")]
+        for p in procs:
+            _, err = p.communicate(timeout=120)
+            self.assertEqual(p.returncode, 0, err.decode())
+        entries = json.loads(self.log_path().read_text())["entries"]
+        self.assertEqual(len(entries), 40)
+        self.assertEqual(len({e["scene"] for e in entries}), 40)
+
+    def test_planted_symlink_temp_name_is_not_followed(self):
+        victim = Path(self.tmp.name) / "victim.txt"
+        victim.write_text("keep")
+        (Path(self.proj) / "work").mkdir()
+        (Path(self.proj) / "work" / "cost-log.json.tmp").symlink_to(victim)
+        code, _, _ = run(self.proj, "add", "--kind", "nb2-image", "--units", "1")
+        self.assertEqual(code, 0)
+        self.assertEqual(victim.read_text(), "keep")
+        self.assertEqual(len(json.loads(self.log_path().read_text())["entries"]), 1)
+
+    def test_no_temp_file_left_after_failed_write(self):
+        with mock.patch("os.replace", side_effect=OSError("boom")):
+            code, _, err = run(self.proj, "add", "--kind", "nb2-image", "--units", "1")
+        self.assertEqual(code, 2)
+        left = [p.name for p in (Path(self.proj) / "work").iterdir() if p.name.endswith(".tmp")]
+        self.assertEqual(left, [])
 
 
 class ReportTest(Base):

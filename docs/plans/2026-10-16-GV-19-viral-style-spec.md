@@ -1,4 +1,4 @@
-# GV-19 — Viral style (Samuel Christ reference) + viral framework
+# GV-19 — Viral style (reference creator channel) + viral framework
 
 **Ticket:** GV-19
 **Status:** design, awaiting spec review. Phase 1 is a study, so the later phases may change after it.

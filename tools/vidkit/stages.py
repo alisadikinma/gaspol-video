@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 CHUNK = 1024 * 1024
@@ -69,16 +70,34 @@ class StageCache:
             return
         data = self._load()
         data[stage] = {"fp": fp, "outputs": [str(o) for o in outputs]}
-        tmp = self.path.with_name(self.path.name + f".{os.getpid()}.tmp")
+        self._write(data)
+
+    def drop(self, stage):
+        """Forget one stage. Called BEFORE its outputs are rewritten, so a crash mid-write
+        can never leave an old fingerprint vouching for a half-written file."""
+        if self.disabled:
+            return
+        data = self._load()
+        if stage in data:
+            del data[stage]
+            self._write(data)
+
+    def _write(self, data):
+        tmp = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps(data, sort_keys=True, indent=1))
+            # mkstemp: an unpredictable name, created O_EXCL, so a planted symlink is never followed
+            fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=self.path.name + ".",
+                                       suffix=".tmp")
+            with os.fdopen(fd, "w") as fh:
+                fh.write(json.dumps(data, sort_keys=True, indent=1))
             os.replace(tmp, self.path)
         except OSError as exc:
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+            if tmp:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
             self.disabled = True
             print(f"warning: stage cache {self.path} not writable ({exc}); "
                   "caching disabled for this run", file=sys.stderr)

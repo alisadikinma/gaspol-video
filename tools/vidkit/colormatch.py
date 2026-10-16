@@ -13,6 +13,7 @@ class ColorMatchError(RuntimeError):
 
 
 NEAR_BLACK = 8.0
+SAMPLES = 5
 
 
 def _frame_rgb(path, t):
@@ -25,8 +26,9 @@ def _frame_rgb(path, t):
     return tuple(float(b) for b in proc.stdout[:3])
 
 
-def mean_rgb(path, samples=5):
-    """Mean (r, g, b), 0-255, over ``samples`` evenly spaced frames."""
+def measure(path, samples=SAMPLES):
+    """((r, g, b), decoded) over ``samples`` evenly spaced frames; ``decoded`` is how many
+    of them could be read. Fewer than half raises, naming the file."""
     try:
         info = ff.probe(path)
     except (ff.FFError, OSError, ValueError) as exc:
@@ -40,13 +42,22 @@ def mean_rgb(path, samples=5):
             frames.append(f)
     if not frames:
         raise ColorMatchError(f"{path}: no frame could be decoded")
-    return tuple(sum(f[c] for f in frames) / len(frames) for c in range(3))
+    if len(frames) * 2 < samples:
+        raise ColorMatchError(f"{path}: only {len(frames)} of {samples} sampled frames decoded; "
+                              "the mean would not be trustworthy")
+    return tuple(sum(f[c] for f in frames) / len(frames) for c in range(3)), len(frames)
+
+
+def mean_rgb(path, samples=SAMPLES):
+    """Mean (r, g, b), 0-255, over ``samples`` evenly spaced frames."""
+    return measure(path, samples)[0]
 
 
 def plan(paths, reference=None, max_gain=0.15):
     """Per-clip gain toward the reference (a clip path, or the per-channel median)."""
     paths = [str(p) for p in paths]
-    means = {p: mean_rgb(p) for p in paths}
+    measured = {p: measure(p) for p in paths}
+    means = {p: m[0] for p, m in measured.items()}
     if reference is not None:
         if not Path(reference).exists():
             raise ColorMatchError(f"{reference}: reference file missing")
@@ -57,7 +68,7 @@ def plan(paths, reference=None, max_gain=0.15):
     rows = []
     for p in paths:
         m = means[p]
-        row = {"file": p, "mean": m}
+        row = {"file": p, "mean": m, "decoded": measured[p][1], "samples": SAMPLES}
         near_black = sum(m) / 3 < NEAR_BLACK
         if near_black:
             row["suspect"] = "near-black"
@@ -77,7 +88,8 @@ def apply(path, out, gain):
         raise ColorMatchError(f"{path}: refusing to overwrite the source")
     gr, gg, gb = gain
     ff.ensure_parent(out)
-    vf = f"colorchannelmixer=rr={gr:.5f}:gg={gg:.5f}:bb={gb:.5f},{color.TAG_FILTER}"
+    vf = ",".join([*color.source_filters(str(path)),
+                   f"colorchannelmixer=rr={gr:.5f}:gg={gg:.5f}:bb={gb:.5f}", color.TAG_FILTER])
     try:
         ff.ffmpeg("-i", str(path), "-map", "0:v:0", "-map", "0:a?", "-vf", vf,
                   "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "16", *color.ENCODE_FLAGS,
@@ -96,24 +108,35 @@ def _fmt(v):
     return "%5.1f,%5.1f,%5.1f" % tuple(v)
 
 
-def report(paths, reference=None, max_gain=0.15, min_delta=0.03, apply_dir=None):
+def report(paths, reference=None, max_gain=0.15, min_delta=0.03, apply_dir=None, force=False):
     """Plan, optionally write into ``apply_dir``; returns the printable report.
 
     Only clips with delta >= min_delta are rewritten; the rest are copied untouched.
-    The sources are never written."""
+    The sources and the reference are never written; an existing target is refused
+    unless ``force``."""
     paths = [str(p) for p in paths]
     out_paths = {}
     if apply_dir is not None:
         outdir = Path(apply_dir).resolve()
+        protected = {Path(p).resolve(): "a source" for p in paths}
+        if reference is not None:
+            protected[Path(reference).resolve()] = "the reference"
         for p in paths:
             target = outdir / Path(p).name
-            if target == Path(p).resolve():
-                raise ColorMatchError(f"{p}: --apply folder would overwrite the source")
+            if target in protected:
+                raise ColorMatchError(
+                    f"{target}: --apply folder would overwrite {protected[target]} ({p})")
             out_paths[p] = target
         if len(set(out_paths.values())) != len(paths):
             raise ColorMatchError("two clips share a file name; --apply would overwrite one")
+        if not force:
+            existing = [str(t) for t in out_paths.values() if t.exists()]
+            if existing:
+                raise ColorMatchError(
+                    f"{', '.join(existing)}: already exists; nothing written. "
+                    "Use --force to overwrite")
     rows = plan(paths, reference, max_gain)
-    lines = [f"{'file':<28} {'mean R,G,B':<20} {'gain R,G,B':<20} {'delta':>6}  note"]
+    lines = [f"{'file':<28} {'mean R,G,B':<20} {'gain R,G,B':<20} {'delta':>6} {'frames':>6}  note"]
     for r in rows:
         if apply_dir is None:
             note = ""
@@ -124,7 +147,7 @@ def report(paths, reference=None, max_gain=0.15, min_delta=0.03, apply_dir=None)
         if r.get("suspect"):
             note = (note + " " if note else "") + "suspect: " + r["suspect"]
         lines.append(f"{Path(r['file']).name:<28} {_fmt(r['mean']):<20} "
-                     f"{'%.3f,%.3f,%.3f' % r['gain']:<20} {r['delta']:>6.3f}  {note}".rstrip())
+                     f"{'%.3f,%.3f,%.3f' % r['gain']:<20} {r['delta']:>6.3f} {'%d/%d' % (r['decoded'], r['samples']):>6}  {note}".rstrip())
     summary = f"spread before: {spread([r['mean'] for r in rows]):.1f}"
     if apply_dir is not None:
         Path(apply_dir).mkdir(parents=True, exist_ok=True)

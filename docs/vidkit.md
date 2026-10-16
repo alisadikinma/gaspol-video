@@ -92,6 +92,7 @@ Final encodes are tagged BT.709, so players do not guess the matrix. `edit_rende
 | `convert_filter(probe, warnings=None, source="")` | `""` for bt709 or untagged (assumed bt709); `colorspace=all=bt709:iall=bt601-6-525` / `-625` for smpte170m / bt470bg; `""` plus a line in `warnings` for HDR (`smpte2084`, `arib-std-b67`) or an unknown matrix. It never converts on a guess |
 
 `edit_render.py` probes every source clip and puts `convert_filter` in front of the scale chain, so an explicitly bt601 clip (smpte170m / bt470bg) is converted before it is tagged bt709, and its colours are preserved. Untagged and bt709 sources get no extra filter, so their commands are unchanged. HDR or an unknown matrix is tagged bt709 without conversion and prints one stderr warning per file (`... left unconverted; tagged bt709 anyway`). A source that cannot be probed is not converted. The dissolve merge and `mixdown` only read already-rendered bt709 files, so they need tagging only.
+Full-range sources (`color_range=pc` or a `yuvj*` pix_fmt) get `scale=in_range=full:out_range=tv` first, so the tv tag is true (measured: full-range black/white Y 0/255 became 16/235). `color.source_filters(path, warn=None)` returns the ordered list `[range, matrix]`; `edit_render`, `colormatch.apply` and `mixdown` all use it. A matrix of `unknown` is read from the primaries or transfer (smpte170m / bt470bg means bt601); a file with no colour tags at all is assumed bt709 with one warning. A probe that fails on an existing file prints one stderr warning naming the error (a file that does not exist yet stays silent). `probe_color` also returns `pix_fmt` and uses the resolved `ffprobe`.
 
 ## Colour match (`colormatch`)
 
@@ -104,6 +105,7 @@ Pulls clips of one kelompok toward one colour. Report first; rewriting is a sepa
 | `colormatch.apply(path, out, gain)` | `colorchannelmixer` plus the BT.709 tags from `color.py`, audio stream-copied. Refuses `out` equal to `path` |
 
 CLI: `vidkit colormatch CLIPS... [--reference F] [--max-gain 0.15] [--min-delta 0.03] [--apply OUTDIR]` prints a table (file, mean, gain, delta, note) and one spread line (largest per-channel max-min, before and, with `--apply`, after). Without `--apply` nothing is written. With `--apply`, only clips with `delta >= --min-delta` are rewritten into OUTDIR; the others are copied untouched. Sources are never modified, and an OUTDIR that would overwrite a source is refused. The 0.15 clamp limits how much one clip may move: a clip further off than that stays visibly off, and the spread line shows it.
+`--force` lets `--apply` overwrite files already in OUTDIR; without it an existing target is refused before anything is written. A target equal to a source or to `--reference` is refused even with `--force`. The table has a `frames` column (`5/5`: sampled frames that decoded); fewer than half decoding raises `ColorMatchError` naming the file. `apply` runs `color.source_filters` on its input first, so a bt601 or full-range input is converted, not relabelled.
 
 ## Beats (`beats`)
 
@@ -123,6 +125,7 @@ CLI: `vidkit beats FILE` prints the times as JSON. `tools/sfx_snap.py` applies `
 | `stages.StageCache(path).record(stage, fp, outputs)` | writes atomically (temp file + `os.replace`). A corrupt or absent cache file reads as empty. An unwritable place prints one stderr warning and turns caching off for the run, never a crash |
 
 Used by `tools/edit_render.py`: parts live in `<project>/.tmp/edit-parts/` with `stages.json`. The fingerprint covers the source bytes, the segment's plan fields, the final ffmpeg command (colour flags included) and `RENDERER_VERSION`. `--no-cache` forces a full render. `--print` ends with a `cached`/`rendered` line per stage.
+A part is encoded to `part-NNN.tmp.mp4` and renamed into place only when ffmpeg succeeded, and the stage's cache entry is dropped (`StageCache.drop`) BEFORE the encode. A killed encode or a failed `record()` therefore re-encodes next run; it never reuses a truncated or foreign part. The cache file is written through `tempfile.mkstemp` (no predictable temp name to symlink). The concat list escapes `'` in paths as `'\''`.
 
 ## Encoder choice (`encoder`)
 

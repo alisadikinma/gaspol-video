@@ -50,6 +50,29 @@ class ThumbVerifyTest(unittest.TestCase):
         self.png("thumb-b2.png", "blue")
         self.assertEqual(run("init", str(self.project))[0], 0)
 
+    def test_jpg_and_jpeg_thumbnails_are_covered(self):
+        self.png("thumb-C.jpg", "green")
+        self.png("thumb-D.jpeg", "yellow")
+        self.assertEqual(run("init", str(self.project))[0], 0)
+        text = self.sheet.read_text(encoding="utf-8")
+        self.assertIn("## thumb-C.jpg", text)
+        self.assertIn("## thumb-D.jpeg", text)
+        code, out = run("check", str(self.project))
+        self.assertEqual(code, 1)
+        self.assertIn("thumb-C.jpg", out)
+        # a jpg dropped in after init has no section: check must say so
+        self.png("thumb-E.jpg", "white")
+        self.assertIn("thumb-E.jpg: no section", run("check", str(self.project))[1])
+
+    def test_init_does_not_follow_planted_symlink_temp_name(self):
+        victim = self.project / "victim.txt"
+        victim.write_text("keep")
+        (self.project / "packaging" / "thumb-verify.md.tmp").symlink_to(victim)
+        self.png("thumb-A.png")
+        self.assertEqual(run("init", str(self.project))[0], 0)
+        self.assertEqual(victim.read_text(), "keep")
+        self.assertIn("## thumb-A.png", self.sheet.read_text(encoding="utf-8"))
+
     def test_init_writes_one_section_per_thumbnail_with_fixed_rows(self):
         self.init_two()
         text = self.sheet.read_text(encoding="utf-8")

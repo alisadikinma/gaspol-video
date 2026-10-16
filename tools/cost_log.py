@@ -10,10 +10,13 @@ dropped on the next write.
 """
 
 import argparse
+import contextlib
+import fcntl
 import json
 import math
 import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -50,13 +53,28 @@ def load_log(project) -> dict:
 def save_log(project, log: dict) -> None:
     path = _log_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(log, indent=2) + "\n", encoding="utf-8")
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".cost-log.", suffix=".tmp")
     try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(log, indent=2) + "\n")
         os.replace(tmp, path)
-    except OSError:
-        tmp.unlink(missing_ok=True)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
         raise
+
+
+@contextlib.contextmanager
+def _locked(project):
+    """Exclusive lock across the read-modify-write, so concurrent adds cannot lose an entry."""
+    lock = _log_path(project).with_name("cost-log.json.lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
 
 
 def _fmt(n: float) -> str:
@@ -85,7 +103,6 @@ def _cmd_add(args) -> int:
         print(f"cost_log: units must be a finite number >= 0, got {args.units!r}",
               file=sys.stderr)
         return 2
-    log = load_log(args.project)
     entry = {
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "kind": args.kind,
@@ -96,8 +113,10 @@ def _cmd_add(args) -> int:
         entry["scene"] = args.scene
     if args.note:
         entry["note"] = args.note
-    log["entries"].append(entry)
-    save_log(args.project, log)
+    with _locked(args.project):
+        log = load_log(args.project)
+        log["entries"].append(entry)
+        save_log(args.project, log)
     print(f"logged {args.kind} {_fmt(units)} ({args.status})")
     return 0
 

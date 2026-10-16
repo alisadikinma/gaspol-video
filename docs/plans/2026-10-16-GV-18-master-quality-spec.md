@@ -17,16 +17,16 @@ Review of `claude-youtube-editor` and `MoneyPrinterTurbo` (NOTICE already lists 
 
 | # | Phase | What changes | Done when |
 |---|---|---|---|
-| 1 | Music & SFX | Music prompt built from topic + domain + tone + scene arc (calm intro, rising body, peak, CTA resolve), generated per segment. SFX library grows with layered impacts (sub boom + hit + tail) and cues snapped to music beats. Existing audit gate stays. | Same script rendered with two different topics yields two audibly different beds; cue sheet shows ≥1 layered impact per reveal; audit gate passes; loudness gates unchanged |
+| 1 | Music & SFX | Music prompt built from topic + domain + tone + scene arc (calm intro, rising body, peak, CTA resolve), generated per segment. SFX library grows with layered impacts (sub boom + hit + tail) and cues snapped to music beats. Existing audit gate stays. | Same script rendered with two different topics yields two audibly different beds; a layered impact (`stack`) is available for the biggest moments (the doc says use it on two or three, not every cue); audit gate passes; loudness gates unchanged |
 | 2 | Colour | BT.709 tags at final encode (`vidkit` mixdown/normalize). Cross-clip colour match pass before concat. | `ffprobe` shows bt709 on master; contact sheet of adjacent clips shows no temperature jump |
-| 3 | Credit control | Stills-first verdict gate (page with PASS/MAYBE/NO) before any clip render. Per-project cost log. Pre-flight cost estimate. | No clip render starts before stills verdict; `cost-log.md` totals match `renders.json` |
+| 3 | Credit control | Stills-first verdict gate (page with PASS/MAYBE/NO) before any clip render. Per-project cost log of units (no prices, no estimate; see Owner decisions). | No clip render starts before stills verdict; `cost_log.py report` shows units, failed share and re-rolls per scene |
 | 4 | Thumbnails | Style-element menu with slots + failure table. Render-verify loop (reject wrong text, unrecognisable face, no dominant element). | A rejected render is re-rolled automatically; menu referenced from `video-package` |
-| 5 | Reliable render | Per-stage fingerprint cache (changing music re-renders only export). Encoder probe with libx264 fallback. Heartbeat log on silent ffmpeg stages. Per-platform loudness profile. | Changing only the music re-renders only the export stage; platform loudness values are sourced (see open item) |
+| 5 | Reliable render | Per-stage fingerprint cache inside the edit render (an unchanged segment is not re-encoded). The music mix is a separate pass and never re-runs the edit render. Encoder probe with libx264 fallback. Heartbeat log on silent ffmpeg stages. Per-platform loudness profile. | Changing only the music re-renders only the export stage; platform loudness values are sourced (see open item) |
 | 6 | Wrap | Docs, `tool-routing.md` rows, NOTICE entries, tests, version bump (README + changelog + marketplace) | `bash tests/run.sh` green |
 
 ## Constraints
 
-- Library first: new tools live in `tools/vidkit/` with tests and a `tool-routing.md` row (CLAUDE.md tool-first rule).
+- Library first: reusable helpers live in `tools/vidkit/`; CLI entry points that consume project files (`music_brief`, `sfx_snap`, `verdict_page`, `cost_log`, `thumb_verify`) are top-level `tools/*.py`. Every tool has tests and a `tool-routing.md` row (CLAUDE.md tool-first rule).
 - Generated audio stays out of the repo (existing rule); recipes only.
 - Music generation bills ElevenLabs: always confirm the mood/length before a billed run (existing rule in `17-music-bed.md`).
 - Reference clients' names and assets never enter repo docs.
@@ -40,3 +40,12 @@ Review of `claude-youtube-editor` and `MoneyPrinterTurbo` (NOTICE already lists 
 ## Out of scope
 
 GV-19 items (sticker icons, step counter, retention gate, script framework). Avatar and cheap-model video paths. Anything needing model access beyond the render MCPs.
+
+## Owner decisions and scope cuts (2026-10-16, during execution)
+
+- **Phase F listening test skipped.** No billed generation and no listening evidence file. The owner tests music and SFX on a real video. The 8 new SFX recipes exist as recipes only.
+- **Cost log reduced to units.** No estimate, budget, `check`, or `media/pricing.json`: without real prices an estimate is meaningless. `cost_log.py add/report` records units, failed share and re-rolls per scene.
+- **Loudness.** Only the `default` profile ships. A `short-vertical` profile needs a sourced number. Evidence from one channel is in `docs/evals/short-form-loudness-measurement.md` (12 clips, -24.1 to -7.8 LUFS; a data point, not a rule).
+- **Encoder.** Hardware encoder is opt-in (`GASPOL_VIDEO_ENCODER`); measured slower and larger on the owner's Mac for a synthetic test, so the default stays `libx264`.
+- **ElevenLabs Music length.** Verified against the ElevenLabs docs: `music_length_ms` must be 3,000 to 600,000. The plugin clamps segments to 10 to 120 s, inside that range.
+- **Marketplace.** Not bumped during execution: `gaspol-one` points at the GitHub repo, and the version is bumped when the release is pushed.

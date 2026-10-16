@@ -24,8 +24,9 @@ from tools.vidkit import beats  # noqa: E402
 
 
 def _resolve(project, value):
+    """Absolute stays absolute; a relative path is always inside the project, never the cwd."""
     p = Path(value)
-    return p if p.is_absolute() or p.exists() else Path(project) / p
+    return p if p.is_absolute() else Path(project) / p
 
 
 def snap_plan(data, beat_times, window_s):

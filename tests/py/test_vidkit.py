@@ -474,10 +474,66 @@ class ColorTest(unittest.TestCase):
     def test_bt709_needs_no_conversion(self):
         self.assertEqual(color.convert_filter(self._p("bt709", "bt709", "bt709")), "")
 
-    def test_untagged_is_assumed_bt709(self):
+    def test_untagged_is_assumed_bt709_with_one_warning(self):
         w = []
-        self.assertEqual(color.convert_filter(self._p(), w), "")
+        self.assertEqual(color.convert_filter(self._p(), w, "u.mp4"), "")
+        self.assertEqual(len(w), 1)
+        self.assertIn("u.mp4", w[0])
+        self.assertIn("assuming bt709", w[0])
+
+    def test_unknown_matrix_with_bt601_primaries_or_transfer_is_converted(self):
+        w = []
+        self.assertEqual(color.convert_filter(self._p(prim="smpte170m"), w),
+                         "colorspace=all=bt709:iall=bt601-6-525")
+        self.assertEqual(color.convert_filter(self._p(prim="bt470bg"), w),
+                         "colorspace=all=bt709:iall=bt601-6-625")
+        self.assertEqual(color.convert_filter(self._p(trc="smpte170m"), w),
+                         "colorspace=all=bt709:iall=bt601-6-525")
         self.assertEqual(w, [])
+
+    def test_partly_tagged_bt709_primaries_stay_quiet(self):
+        w = []
+        self.assertEqual(color.convert_filter(self._p(prim="bt709"), w), "")
+        self.assertEqual(w, [])
+
+    def test_full_range_is_detected_from_range_or_pix_fmt(self):
+        self.assertTrue(color.is_full_range({"color_range": "pc"}))
+        self.assertTrue(color.is_full_range({"color_range": "unknown", "pix_fmt": "yuvj420p"}))
+        self.assertFalse(color.is_full_range({"color_range": "tv", "pix_fmt": "yuv420p"}))
+
+    def test_source_filters_orders_range_before_matrix(self):
+        from unittest import mock
+        probe = {"color_space": "smpte170m", "color_primaries": "smpte170m",
+                 "color_transfer": "smpte170m", "color_range": "pc", "pix_fmt": "yuvj420p"}
+        with mock.patch.object(color, "probe_color", return_value=probe):
+            self.assertEqual(color.source_filters("x.mp4"),
+                             [color.FULL_TO_LIMITED, "colorspace=all=bt709:iall=bt601-6-525"])
+
+    def test_probe_uses_the_resolved_ffprobe(self):
+        from unittest import mock
+        with mock.patch.object(color, "FFPROBE", "/opt/x/ffprobe"), \
+                mock.patch.object(color.ff, "run", return_value='{"streams": [{}]}') as run:
+            color.probe_color("a.mp4")
+        self.assertEqual(run.call_args[0][0][0], "/opt/x/ffprobe")
+
+    def test_failed_probe_on_an_existing_file_warns_with_the_error(self):
+        import contextlib
+        with tempfile.TemporaryDirectory() as d:
+            bad = Path(d) / "bad.mp4"
+            bad.write_bytes(b"not a video")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(color.source_filters(str(bad)), [])
+            self.assertEqual(err.getvalue().count("\n"), 1)
+            self.assertIn("bad.mp4", err.getvalue())
+            self.assertIn("probe failed", err.getvalue())
+
+    def test_failed_probe_on_a_file_that_does_not_exist_is_silent(self):
+        import contextlib
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(color.source_filters("/no/such/clip.mp4"), [])
+        self.assertEqual(err.getvalue(), "")
 
     def test_explicit_bt601_is_converted(self):
         self.assertEqual(color.convert_filter(self._p("smpte170m", "smpte170m", "smpte170m")),
@@ -1146,3 +1202,172 @@ class MixdownProfileTest(unittest.TestCase):
             r1 = mixdown.run({"video": str(v), "out": str(d / "b.mp4"), "lufs": -18.0,
                               "loudness_profile": "default"}, workdir=d / "wb")
             self.assertAlmostEqual(r0["gain_db"], r1["gain_db"], places=6)
+
+
+def _bt601_clip(path, seconds=1.5):
+    """A testsrc clip explicitly tagged smpte170m (BT.601), with audio."""
+    import subprocess
+    tag = "setparams=colorspace=smpte170m:color_primaries=smpte170m:color_trc=smpte170m:range=tv"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                    f"testsrc=size=320x240:rate=30:duration={seconds}", "-f", "lavfi", "-i",
+                    f"sine=frequency=440:duration={seconds}", "-vf", tag, "-c:v", "libx264",
+                    "-pix_fmt", "yuv420p", "-colorspace", "smpte170m", "-color_primaries",
+                    "smpte170m", "-color_trc", "smpte170m", "-c:a", "aac", "-t", str(seconds),
+                    str(path)], check=True, capture_output=True)
+    return str(path)
+
+
+def _mean_rgb_of(path, vf):
+    import subprocess
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vf", vf, "-frames:v", "1",
+                          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         capture_output=True, check=True).stdout
+    return [sum(raw[c::3]) / (len(raw) / 3) for c in range(3)]
+
+
+@requires_ffmpeg
+class Bt601StampedOutputsTest(unittest.TestCase):
+    """colormatch.apply and mixdown.run must convert a bt601 input, not just relabel it."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = Path(self.tmp.name)
+        self.src = _bt601_clip(self.d / "sd.mp4")
+        self.want = _mean_rgb_of(self.src, "colorspace=all=bt709:iall=bt601-6-525")
+
+    def _check(self, out):
+        self.assertEqual(color.probe_color(str(out))["color_space"], "bt709")
+        got = _mean_rgb_of(out, "null")
+        for w, g in zip(self.want, got):
+            self.assertAlmostEqual(w, g, delta=3.0, msg=f"want {self.want} got {got}")
+
+    def test_colormatch_apply_converts_a_bt601_input(self):
+        self._check(colormatch.apply(self.src, self.d / "o" / "m.mp4", (1.0, 1.0, 1.0)))
+
+    def test_mixdown_converts_a_bt601_input(self):
+        out = self.d / "mix.mp4"
+        mixdown.run({"video": self.src, "out": str(out)}, workdir=self.d / "w")
+        self._check(out)
+
+
+
+class StageCacheSafetyTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = Path(self.tmp.name)
+
+    def test_record_does_not_follow_a_planted_symlink_at_a_predictable_name(self):
+        import os
+        from tools.vidkit import stages
+        victim = self.d / "victim.txt"
+        victim.write_text("precious")
+        cache = stages.StageCache(self.d / "stages.json")
+        for name in (f"stages.json.{os.getpid()}.tmp", "stages.json.tmp"):
+            (self.d / name).symlink_to(victim)
+        cache.record("seg-1", "fp", [self.d / "a.mp4"])
+        self.assertEqual(victim.read_text(), "precious")
+        self.assertEqual(json.loads((self.d / "stages.json").read_text())["seg-1"]["fp"], "fp")
+
+    def test_drop_removes_one_entry_and_keeps_the_rest(self):
+        from tools.vidkit import stages
+        out = self.d / "a.mp4"
+        out.write_bytes(b"x")
+        cache = stages.StageCache(self.d / "stages.json")
+        cache.record("seg-1", "fp1", [out])
+        cache.record("seg-2", "fp2", [out])
+        cache.drop("seg-1")
+        self.assertFalse(cache.is_fresh("seg-1", "fp1", [out]))
+        self.assertTrue(cache.is_fresh("seg-2", "fp2", [out]))
+        cache.drop("never-there")
+
+
+@requires_ffmpeg
+class ColorMatchGuardTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = Path(self.tmp.name)
+        (self.d / "src").mkdir()
+        self.clips = [_solid(self.d / "src" / f"{n}.mp4", c)
+                      for n, c in (("grey", (120, 120, 120)), ("warm", (135, 120, 105)),
+                                   ("cool", (105, 120, 135)))]
+
+    def run_cli(self, *argv):
+        import contextlib
+        from tools.vidkit.__main__ import main
+        buf, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            rc = main(["colormatch", *argv])
+        return rc, buf.getvalue(), err.getvalue()
+
+    def test_target_equal_to_the_reference_is_refused(self):
+        (self.d / "out").mkdir()
+        ref = _solid(self.d / "out" / "grey.mp4", (120, 120, 120))
+        sha = _sha(ref)
+        rc, _, err = self.run_cli(*self.clips, "--reference", ref, "--apply", str(self.d / "out"),
+                                  "--force")
+        self.assertEqual(rc, 1)
+        self.assertIn("reference", err)
+        self.assertEqual(_sha(ref), sha)
+
+    def test_existing_target_is_refused_without_force(self):
+        out = self.d / "out"
+        out.mkdir()
+        prior = out / "warm.mp4"
+        prior.write_bytes(b"earlier result")
+        sha = _sha(prior)
+        rc, _, err = self.run_cli(*self.clips, "--apply", str(out))
+        self.assertEqual(rc, 1)
+        self.assertIn("warm.mp4", err)
+        self.assertIn("--force", err)
+        self.assertEqual(_sha(prior), sha)
+        self.assertEqual(sorted(p.name for p in out.iterdir()), ["warm.mp4"],
+                         "refusal happens before anything is written")
+
+    def test_force_overwrites_an_existing_target(self):
+        out = self.d / "out"
+        out.mkdir()
+        (out / "warm.mp4").write_bytes(b"earlier result")
+        rc, _, err = self.run_cli(*self.clips, "--apply", str(out), "--force")
+        self.assertEqual(rc, 0, err)
+        self.assertNotEqual((out / "warm.mp4").read_bytes(), b"earlier result")
+
+    def test_force_never_allows_overwriting_a_source(self):
+        shas = [_sha(c) for c in self.clips]
+        rc, _, err = self.run_cli(*self.clips, "--apply", str(self.d / "src"), "--force")
+        self.assertEqual(rc, 1)
+        self.assertEqual([_sha(c) for c in self.clips], shas)
+
+
+@requires_ffmpeg
+class MeanRgbDecodeCountTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.clip = _solid(Path(self.tmp.name) / "a.mp4", (120, 120, 120))
+
+    def _flaky(self, ok):
+        from unittest import mock
+        real = colormatch._frame_rgb
+        calls = []
+
+        def fake(path, t):
+            calls.append(t)
+            return real(path, t) if len(calls) <= ok else None
+        return mock.patch.object(colormatch, "_frame_rgb", side_effect=fake)
+
+    def test_fewer_than_half_decoded_raises_naming_the_file(self):
+        with self._flaky(2), self.assertRaises(colormatch.ColorMatchError) as cm:
+            colormatch.mean_rgb(self.clip)
+        self.assertIn("a.mp4", str(cm.exception))
+        self.assertIn("2 of 5", str(cm.exception))
+
+    def test_report_shows_how_many_frames_decoded(self):
+        with self._flaky(3):
+            text = colormatch.report([self.clip])
+        self.assertIn("3/5", text)
+
+    def test_report_shows_full_count_when_all_decode(self):
+        self.assertIn("5/5", colormatch.report([self.clip]))

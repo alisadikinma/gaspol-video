@@ -4,7 +4,7 @@
     python3 tools/thumb_verify.py init  <project>
     python3 tools/thumb_verify.py check <project>
 
-`init` writes `packaging/thumb-verify.md`: one section per `packaging/thumb-*.png` with the
+`init` writes `packaging/thumb-verify.md`: one section per `packaging/thumb-*.png|jpg|jpeg` with the
 image's sha256 and a five-row verdict table for Claude to fill after looking at the image.
 Re-running keeps the verdicts of an image whose bytes did not change and clears the rest.
 
@@ -20,6 +20,7 @@ import hashlib
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 QUESTIONS = ["text spelled correctly", "text legible at phone size",
@@ -46,7 +47,8 @@ def _sha256(path):
 
 
 def _thumbnails(project):
-    return sorted((project / "packaging").glob("thumb-*.png"))
+    d = project / "packaging"
+    return sorted(p for ext in ("png", "jpg", "jpeg") for p in d.glob("thumb-*." + ext))
 
 
 def _parse(text):
@@ -138,12 +140,18 @@ def main(argv=None):
     if args.command == "init":
         thumbs = _thumbnails(project)
         if not thumbs:
-            print("thumb_verify: no packaging/thumb-*.png found, nothing to do")
+            print("thumb_verify: no packaging/thumb-*.png|jpg|jpeg found, nothing to do")
             return 0
         existing = sheet.read_text(encoding="utf-8") if sheet.exists() else ""
-        tmp = sheet.with_name(sheet.name + ".tmp")
-        tmp.write_text(build_sheet(existing, thumbs), encoding="utf-8")
-        os.replace(tmp, sheet)
+        fd, tmp = tempfile.mkstemp(dir=sheet.parent, prefix=".thumb-verify.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(build_sheet(existing, thumbs))
+            os.replace(tmp, sheet)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
         print("wrote packaging/thumb-verify.md (%d thumbnails)" % len(thumbs))
         return 0
 

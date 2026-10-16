@@ -697,6 +697,20 @@ class StageCacheRenderTest(unittest.TestCase):
         return out, text, len(encodes)
 
     @requires_ffmpeg
+    def test_damaged_cached_part_fails_loudly_and_names_the_way_out(self):
+        plan = write_plan(self.project, self._segments())
+        self._render(plan)
+        part = self.project / ".tmp" / "edit-parts" / "part-001.mp4"
+        part.write_bytes(part.read_bytes()[:1000])
+        with self.assertRaises(edit_render.PlanError) as cm:
+            self._render(plan)
+        self.assertIn("--no-cache", str(cm.exception))
+        self.assertIn(".tmp/edit-parts", str(cm.exception))
+        # the way out the message names must actually work
+        out, text, encodes = self._render(plan, cache=False)
+        self.assertEqual(encodes, 2)
+
+    @requires_ffmpeg
     def test_second_run_skips_everything_and_master_is_identical(self):
         plan = write_plan(self.project, self._segments())
         out, text, n = self._render(plan)
@@ -969,3 +983,150 @@ class EncoderCacheAndFallbackTest(unittest.TestCase):
         from unittest import mock
         with mock.patch.object(edit_render.subprocess, "run", side_effect=OSError("no ffmpeg")):
             self.assertEqual(edit_render._available_encoders(), set())
+
+
+def _make_fullrange_clip(path, seconds=1.0):
+    """Left half full-range black (plan size, so no resampling ringing) (Y=0), right half full-range white (Y=255), yuvj420p."""
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+         f"color=c=gray:s=320x240:r=25:d={seconds}", "-f", "lavfi", "-i",
+         f"sine=frequency=440:duration={seconds}", "-vf",
+         "geq=lum='if(lt(X,160),0,255)':cb=128:cr=128,format=yuvj420p", "-c:v", "libx264",
+         "-pix_fmt", "yuvj420p", "-color_range", "pc", "-c:a", "aac", "-t", str(seconds),
+         str(path)], check=True, capture_output=True)
+    return str(path)
+
+
+def _ymin_ymax(path):
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "info", "-i", str(path), "-vf", "signalstats,metadata=print:file=-",
+         "-f", "null", "-"], capture_output=True, text=True, check=True)
+    vals = {}
+    for line in proc.stdout.splitlines():
+        for key in ("YMIN", "YMAX"):
+            if line.startswith("lavfi.signalstats." + key + "="):
+                vals.setdefault(key, []).append(float(line.split("=")[-1]))
+    return min(vals["YMIN"]), max(vals["YMAX"])
+
+
+class FullRangeSourceTest(unittest.TestCase):
+    @requires_ffmpeg
+    def test_full_range_source_is_converted_to_limited_range(self):
+        project = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(project, ignore_errors=True))
+        (project / "clips").mkdir()
+        src = _make_fullrange_clip(project / "clips" / "pc.mp4")
+        self.assertEqual(color.probe_color(src)["color_range"], "pc")
+        self.assertEqual(_ymin_ymax(src), (0.0, 255.0))
+        plan = write_plan(project, [{"kind": "clip", "src": "clips/pc.mp4", "in_s": 0.0, "out_s": 1.0}])
+        out = edit_render.render(plan, project)
+        self.assertEqual(color.probe_color(str(out))["color_range"], "tv")
+        ymin, ymax = _ymin_ymax(out)
+        print(f"\n  full-range measured Y min={ymin} max={ymax}")
+        self.assertAlmostEqual(ymin, 16.0, delta=2.0)
+        self.assertAlmostEqual(ymax, 235.0, delta=2.0)
+
+
+class StalePartTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name)
+        (self.project / "clips").mkdir()
+        for n in (1, 2):
+            make_clip(self.project / "clips" / f"scene-0{n}.mp4", seconds=2.5)
+
+    def _segments(self, out2=1.5):
+        return [
+            {"kind": "clip", "src": "clips/scene-01.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/scene-02.mp4", "in_s": 0.0, "out_s": out2},
+        ]
+
+    def _render(self, plan):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            out = edit_render.render(plan, self.project)
+        encodes = [ln for ln in buf.getvalue().splitlines() if ln.startswith("+ ") and "libx264" in ln]
+        return out, len(encodes)
+
+    @requires_ffmpeg
+    def test_encode_killed_mid_write_then_original_plan_is_re_encoded(self):
+        from unittest import mock
+        plan_a = write_plan(self.project, self._segments())
+        out, _ = self._render(plan_a)
+        master_a = _sha(out)
+
+        def killed(cmd):
+            Path(cmd[-1]).write_bytes(b"truncated garbage")
+            raise edit_render.ff.FFError("killed")
+        plan_b = write_plan(self.project, self._segments(out2=1.0))
+        with mock.patch.object(edit_render, "_run_encode", side_effect=killed), \
+                self.assertRaises(edit_render.PlanError):
+            self._render(plan_b)
+
+        plan_a = write_plan(self.project, self._segments())
+        out, n = self._render(plan_a)
+        self.assertEqual(n, 1, "the damaged part must be re-encoded, not reused")
+        self.assertEqual(_sha(out), master_a)
+        self.assertEqual(list((self.project / ".tmp" / "edit-parts").glob("*.tmp.mp4")), [],
+                         "no half-written temp file is left behind")
+
+    @requires_ffmpeg
+    def test_record_failing_then_plan_reverted_is_re_encoded(self):
+        from unittest import mock
+        from tools.vidkit import stages
+        plan_a = write_plan(self.project, self._segments())
+        out, _ = self._render(plan_a)
+        master_a = _sha(out)
+
+        plan_b = write_plan(self.project, self._segments(out2=1.0))
+        with mock.patch.object(stages.StageCache, "record", side_effect=RuntimeError("disk full")), \
+                self.assertRaises(RuntimeError):
+            self._render(plan_b)
+
+        plan_a = write_plan(self.project, self._segments())
+        out, n = self._render(plan_a)
+        self.assertEqual(n, 1, "B's part must not be reused as A's")
+        self.assertEqual(_sha(out), master_a)
+
+
+class ConcatQuotingTest(unittest.TestCase):
+    @requires_ffmpeg
+    def test_project_dir_with_a_single_quote_renders(self):
+        import shutil
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(base, ignore_errors=True))
+        project = base / "Ali's film"
+        (project / "clips").mkdir(parents=True)
+        make_clip(project / "clips" / "a.mp4", seconds=1.5)
+        plan = write_plan(project, [{"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 1.0}])
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            out = edit_render.render(plan, project)
+        self.assertTrue(Path(out).is_file())
+        listing = (project / ".tmp" / "edit-parts" / "concat.txt").read_text()
+        self.assertIn("Ali'\\''s film", listing)
+
+
+class ProbeFailureWarningTest(unittest.TestCase):
+    def test_unreadable_existing_source_warns_once_naming_the_error(self):
+        import contextlib, io
+        with tempfile.TemporaryDirectory() as d:
+            bad = Path(d) / "bad.mp4"
+            bad.write_bytes(b"not a video")
+            err, warned = io.StringIO(), set()
+            with contextlib.redirect_stderr(err):
+                a = edit_render._source_color_filter(str(bad), warned)
+                b = edit_render._source_color_filter(str(bad), warned)
+            self.assertEqual((a, b), ("", ""))
+            self.assertEqual(err.getvalue().count("\n"), 1)
+            self.assertIn("probe failed", err.getvalue())
+            self.assertIn("bad.mp4", err.getvalue())
+
+    def test_missing_source_stays_silent(self):
+        import contextlib, io
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(edit_render._source_color_filter("/no/such.mp4", set()), "")
+        self.assertEqual(err.getvalue(), "")

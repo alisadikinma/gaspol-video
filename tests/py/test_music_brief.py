@@ -150,6 +150,18 @@ class ValidateTest(unittest.TestCase):
         self.assertRefuses(make_brief(segments=[]), "segments")
 
 
+class NonFiniteTest(unittest.TestCase):
+    def test_nan_and_infinity_refused_naming_segment_and_field(self):
+        for field, bad in (("from_s", float("nan")), ("to_s", float("inf")),
+                           ("to_s", float("nan")), ("from_s", float("-inf"))):
+            brief = make_brief()
+            brief["segments"][0][field] = bad
+            with self.assertRaises(music_brief.BriefError) as cm:
+                music_brief.validate(brief)
+            self.assertIn("segment 1", str(cm.exception))
+            self.assertIn(field, str(cm.exception))
+
+
 class MainTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -225,6 +237,49 @@ class MainTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("tone", err)
         self.assertFalse((self.project / "work" / "music-palette.json").exists())
+
+    def test_malformed_existing_plan_exit_2_and_nothing_written(self):
+        plan_path = self.project / "work" / "music-plan.json"
+        plan_path.write_text("{broken")
+        code, _, err = self.run_main()
+        self.assertEqual(code, 2)
+        self.assertIn("music-plan.json", err)
+        self.assertEqual(plan_path.read_text(), "{broken")
+        self.assertFalse((self.project / "work" / "music-palette.json").exists())
+
+    def test_existing_plan_keeps_other_keys(self):
+        plan_path = self.project / "work" / "music-plan.json"
+        plan_path.write_text(json.dumps({"out": "o.mp4", "bed_source": "palette", "extra": 7,
+                                         "segments": []}))
+        code, out, err = self.run_main()
+        self.assertEqual(code, 0)
+        plan = json.loads(plan_path.read_text())
+        self.assertEqual((plan["bed_source"], plan["extra"], plan["out"]), ("palette", 7, "o.mp4"))
+        self.assertEqual(len(plan["segments"]), 2)
+        self.assertNotIn("bed_source", out + err)
+
+    def test_bed_source_video_warns_segments_replaced(self):
+        plan_path = self.project / "work" / "music-plan.json"
+        plan_path.write_text(json.dumps({"out": "o.mp4", "bed_source": "video", "segments": []}))
+        code, out, err = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(plan_path.read_text())["bed_source"], "video")
+        self.assertIn("bed_source", out + err)
+        self.assertIn("replaced", out + err)
+
+    def test_palette_failure_leaves_plan_unwritten_and_no_temp_files(self):
+        (self.project / "work" / "music-palette.json").mkdir()
+        code, _, _ = self.run_main()
+        self.assertNotEqual(code, 0)
+        self.assertFalse((self.project / "work" / "music-plan.json").exists())
+        self.assertEqual([p.name for p in (self.project / "work").glob("*.tmp")], [])
+
+    def test_atomic_write_ignores_planted_symlink_temp_name(self):
+        victim = self.project / "victim.txt"
+        victim.write_text("keep")
+        (self.project / "work" / "music-plan.json.tmp").symlink_to(victim)
+        self.assertEqual(self.run_main()[0], 0)
+        self.assertEqual(victim.read_text(), "keep")
 
     def test_custom_brief_path(self):
         other = self.project / "work" / "alt.json"

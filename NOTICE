@@ -134,3 +134,5 @@ Adapted:
 Not adopted from MoneyPrinterTurbo: stock-footage matching, the LLM script
 writer, the Streamlit web interface, the FastAPI service and its redis task
 queue, moviepy as a render engine, edge-tts, and local whisper models.
+
+Original to this plugin (no source project): beat detection and cue snapping (tools/vidkit/beats.py, tools/sfx_snap.py), cross-clip colour matching (tools/vidkit/colormatch.py), sourced loudness profiles, and the thumbnail verify-by-looking verdict cells (modelled on this plugin's own qa_frames --check).

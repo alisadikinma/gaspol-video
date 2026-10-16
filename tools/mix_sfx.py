@@ -167,6 +167,17 @@ def load_catalog(path):
     return {c["id"]: c for c in data.get("clips", [])}
 
 
+def _finite(where, field, value):
+    """A real, finite number or a PlanError naming where it came from."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise PlanError(f"{where}: {field} is not a number") from exc
+    if not math.isfinite(number):
+        raise PlanError(f"{where}: {field} must be a finite number, got {value!r}")
+    return number
+
+
 def _expand_stack(i, ev, at_s, catalog, master_duration_s):
     """One mix event per layer of a stacked cue, each at the parent time plus its offset."""
     if "sfx_id" in ev:
@@ -175,14 +186,16 @@ def _expand_stack(i, ev, at_s, catalog, master_duration_s):
     if not isinstance(layers, list) or not layers:
         raise PlanError(f"event {i}: stack is empty — list at least one layer")
     expanded = []
+    parent_gain = _finite(f"event {i}", "gain_db", ev.get("gain_db", 0))
     for n, layer in enumerate(layers, start=1):
+        if not isinstance(layer, dict):
+            raise PlanError(f"event {i}, layer {n}: must be an object with sfx_id")
         layer_id = layer.get("sfx_id")
         if layer_id not in catalog:
             raise PlanError(f"event {i}, layer {n}: sfx_id {layer_id!r} is not in the catalog")
-        try:
-            offset = float(layer.get("offset_s", 0))
-        except (TypeError, ValueError) as exc:
-            raise PlanError(f"event {i}, layer {n}: offset_s is not a number") from exc
+        offset = _finite(f"event {i}, layer {n}", "offset_s", layer.get("offset_s", 0))
+        gain = (_finite(f"event {i}, layer {n}", "gain_db", layer["gain_db"])
+                if "gain_db" in layer else parent_gain)
         if offset < MIN_STACK_OFFSET_S:
             raise PlanError(
                 f"event {i}, layer {n}: offset_s {offset} is earlier than {MIN_STACK_OFFSET_S}s"
@@ -199,7 +212,7 @@ def _expand_stack(i, ev, at_s, catalog, master_duration_s):
             **{k: v for k, v in ev.items() if k != "stack"},
             "sfx_id": layer_id,
             "at_s": layer_at,
-            "gain_db": layer.get("gain_db", ev.get("gain_db", 0)),
+            "gain_db": gain,
             "clip": catalog[layer_id],
             "stack_ref": {"event": i, "size": len(layers), "parent_at_s": at_s},
         })
@@ -228,6 +241,8 @@ def load_plan(plan_path, project, master_duration_s=None, include_optional=True)
             at_s = float(ev["at_s"])
         except (KeyError, TypeError, ValueError) as exc:
             raise PlanError(f"event {i}: at_s missing or not a number") from exc
+        if not math.isfinite(at_s):
+            raise PlanError(f"event {i}: at_s must be a finite number, got {ev['at_s']!r}")
         if at_s < 0:
             raise PlanError(f"event {i}: at_s is negative ({at_s})")
         if master_duration_s is not None and at_s > master_duration_s:
@@ -244,7 +259,8 @@ def load_plan(plan_path, project, master_duration_s=None, include_optional=True)
                 f"event {i}: sfx_id {sfx_id!r} is not in the catalog — "
                 "add a recipe to palette.json and run gen_sfx.py, or reuse an existing clip"
             )
-        events.append({**ev, "at_s": at_s, "clip": catalog[sfx_id]})
+        gain = _finite(f"event {i}", "gain_db", ev.get("gain_db", 0))
+        events.append({**ev, "at_s": at_s, "gain_db": gain, "clip": catalog[sfx_id]})
         cues += 1
 
     plan = SfxPlan(data, events, catalog, project, plan_path, catalog_ref=catalog_ref, cues=cues)
