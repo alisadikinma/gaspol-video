@@ -37,6 +37,10 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Follow popup with clicking cursor, "Ssst!", "WOW!", thumbnail cover (Remotion) | `templates/remotion/lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover` |
 | Subtitles / captions / keyword highlight | `gen_subs.py`, `burn_subs.py`, `gen_captions.py`, `caption_keywords.py` |
 | Kinetic text overlay behind the speaker | `overlay_plan.py`, `person_mask.py`, Remotion `KineticOverlay` |
+| Viral overlay extras (sticker icons, step counter, red vignette, falling burst, `viral` caption preset) | `overlay_plan.py` fields `steps`, `vignette`, `burst`, `preset` + `KineticOverlay` (doc 19 section 8) |
+| Measure onsets, tempo, energy and word/cut timing of a reference clip | `python3 -m tools.vidkit audiostudy <clip> [--words w.json] [--out r.json]` |
+| Retention check on a finished cut (static frame, hook, foreshadow, b-roll, BGM) | `python3 tools/retention_gate.py report` / `check` |
+| Fill/check the viral checklist of a short-form script; rate analytics against course thresholds | `python3 tools/viral_checklist.py check` / `rate` |
 | Put an app screen into a phone/monitor in a clip | `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |
 | App screen for software that does not exist | `gen_app_screen.py` |
 | Print a logo/sablon onto a person's clothing | `vidkit bond` |

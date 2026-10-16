@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 31 CLI tools (29 Python + 2 Node, 6 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `keyword_cards.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 37 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 33 CLI tools (31 Python + 2 Node, 6 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `keyword_cards.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 37 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -71,8 +71,10 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/gen_captions.py` | Builds `work/caption-plan.json` from `vo/vo-manifest.json` words (or AssemblyAI, imported from `gen_subs.py`) plus `caption_keywords.score_spans()`; capped, deterministic, reusable unless `--force` |
 | `tools/plan_motion.py` | Fills the `motion` field on static segments of `work/edit-plan.json` — splits a segment over 5.0s into alternating punch-in/punch-out beats, gives a shorter one a single slow punch-in; never overwrites a hand-written `motion` or a `kind: "shot"` segment |
 | `tools/qa_frames.py` | Visual clip QA — a 5-frame contact sheet per rendered clip in `.tmp/qa-scene-NN.jpg` (ids may carry a letter suffix, e.g. `01b`) and a `work/visual-qa.md` verdict sheet with each scene's PLAUSIBILITY block, for Claude to judge in-session; `--check` is the V15 gate (reads verdict cells only, exit 1 on a missing, empty or `FAIL:` cell or a clip changed since judged) |
+| `tools/retention_gate.py` | Retention report on a finished cut (`report`) and in-session b-roll verdict gate (`check`): static frame, first word, Foreshadow beat, b-roll vs spoken words, BGM headroom. Course defaults tagged `source: course`, overridable; a rule FAIL never exits 1 in report mode. Test: `tests/py/test_retention_gate.py` |
+| `tools/viral_checklist.py` | `check` the `## Viral Checklist` block of `av-script.md` (7 stages, exit 1 on a missing/empty/`FAIL:` cell); `rate` a `calibration.json` entry against the course analytics thresholds (`unknown` when a key is absent). Test: `tests/py/test_viral_checklist.py` |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
-| `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, track smoothing, motion-tracked print bond (cv2). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
+| `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: `audiostudy` (SFX/speech onsets, tempo, energy, word and cut relation of a reference clip), A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, track smoothing, motion-tracked print bond (cv2). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
 | `tools/vidkit/js/` | Node helpers: `env.mjs` (.env loading, keys never printed), `eleven.mjs` (`tts` with settings + seed, `stt` word timings, `sfx`), `cast_voice.mjs` (voice change with per-character settings and seed, spans only). Test: `tests/node/vidkit-js.test.mjs` |
 | `templates/remotion/scripts/frames.mjs`, `qa-end.mjs` | Multi-frame and end-state Remotion QA, copied into every scaffolded workspace |
 | `templates/remotion/Overlay.template.tsx`, `lib/{overlay-fx.tsx,overlayFx.mjs}` | `KineticOverlay` (GV-17): clip, behind layer, person cut out by mask, front text, source box; six text effects as zero-import maths in `overlayFx.mjs` (unit-tested), drawn by `overlay-fx.tsx` |
@@ -91,7 +93,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 
 ### Reference Files
 
-#### Storytelling & Script Generation (12 files)
+#### Storytelling & Script Generation (13 files)
 
 | File | When Used |
 |------|-----------|
@@ -107,6 +109,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `storytelling_script_gen/F9_Platform_Adaptation_Matrix.md` | Platform specs — YouTube, LinkedIn, IG, TikTok, Twitter |
 | `storytelling_script_gen/F10_Modular_Asset_and_AB_Testing.md` | Modular asset creation and A/B testing strategy |
 | `storytelling_script_gen/F11_Pattern_Interrupt_and_Retention.md` | Pattern interrupt techniques and retention optimization |
+| `storytelling_script_gen/F12_Viral_Framework.md` | Short-form only — 7-stage viral framework with pass/fail checklist, title formula, loop ending, analytics thresholds (course advice) |
 
 #### Image & Video Production (9 files)
 
@@ -134,6 +137,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `post-production/12-remotion-explainer.md` | Phase 4.5 — scaffolding the workspace, the rules that stop a render crashing, brand from the project, timing from the narration, verify-by-looking, cutaway vs overlay |
 | `post-production/18-screencast.md` | Phase 4.5 — screencast shots for scenes whose Screen Source is capture/mock: page/cursor/click API, navigation-vs-filter motion rules, cue timing from vo-manifest.json, qa-frames verification, mock-screen honesty |
 | `post-production/19-keyword-text-overlay.md` | Kinetic text overlay (v3.11.0): two-tier keyword, six effects (never static), media panels/carousel/bubbles behind the speaker via person mask, timing from voice words (`key_words` for numbers), placement off the face, red alarm flash behind the person only |
+| `post-production/20-retention-gate.md` | Retention gate (v3.16.0) — five rules with course defaults, why it reports and does not block, `not measured` meaning, a real run |
 | `post-production/17-music-bed.md` | Phase 6 pass 4 — deriving the track from the script's music direction and tone, sitting 12 dB under the voice by measurement, segment fades and short-track handling, why the music pass fails soft while the A/V gate blocks |
 | `post-production/16-subtitles-and-captions.md` | Phase 6 pass 4 — caption text from the script (recognizer times only), derived keyterms, wrap-or-split rule, font and contrast guards, why this does not conflict with the `no subtitles` prompt negative |
 | `post-production/14-sfx-design.md` | Phase 6 pass 3 — deriving cues from DOMAIN CONTEXT and cultural research, library-first sourcing, gain calibration incl. the transient correction, the four ways an audibility measurement lies, density ceiling, hard audit gate |
@@ -628,8 +632,12 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.14.0
+**Version:** 3.16.0
 **Last Updated:** 2026-10-16
+
+### v3.16.0 Changelog
+
+- **Viral style and framework (GV-19), imitation of structure only.** Style and structure observed from a public Shorts channel (Samuel Christ); framework from the owner's course notebook. No footage, voice, face, script, music or SFX is reused. `vidkit audiostudy` measures onsets, tempo, energy and the word/cut relation of a clip; the 12-clip study (`docs/evals/viral-audio-study.md`) is honest that onsets follow speech, so music tempo and SFX timing are `not measured`. `KineticOverlay` gains six sticker icons, a step counter, a red edge vignette, a falling-object burst, a `center` anchor and a `viral` caption preset tagged `source: course` (`reference/post-production/19-keyword-text-overlay.md` section 8, rendered evidence in `docs/evals/viral-overlay-run.md`). `tools/retention_gate.py` + `reference/post-production/20-retention-gate.md` + `video-validate --retention` (RT1-RT5, `reference/global-promo-config.md` section 31) report static frame, hook, foreshadow, b-roll and BGM rules on a cut and never block. `reference/storytelling_script_gen/F12_Viral_Framework.md` + `tools/viral_checklist.py` + `video-script` Hard Rule 27 + `video-validate --script` S10 put a filled 7-stage checklist into every short-form script. Tests: `test_audiostudy.py`, `test_overlay_plan.py`, `overlay-fx.test.mjs`, `test_retention_gate.py`, `test_viral_checklist.py`.
 
 ### v3.14.0 Changelog
 

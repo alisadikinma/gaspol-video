@@ -122,3 +122,15 @@ Adapted:
 Not adopted from MoneyPrinterTurbo: stock-footage matching, the LLM script
 writer, the Streamlit web interface, the FastAPI service and its redis task
 queue, moviepy as a render engine, edge-tts, and local whisper models.
+
+-------------------------------------------------------------------------------
+Style and framework references (ideas only, GV-19)
+-------------------------------------------------------------------------------
+The kinetic overlay vocabulary, the retention gate and the viral framework were
+shaped by observing the public Shorts of one creator channel (Samuel Christ) and
+by the owner's course notebook. What was taken is structure and measured
+habit: how a script opens, where an icon or counter sits, how often the picture
+changes. No footage, voice, face, script, music or sound effect of that channel
+is copied, stored in this repository or redistributed. The figures taken from
+the course are tagged `source: course` wherever they appear and are advice, not
+platform data.

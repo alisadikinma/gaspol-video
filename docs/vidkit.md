@@ -58,6 +58,18 @@ Tests: `tests/py/test_vidkit.py`, `tests/node/vidkit-js.test.mjs` (run with the 
 
 Used by `skills/video-repackage`. CLI: `vidkit ingest`, `vidkit scenes`.
 
+## Audio study (`tools/vidkit/audiostudy.py`)
+
+| Function | What |
+|---|---|
+| `decode_mono(path)` | 16 kHz mono samples; `ValueError` when there is no audio stream or no file |
+| `onsets(samples, rate)` | transient times; silence and steady tones give `[]` |
+| `tempo(onset_times)` | BPM folded into 60-180, or `None` under 4 onsets |
+| `energy_profile(path, seg_s)` | dBFS per segment, a tail under 0.5 s dropped |
+| `relate(onsets, words, cuts)` | each onset labelled `on-word`, `on-cut`, `both` or `free` |
+
+Onsets cannot tell a sound effect from a consonant: read results with word timings, never as music tempo on its own (`docs/evals/viral-audio-study.md`). CLI: `vidkit audiostudy`.
+
 ## Finishing (`karaoke`, `cover`, `unwhite`, `mixdown`)
 
 | Module | What |
