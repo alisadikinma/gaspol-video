@@ -80,6 +80,10 @@ F) All — validate everything
 **How:** Check last timecode in av-script.md vs platform target from strategic-brief.md
 **Expected:** Total duration within platform's target range
 
+### Check S10: Viral Checklist filled (short-form only)
+**How:** If the platform is Shorts/Reels/TikTok, run `python3 tools/viral_checklist.py check {output_folder}/av-script.md`. Mark `N/A` for long-form.
+**Expected:** Exit 0 (every item decided, no `FAIL:` cell). Exit 1 prints each offending stage/item; report them as findings, they are the owner's call. Exit 2 = file unreadable. Framework: `reference/storytelling_script_gen/F12_Viral_Framework.md`
+
 ---
 
 ## Image Validation (`--image`)
@@ -589,6 +593,7 @@ Check S6: No Jargon Without Translation ...... PASS
 Check S7: Narration Language Consistency ...... PASS
 Check S8: Tone Consistency .................. PASS
 Check S9: Duration Target ................... PASS
+Check S10: Viral Checklist (short-form) ..... PASS
 
 --- Image Checks (--image) ---
 [Part A: Prompt Text]

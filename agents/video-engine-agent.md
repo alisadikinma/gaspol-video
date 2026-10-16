@@ -63,6 +63,7 @@ You generate production-ready output for:
 | Modular assets | `reference/storytelling_script_gen/F10_Modular_Asset_and_AB_Testing.md` |
 | Pattern interrupt | `reference/storytelling_script_gen/F11_Pattern_Interrupt_and_Retention.md` |
 | EV products ONLY | `reference/storytelling_script_gen/F4_EV_Persona_Matrix.md` |
+| Short-form viral framework (Shorts/Reels/TikTok ONLY); check the filled checklist with `python3 tools/viral_checklist.py check` | `reference/storytelling_script_gen/F12_Viral_Framework.md` |
 
 ### Scene Breakdown & Prompts
 | Task | Read |
