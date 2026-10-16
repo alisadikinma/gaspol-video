@@ -327,6 +327,14 @@ Reads every clip's real duration, fps, resolution and whether it has sound, into
 Read the `problems` list out loud — an A/V mismatch inside a source clip becomes an A/V mismatch in
 the master.
 
+### 2.1b Colour match (optional, before assembly)
+
+```bash
+python3 -m tools.vidkit colormatch {output_folder}/clips/scene-*.mp4
+```
+
+Report only: mean colour, gain and spread per clip. Cut a contact sheet of the clips that sit next to each other (`vidkit sheet`) and show it to the owner. Apply (`--apply {output_folder}/.tmp/matched`, then point the edit plan at those files) only when the owner agrees, and write the decision and the before/after spread in the ledger. Skip it when the spread is small. A clip flagged `suspect: near-black` is looked at, not corrected.
+
 ### 2.2 Build `work/edit-plan.json`
 
 Segment order comes from `scene-plan.md`. Each scene contributes:

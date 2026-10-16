@@ -28,6 +28,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Music that follows the topic, tone and beat arc | `music_brief.py <project>` writes `work/music-palette.json` + plan segments, then `gen_music.py --recipes work/music-palette.json --only <ids>` |
 | Sound effects: generate | `gen_sfx.py` (palette), `eleven.mjs sfx` (one-off prompt) |
 | Sound effects: mix into the cut | `mix_sfx.py`; move cues out from under narration: `vidkit.speech.snap_to_gaps` |
+| Clips of one kelompok differ in colour / grade | `python3 -m tools.vidkit colormatch CLIPS...` (report; add `--apply OUTDIR` only after the owner looked at `vidkit sheet`; `vidkit.colormatch.plan/apply`) |
 | Beat times of a music file | `python3 -m tools.vidkit beats FILE` (`vidkit.beats.detect`) |
 | Land SFX cues on the music beat | `python3 tools/sfx_snap.py <project> --music FILE` (writes `work/sfx-plan.snapped.json`; `snap` = `vidkit.beats.snap`) |
 | Phone notification / alarm sound without paid files | `vidkit synth notification|alarm` |

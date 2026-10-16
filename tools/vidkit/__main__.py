@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import beats, cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, track, unwhite
+from . import beats, colormatch, cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, track, unwhite
 
 
 def _json(p):
@@ -95,6 +95,13 @@ def main(argv=None):
     s = sub.add_parser("words", help="word timings from an ElevenLabs alignment json")
     s.add_argument("alignment")
 
+    s = sub.add_parser("colormatch", help="report (or --apply) a per-channel gain that pulls clips toward one colour")
+    s.add_argument("clips", nargs="+")
+    s.add_argument("--reference", help="match to this clip; default is the median of all clips")
+    s.add_argument("--max-gain", type=float, default=0.15)
+    s.add_argument("--min-delta", type=float, default=0.03)
+    s.add_argument("--apply", metavar="OUTDIR", help="write matched clips here; without it nothing is written")
+
     s = sub.add_parser("beats", help="beat times of a music file, as JSON seconds")
     s.add_argument("file")
     s.add_argument("--min-gap", type=float, default=0.25)
@@ -166,6 +173,8 @@ def main(argv=None):
         elif a.cmd == "words":
             for w in speech.words_from_alignment(_json(a.alignment)):
                 print(f"{w['word']}@{w['start']:.2f}-{w['end']:.2f}")
+        elif a.cmd == "colormatch":
+            print(colormatch.report(a.clips, a.reference, a.max_gain, a.min_delta, a.apply))
         elif a.cmd == "beats":
             print(json.dumps(beats.detect(a.file, min_gap_s=a.min_gap, threshold=a.threshold)))
         elif a.cmd == "energy":

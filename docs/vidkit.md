@@ -82,6 +82,18 @@ Final encodes are tagged BT.709, so players do not guess the matrix. `edit_rende
 
 `edit_render.py` probes every source clip and puts `convert_filter` in front of the scale chain, so an explicitly bt601 clip (smpte170m / bt470bg) is converted before it is tagged bt709, and its colours are preserved. Untagged and bt709 sources get no extra filter, so their commands are unchanged. HDR or an unknown matrix is tagged bt709 without conversion and prints one stderr warning per file (`... left unconverted; tagged bt709 anyway`). A source that cannot be probed is not converted. The dissolve merge and `mixdown` only read already-rendered bt709 files, so they need tagging only.
 
+## Colour match (`colormatch`)
+
+Pulls clips of one kelompok toward one colour. Report first; rewriting is a separate step the owner approves.
+
+| Function | What |
+|---|---|
+| `colormatch.mean_rgb(path, samples=5)` | mean (r, g, b) 0-255 over `samples` evenly spaced frames, each scaled to 1x1 `rgb24` by ffmpeg. `ColorMatchError` names an undecodable file |
+| `colormatch.plan(paths, reference=None, max_gain=0.15)` | per clip `{file, mean, gain, delta, suspect?}`. Reference is the `reference` clip or the per-channel median. `gain = ref/clip`, clamped to `1 +/- max_gain`; `delta` = largest `abs(gain - 1)`. A near-black clip (mean under 8) is `suspect: near-black` with gain (1,1,1). One clip: gain (1,1,1) |
+| `colormatch.apply(path, out, gain)` | `colorchannelmixer` plus the BT.709 tags from `color.py`, audio stream-copied. Refuses `out` equal to `path` |
+
+CLI: `vidkit colormatch CLIPS... [--reference F] [--max-gain 0.15] [--min-delta 0.03] [--apply OUTDIR]` prints a table (file, mean, gain, delta, note) and one spread line (largest per-channel max-min, before and, with `--apply`, after). Without `--apply` nothing is written. With `--apply`, only clips with `delta >= --min-delta` are rewritten into OUTDIR; the others are copied untouched. Sources are never modified, and an OUTDIR that would overwrite a source is refused. The 0.15 clamp limits how much one clip may move: a clip further off than that stays visibly off, and the spread line shows it.
+
 ## Beats (`beats`)
 
 | Function | What |

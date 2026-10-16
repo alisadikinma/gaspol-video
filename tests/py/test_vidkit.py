@@ -1,3 +1,5 @@
+import hashlib
+import io
 import json
 import random
 import struct
@@ -6,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
-from tools.vidkit import beats, color, cover, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
+from tools.vidkit import beats, color, colormatch, cover, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
 
 
 class IngestTest(unittest.TestCase):
@@ -496,3 +498,186 @@ class ColorTest(unittest.TestCase):
             self.assertEqual(color.convert_filter(self._p("bt2020nc", "bt2020", trc), w, "h.mp4"), "")
             self.assertEqual(len(w), 1)
             self.assertIn(trc, w[0])
+
+
+def _solid(path, rgb, seconds=1.0, size="64x48", audio=True):
+    """A solid-colour clip, real ffmpeg. rgb is a 0-255 triple."""
+    import subprocess
+    hexc = "0x%02x%02x%02x" % tuple(rgb)
+    cmd = ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color=c={hexc}:s={size}:r=10:d={seconds}"]
+    if audio:
+        cmd += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}"]
+    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv444p", "-crf", "0", "-t", str(seconds)]
+    cmd += ["-c:a", "aac"] if audio else ["-an"]
+    cmd.append(str(path))
+    subprocess.run(cmd, check=True, capture_output=True)
+    return str(path)
+
+
+def _sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+@requires_ffmpeg
+class ColorMatchTest(unittest.TestCase):
+    GREY, WARM, COOL = (120, 120, 120), (135, 120, 105), (105, 120, 135)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = Path(self.tmp.name)
+
+    def trio(self):
+        return [_solid(self.d / f"{n}.mp4", c)
+                for n, c in (("grey", self.GREY), ("warm", self.WARM), ("cool", self.COOL))]
+
+    def test_mean_rgb_matches_generated_colour(self):
+        for name, rgb in (("grey", self.GREY), ("warm", self.WARM), ("cool", self.COOL)):
+            got = colormatch.mean_rgb(_solid(self.d / f"{name}.mp4", rgb))
+            for g, w in zip(got, rgb):
+                self.assertAlmostEqual(g, w, delta=2, msg=f"{name} {got}")
+
+    def test_plan_moves_warm_and_cool_toward_median(self):
+        rows = {Path(r["file"]).stem: r for r in colormatch.plan(self.trio())}
+        gr, gg, gb = rows["warm"]["gain"]
+        self.assertLess(gr, 1.0)
+        self.assertGreater(gb, 1.0)
+        cr, cg, cb = rows["cool"]["gain"]
+        self.assertGreater(cr, 1.0)
+        self.assertLess(cb, 1.0)
+        for r in rows.values():
+            self.assertAlmostEqual(r["delta"], max(abs(g - 1) for g in r["gain"]))
+        # median of (120,135,105) = 120: grey needs nothing.
+        for g in rows["grey"]["gain"]:
+            self.assertAlmostEqual(g, 1.0, delta=0.02)
+
+    def test_extreme_red_clip_clamps_at_max_gain(self):
+        clips = [_solid(self.d / "a.mp4", (120, 120, 120)), _solid(self.d / "b.mp4", (120, 120, 120)),
+                 _solid(self.d / "red.mp4", (240, 60, 60))]
+        red = [r for r in colormatch.plan(clips) if r["file"].endswith("red.mp4")][0]
+        self.assertAlmostEqual(red["gain"][0], 0.85, places=6)
+        self.assertAlmostEqual(red["gain"][1], 1.15, places=6)
+        self.assertAlmostEqual(red["gain"][2], 1.15, places=6)
+        self.assertAlmostEqual(red["delta"], 0.15, places=6)
+        loose = [r for r in colormatch.plan(clips, max_gain=0.6) if r["file"].endswith("red.mp4")][0]
+        self.assertAlmostEqual(loose["gain"][0], 0.5, delta=0.02)
+
+    def test_given_reference_has_unit_gain(self):
+        clips = self.trio()
+        rows = colormatch.plan(clips, reference=clips[1])
+        self.assertEqual(rows[1]["gain"], (1.0, 1.0, 1.0))
+        self.assertAlmostEqual(rows[0]["gain"][0], 135 / 120, delta=0.02)  # grey pulled toward warm
+
+    def test_single_clip_is_unit_gain(self):
+        rows = colormatch.plan([_solid(self.d / "one.mp4", self.WARM)])
+        self.assertEqual(rows[0]["gain"], (1.0, 1.0, 1.0))
+        self.assertEqual(rows[0]["delta"], 0.0)
+
+    def test_near_black_clip_is_suspect_and_untouched(self):
+        clips = [_solid(self.d / "a.mp4", self.GREY), _solid(self.d / "b.mp4", self.WARM),
+                 _solid(self.d / "k.mp4", (2, 2, 2))]
+        k = [r for r in colormatch.plan(clips) if r["file"].endswith("k.mp4")][0]
+        self.assertEqual(k["suspect"], "near-black")
+        self.assertEqual(k["gain"], (1.0, 1.0, 1.0))
+
+    def test_undecodable_clip_names_the_file(self):
+        bad = self.d / "broken.mp4"
+        bad.write_bytes(b"not a video at all")
+        with self.assertRaises(colormatch.ColorMatchError) as cm:
+            colormatch.mean_rgb(str(bad))
+        self.assertIn("broken.mp4", str(cm.exception))
+        with self.assertRaises(colormatch.ColorMatchError) as cm:
+            colormatch.plan([str(bad)])
+        self.assertIn("broken.mp4", str(cm.exception))
+
+    def test_missing_reference_is_an_error(self):
+        with self.assertRaises(colormatch.ColorMatchError) as cm:
+            colormatch.plan(self.trio(), reference=str(self.d / "nope.mp4"))
+        self.assertIn("nope.mp4", str(cm.exception))
+
+    def test_apply_shrinks_channel_spread_by_half(self):
+        clips = self.trio()
+        before = colormatch.spread([colormatch.mean_rgb(c) for c in clips])
+        outs = []
+        for r in colormatch.plan(clips):
+            out = self.d / "out" / Path(r["file"]).name
+            colormatch.apply(r["file"], out, r["gain"])
+            outs.append(str(out))
+        after = colormatch.spread([colormatch.mean_rgb(o) for o in outs])
+        print(f"\n  colormatch spread before={before:.1f} after={after:.1f}")
+        self.assertLessEqual(after, before * 0.5)
+
+    def test_apply_keeps_audio_tags_bt709_and_never_overwrites(self):
+        src = _solid(self.d / "s.mp4", self.WARM)
+        sha = _sha(src)
+        out = colormatch.apply(src, self.d / "o" / "s.mp4", (0.9, 1.0, 1.1))
+        self.assertTrue(ff.has_audio(out))
+        self.assertEqual(color.probe_color(out)["color_space"], "bt709")
+        self.assertEqual(_sha(src), sha)
+        with self.assertRaises(colormatch.ColorMatchError):
+            colormatch.apply(src, src, (1.0, 1.0, 1.0))
+        self.assertEqual(_sha(src), sha)
+
+
+@requires_ffmpeg
+class ColorMatchCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = Path(self.tmp.name)
+        (self.d / "src").mkdir()
+        self.clips = [_solid(self.d / "src" / f"{n}.mp4", c)
+                      for n, c in (("grey", (120, 120, 120)), ("warm", (135, 120, 105)), ("cool", (105, 120, 135)))]
+
+    def run_cli(self, *argv):
+        import contextlib
+        from tools.vidkit.__main__ import main
+        buf, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            rc = main(["colormatch", *argv])
+        return rc, buf.getvalue(), err.getvalue()
+
+    def test_report_only_writes_nothing_and_prints_table_and_spread(self):
+        shas = [_sha(c) for c in self.clips]
+        before = sorted(p.name for p in self.d.rglob("*"))
+        rc, out, _ = self.run_cli(*self.clips)
+        self.assertEqual(rc, 0)
+        for n in ("grey.mp4", "warm.mp4", "cool.mp4"):
+            self.assertIn(n, out)
+        self.assertIn("spread", out)
+        self.assertEqual(sorted(p.name for p in self.d.rglob("*")), before)
+        self.assertEqual([_sha(c) for c in self.clips], shas)
+
+    def test_apply_writes_only_clips_over_min_delta_and_copies_the_rest(self):
+        shas = [_sha(c) for c in self.clips]
+        outdir = self.d / "matched"
+        rc, out, err = self.run_cli(*self.clips, "--apply", str(outdir), "--min-delta", "0.05")
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(sorted(p.name for p in outdir.iterdir()), ["cool.mp4", "grey.mp4", "warm.mp4"])
+        # grey is at the median: copied untouched, byte for byte.
+        self.assertEqual(_sha(outdir / "grey.mp4"), shas[0])
+        self.assertNotEqual(_sha(outdir / "warm.mp4"), shas[1])
+        self.assertNotEqual(_sha(outdir / "cool.mp4"), shas[2])
+        self.assertEqual([_sha(c) for c in self.clips], shas)
+        self.assertIn("after", out)
+
+    def test_high_min_delta_rewrites_nothing(self):
+        outdir = self.d / "matched"
+        rc, out, _ = self.run_cli(*self.clips, "--apply", str(outdir), "--min-delta", "0.5")
+        self.assertEqual(rc, 0)
+        for c in self.clips:
+            self.assertEqual(_sha(outdir / Path(c).name), _sha(c))
+
+    def test_apply_into_the_source_folder_is_refused(self):
+        shas = [_sha(c) for c in self.clips]
+        rc, _, err = self.run_cli(*self.clips, "--apply", str(self.d / "src"))
+        self.assertEqual(rc, 1)
+        self.assertIn("source", err)
+        self.assertEqual([_sha(c) for c in self.clips], shas)
+
+    def test_bad_clip_fails_with_file_name(self):
+        bad = self.d / "bad.mp4"
+        bad.write_bytes(b"x")
+        rc, _, err = self.run_cli(*self.clips, str(bad))
+        self.assertEqual(rc, 1)
+        self.assertIn("bad.mp4", err)
