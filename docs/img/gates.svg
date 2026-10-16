@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 460" role="img" aria-labelledby="t d">
+  <title id="t">Quality gates before a credit is spent</title>
+  <desc id="d">Script gates, image gates, video gates and post gates that catch defects early.</desc>
+  <rect width="1200" height="460" rx="20" fill="#0b1020"/>
+  <g font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+    <text x="600" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#e2e8f0">Catch it on paper, not on the invoice.</text>
+
+    <g>
+      <rect x="30" y="72" width="270" height="340" rx="16" fill="#1e293b" stroke="#f59e0b"/>
+      <text x="165" y="104" text-anchor="middle" font-size="16" font-weight="700" fill="#fbbf24">SCRIPT</text>
+      <g font-size="13.5" fill="#cbd5e1">
+        <text x="50" y="140">9 storytelling commandments</text>
+        <text x="50" y="170">22 rejection signals</text>
+        <text x="50" y="200">BODY 1 must dramatize every</text><text x="50" y="218">pain you identified</text>
+        <text x="50" y="248">Flow gate: every claim closes</text><text x="50" y="266">its loop with a number</text>
+        <text x="50" y="296">Every scene answers</text><text x="50" y="314">"what changed?"</text>
+        <text x="50" y="344">Short-form: 7-stage viral</text><text x="50" y="362">checklist, filled in</text>
+      </g>
+    </g>
+    <g>
+      <rect x="318" y="72" width="270" height="340" rx="16" fill="#1e293b" stroke="#22d3ee"/>
+      <text x="453" y="104" text-anchor="middle" font-size="16" font-weight="700" fill="#67e8f9">IMAGES</text>
+      <g font-size="13.5" fill="#cbd5e1">
+        <text x="338" y="140">Reference gate: 100% of refs</text><text x="338" y="158">present or no render</text>
+        <text x="338" y="188">Uniqueness filter: never pay</text><text x="338" y="206">for a generic asset</text>
+        <text x="338" y="236">Max 5 inline refs per prompt</text>
+        <text x="338" y="266">Env-gated scene continuity</text>
+        <text x="338" y="296">Face portrait first for any</text><text x="338" y="314">recurring character</text>
+        <text x="338" y="344">Logo checked against the</text><text x="338" y="362">real file after each render</text>
+      </g>
+    </g>
+    <g>
+      <rect x="606" y="72" width="270" height="340" rx="16" fill="#1e293b" stroke="#a78bfa"/>
+      <text x="741" y="104" text-anchor="middle" font-size="16" font-weight="700" fill="#c4b5fd">VIDEO</text>
+      <g font-size="13.5" fill="#cbd5e1">
+        <text x="626" y="140">Physical plausibility: 7 questions</text><text x="626" y="158">per prompt (mechanism, count,</text><text x="626" y="176">flow, facing, pair, people,</text><text x="626" y="194">overlay surface)</text>
+        <text x="626" y="224">Independent reviewer agent</text><text x="626" y="242">with fresh context</text>
+        <text x="626" y="272">Stills-first verdict page:</text><text x="626" y="290">no clip without a PASS still</text>
+        <text x="626" y="320">Contact-sheet look at every</text><text x="626" y="338">clip before the edit</text>
+        <text x="626" y="368">Reject loop: 2nd identical</text><text x="626" y="386">reject sends you to the input</text>
+      </g>
+    </g>
+    <g>
+      <rect x="894" y="72" width="276" height="340" rx="16" fill="#1e293b" stroke="#34d399"/>
+      <text x="1032" y="104" text-anchor="middle" font-size="16" font-weight="700" fill="#6ee7b7">POST</text>
+      <g font-size="13.5" fill="#cbd5e1">
+        <text x="914" y="140">A/V duration gate on every clip</text>
+        <text x="914" y="170">Narration must fit its cut</text>
+        <text x="914" y="200">Every on-screen string must</text><text x="914" y="218">be in the approved list</text>
+        <text x="914" y="248">Audio audited by measurement,</text><text x="914" y="266">not by ear alone</text>
+        <text x="914" y="296">Retention report: static frame,</text><text x="914" y="314">hook, b-roll, music headroom</text>
+        <text x="914" y="344">Thumbnail verify gate and an</text><text x="914" y="362">honesty guardrail</text>
+      </g>
+    </g>
+    <text x="600" y="440" text-anchor="middle" font-size="13" fill="#94a3b8">Defects measured on real films became rules. Each rule has a checker, and each checker has a test.</text>
+  </g>
+</svg>

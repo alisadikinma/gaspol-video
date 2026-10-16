@@ -23,6 +23,5 @@ for fx in "Blur-to-sharp" "Glitch slices" "Count-up" "Handwrite" "Stroke draw" "
   need "$doc" "$fx" "overlay doc does not describe effect: $fx"
 done
 if grep -qiF "gold serif" "$doc"; then echo "FAIL overlay doc still prescribes the gold serif look"; fail=1; fi
-head -3 tools/keyword_cards.py | grep -qF "SUPERSEDED by GV-17" || { echo "FAIL keyword_cards.py header not marked SUPERSEDED"; fail=1; }
-python3 -c "import ast,sys; ast.parse(open('tools/keyword_cards.py').read())" || fail=1
+[ ! -e tools/keyword_cards.py ] || { echo "FAIL tools/keyword_cards.py should be removed"; fail=1; }
 exit $fail

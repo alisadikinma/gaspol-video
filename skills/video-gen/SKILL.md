@@ -114,7 +114,7 @@ person mask. Build it after the clip and voice exist (Rule 24): `tools/person_ma
 `work/overlay-plan.json` → `tools/overlay_plan.py` (times from the voice's words, never by eye) →
 Remotion `KineticOverlay`. See `reference/post-production/19-keyword-text-overlay.md`. Never put it
 on the face. A red alarm flash goes on the background only, through the same mask.
-`tools/keyword_cards.py` (v3.10.0 gold-serif cards) is superseded; do not use it for new work.
+The v3.10.0 gold-serif card tool is removed.
 
 20. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`

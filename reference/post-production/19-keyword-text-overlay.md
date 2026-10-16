@@ -11,8 +11,7 @@ Pipeline: `tools/person_mask.py` (person matte per frame) → `work/overlay-plan
 Source: a 9:16 Indonesian explainer the user supplied as the target style, 2026-10-15 (GV-17).
 Real run: `docs/evals/overlay-kinetik-run.md`.
 
-v3.10.0's gold-serif fly-in cards (`tools/keyword_cards.py`) are SUPERSEDED by this pattern. The
-tool stays until the new style has shipped in one real video; do not use it for new work.
+v3.10.0's gold-serif fly-in cards are replaced by this pattern; the old tool is removed.
 
 ## 0. What to show — keywords, not subtitles
 
