@@ -1,6 +1,7 @@
 """ffmpeg / ffprobe plumbing shared by every vidkit module."""
 import json
 import subprocess
+import time
 from pathlib import Path
 
 
@@ -8,13 +9,38 @@ class FFError(RuntimeError):
     """ffmpeg or ffprobe exited non-zero. The message carries the tail of stderr."""
 
 
-def run(cmd, capture_stderr=False):
+def run(cmd, capture_stderr=False, heartbeat_s=None):
     """Run a command list. Raises FFError on failure. Returns stdout, or stderr when asked
-    (ffmpeg prints loudnorm / astats measurements on stderr)."""
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise FFError(f"{cmd[0]} failed ({proc.returncode}):\n{proc.stderr.strip()[-900:]}")
-    return proc.stderr if capture_stderr else proc.stdout
+    (ffmpeg prints loudnorm / astats measurements on stderr).
+
+    With `heartbeat_s`, prints `still running: <label> <elapsed>s` to stdout every
+    `heartbeat_s` seconds until the child exits, so a long silent encode is visibly alive.
+    The label is the last argument's file name (the output of an ffmpeg command)."""
+    argv = [str(c) for c in cmd]
+    if heartbeat_s:
+        stdout, stderr, rc = _run_with_heartbeat(argv, heartbeat_s)
+    else:
+        proc = subprocess.run(argv, capture_output=True, text=True)
+        stdout, stderr, rc = proc.stdout, proc.stderr, proc.returncode
+    if rc != 0:
+        raise FFError(f"{cmd[0]} failed ({rc}):\n{stderr.strip()[-900:]}")
+    return stderr if capture_stderr else stdout
+
+
+def _run_with_heartbeat(argv, heartbeat_s):
+    label = Path(argv[-1]).name if len(argv) > 1 else argv[0]
+    start = time.monotonic()
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    while True:
+        try:
+            stdout, stderr = proc.communicate(timeout=heartbeat_s)
+            return stdout, stderr, proc.returncode
+        except subprocess.TimeoutExpired:
+            print(f"still running: {label} {time.monotonic() - start:.0f}s", flush=True)
+        except BaseException:
+            proc.kill()
+            proc.communicate()
+            raise
 
 
 def ffmpeg(*args, capture_stderr=False):

@@ -857,3 +857,115 @@ class StageCacheRenderTest(unittest.TestCase):
         write_plan(self.project, self._segments(out2=1.0))
         self.assertIn("seg-1: cached", shown())
         self.assertIn("seg-2: rendered", shown())
+
+
+class EncoderSelectionTest(unittest.TestCase):
+    """GASPOL_VIDEO_ENCODER wiring. build_commands only builds argv lists."""
+    HW = {"libx264", "h264_videotoolbox"}
+
+    def setUp(self):
+        self._ffmpeg = edit_render.FFMPEG
+        edit_render.FFMPEG = "ffmpeg"
+        self.addCleanup(setattr, edit_render, "FFMPEG", self._ffmpeg)
+
+    def _plan(self):
+        data = {"fps": 30, "width": 320, "height": 240, "segments": [
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.0, "out_s": 2.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+        ]}
+        return edit_render.Plan(data, "/proj", "/proj/work/edit-plan.json")
+
+    def _build(self, env):
+        from unittest import mock
+        import os
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GASPOL_VIDEO_ENCODER", None)
+            if env is not None:
+                os.environ["GASPOL_VIDEO_ENCODER"] = env
+            with mock.patch.object(edit_render, "_available_encoders", return_value=self.HW):
+                return edit_render.build_commands(self._plan())[0]
+
+    def test_env_unset_is_byte_identical_to_the_frozen_recipe(self):
+        for cmd in self._build(None):
+            i = cmd.index("-c:v")
+            self.assertEqual(cmd[i:i + len(FROZEN_ENCODE)], FROZEN_ENCODE)
+
+    def test_explicit_libx264_equals_unset(self):
+        self.assertEqual(self._build("libx264"), self._build(None))
+
+    def test_hardware_choice_changes_every_encode_and_keeps_colour_flags(self):
+        for cmd in self._build("h264_videotoolbox"):
+            self.assertIn("h264_videotoolbox", cmd)
+            self.assertNotIn("libx264", cmd)
+            self.assertNotIn("-crf", cmd)
+            for flag in color.ENCODE_FLAGS:
+                self.assertIn(flag, cmd)
+
+    def test_auto_with_hardware_available_uses_it(self):
+        self.assertTrue(all("h264_videotoolbox" in c for c in self._build("auto")))
+
+    def test_unknown_value_is_a_plan_error(self):
+        with self.assertRaises(edit_render.PlanError):
+            self._build("bogus")
+
+
+class EncoderCacheAndFallbackTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name)
+        (self.project / "clips").mkdir()
+        make_clip(self.project / "clips" / "scene-01.mp4", seconds=2.5)
+        make_clip(self.project / "clips" / "scene-02.mp4", seconds=2.5)
+        self.plan = write_plan(self.project, [
+            {"kind": "clip", "src": "clips/scene-01.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/scene-02.mp4", "in_s": 0.0, "out_s": 1.5},
+        ])
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _quiet_render(self, **kw):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            edit_render.render(self.plan, self.project, **kw)
+        return buf.getvalue()
+
+    @requires_ffmpeg
+    def test_encoder_change_invalidates_the_cache(self):
+        from unittest import mock
+        import os
+        self._quiet_render()
+        loaded = edit_render.load_plan(self.plan, self.project)
+        self.assertEqual([s for _, s in edit_render.stage_status(loaded)], ["cached", "cached"])
+        env = {"GASPOL_VIDEO_ENCODER": "h264_videotoolbox"}
+        with mock.patch.dict(os.environ, env), \
+                mock.patch.object(edit_render, "_available_encoders",
+                                  return_value={"libx264", "h264_videotoolbox"}):
+            status = edit_render.stage_status(loaded)
+        self.assertEqual([s for _, s in status], ["rendered", "rendered"])
+
+    @requires_ffmpeg
+    def test_failing_hardware_encode_falls_back_and_still_renders(self):
+        from unittest import mock
+        import os
+        real = edit_render._run_encode
+
+        def fake(cmd):
+            if "h264_videotoolbox" in cmd:
+                raise edit_render.ff.FFError("videotoolbox exploded")
+            return real(cmd)
+        with mock.patch.dict(os.environ, {"GASPOL_VIDEO_ENCODER": "h264_videotoolbox"}), \
+                mock.patch.object(edit_render, "_available_encoders",
+                                  return_value={"libx264", "h264_videotoolbox"}), \
+                mock.patch.object(edit_render, "_run_encode", side_effect=fake):
+            text = self._quiet_render(cache=False)
+        self.assertIn("encoder h264_videotoolbox failed, retried with libx264", text)
+        self.assertTrue((self.project / "output" / "master.mp4").exists())
+        self.assertIn("A/V duration gate passed", text)
+
+    def test_missing_ffmpeg_listing_means_libx264_only(self):
+        from unittest import mock
+        with mock.patch.object(edit_render.subprocess, "run", side_effect=OSError("no ffmpeg")):
+            self.assertEqual(edit_render._available_encoders(), set())

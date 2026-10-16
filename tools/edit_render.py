@@ -17,6 +17,7 @@ Stdlib only. Degrades loudly when ffmpeg is missing.
 import argparse
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
@@ -25,7 +26,7 @@ from pathlib import Path
 # tools/ is not a package on sys.path when this file runs as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools.vidkit import color, stages  # noqa: E402
+from tools.vidkit import color, encoder, ff, stages  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
@@ -315,6 +316,47 @@ def _dissolve_dur(seg):
     return float(transition["dur_s"]) if transition else 0.0
 
 
+def _available_encoders():
+    """Encoder names this ffmpeg lists. Empty when ffmpeg cannot be run."""
+    try:
+        proc = subprocess.run([FFMPEG or "ffmpeg", "-hide_banner", "-encoders"],
+                              capture_output=True, text=True)
+    except OSError:
+        return set()
+    return encoder.available(proc.stdout)
+
+
+def _resolve_encoder():
+    """Encoder name from GASPOL_VIDEO_ENCODER. ffmpeg is only asked what it has when the
+    value could pick a hardware encoder; unset and `libx264` never probe."""
+    value = (os.environ.get("GASPOL_VIDEO_ENCODER") or encoder.DEFAULT).strip()
+    avail = _available_encoders() if value in ("auto", encoder.HARDWARE) else {encoder.DEFAULT}
+    try:
+        name, warning = encoder.choose(value, avail)
+    except encoder.EncoderError as exc:
+        raise PlanError(str(exc)) from exc
+    if warning:
+        print(f"warning: {warning}", file=sys.stderr)
+    return name
+
+
+def _encode_height(width, height):
+    """Bitrate table key: the short side, so a 1080x1920 vertical counts as 1080p."""
+    return min(width, height)
+
+
+def _swap_encoder(cmd, name, height):
+    """The same command with its video-encoder arguments replaced for `name`."""
+    i = cmd.index("-c:v")
+    end = cmd.index("-pix_fmt", i) + 2
+    return cmd[:i] + encoder.video_args(name, height=height) + cmd[end:]
+
+
+def _run_encode(cmd):
+    """One per-segment or merge encode. Prints a heartbeat every 30s; raises ff.FFError."""
+    return ff.run(cmd, heartbeat_s=30)
+
+
 def build_commands(plan):
     """One ffmpeg invocation per segment, one merge per run of dissolved segments, then a
     concat. Returned so --print can show them; `parts` are the files the concat joins.
@@ -329,6 +371,8 @@ def build_commands(plan):
     seg_parts = []
     segments = plan.segments
     warned = set()
+    enc = _resolve_encoder()
+    enc_height = _encode_height(width, height)
 
     for i, seg in enumerate(segments, start=1):
         src = plan.project / seg["src"]
@@ -360,7 +404,7 @@ def build_commands(plan):
                "-vf", vf,
                "-af", f"apad=pad_dur={pad}" if pad else "anull",
                "-t", str(render_dur + pad),
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+               *encoder.video_args(enc, height=enc_height),
                *color.ENCODE_FLAGS,
                "-c:a", "aac", "-ar", "48000", "-ac", "2",
                str(part)]
@@ -382,12 +426,12 @@ def build_commands(plan):
             continue
         merged = work / f"group-{g:03d}.mp4"
         parts.append(merged)
-        merges.append(_merge_command(plan, members, seg_parts, merged))
+        merges.append(_merge_command(plan, members, seg_parts, merged, enc, enc_height))
 
     return cmds + merges, parts, work
 
 
-def _merge_command(plan, members, seg_parts, merged):
+def _merge_command(plan, members, seg_parts, merged, enc=encoder.DEFAULT, enc_height=1080):
     """Chain xfade/acrossfade over the parts of one group. The offset of each dissolve is
     the PLANNED length of everything before the incoming part, so it starts at exactly its
     planned second; the outgoing part's handle is what the fade eats."""
@@ -415,7 +459,7 @@ def _merge_command(plan, members, seg_parts, merged):
     return [FFMPEG, "-y", "-v", "error", *inputs,
             "-filter_complex", ";".join(video + audio),
             "-map", "[vout]", "-map", "[aout]", "-r", str(plan.fps), "-t", str(round(planned, 3)),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            *encoder.video_args(enc, height=enc_height),
             *color.ENCODE_FLAGS,
             "-c:a", "aac", "-ar", "48000", "-ac", "2",
             str(merged)]
@@ -569,6 +613,8 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False,
     work.mkdir(parents=True, exist_ok=True)
     plan.out.parent.mkdir(parents=True, exist_ok=True)
 
+    enc = _resolve_encoder()
+    enc_height = _encode_height(*plan.size)
     skipped = {"seg": 0, "group": 0}
     totals = {"seg": 0, "group": 0}
     for cmd in cmds:
@@ -586,10 +632,21 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False,
                 skipped[kind] += 1
                 continue
         print("+ " + " ".join(cmd))
-        proc = subprocess.run(cmd, capture_output=True, text=True)
-        if proc.returncode != 0:
+        used = [cmd]
+
+        def build(name, cmd=cmd, used=used):
+            used[0] = _swap_encoder(cmd, name, enc_height)
+            return used[0]
+        try:
+            encoder.run_with_fallback(build, enc, _run_encode)
+        except ff.FFError as exc:
             what = "a dissolve merge" if kind == "group" else "a segment"
-            raise PlanError(f"ffmpeg failed on {what}:\n{proc.stderr.strip()[-800:]}")
+            raise PlanError(f"ffmpeg failed on {what}:\n{str(exc)[-800:]}") from exc
+        if caching and used[0] != cmd:
+            try:
+                fp = _stage_fingerprint(plan, used[0], stage, parts_dir)
+            except stages.StageError:
+                fp = None
         if caching and fp:
             part_cache.record(stage, fp, [output])
 

@@ -57,6 +57,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Compare the rendered master with the script | `verify_render.py` |
 | Stems for a human editor | `make_stems.py` |
 | Thumbnail logo / headline scrim | `composite_logo.py`, `thumb_scrim.py` |
+| Choose the video encoder for edit renders, or see a long encode is alive | env `GASPOL_VIDEO_ENCODER` = `libx264` (default) / `auto` / `h264_videotoolbox` (`vidkit.encoder`); `ff.run(cmd, heartbeat_s=30)` |
 | Render ledger, reusable asset library | `renders.py`, `asset_library.py`, `asset_home.py` |
 | Units of billed renders, failed attempts, re-rolls per scene (no prices) | `cost_log.py` |
 | YouTube stats | `yt_stats.py` |

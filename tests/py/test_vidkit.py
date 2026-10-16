@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
-from tools.vidkit import beats, color, colormatch, cover, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
+from tools.vidkit import beats, color, colormatch, cover, encoder, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
 
 
 class IngestTest(unittest.TestCase):
@@ -800,3 +800,151 @@ class StageCacheTest(unittest.TestCase):
             c.record("s", "fp1", [self.out])
         self.assertIn("caching disabled", err.getvalue())
         self.assertFalse(c.is_fresh("s", "fp1", [self.out]))
+
+
+class EncoderChooseTest(unittest.TestCase):
+    HW = {"libx264", "h264_videotoolbox"}
+
+    def test_available_parses_encoders_listing(self):
+        text = (" V....D libx264              libx264 H.264\n"
+                " V....D h264_videotoolbox    VideoToolbox H.264 Encoder\n"
+                " A....D aac                  AAC\n"
+                " ------\n Encoders:\n")
+        self.assertEqual(encoder.available(text), {"libx264", "h264_videotoolbox", "aac"})
+
+    def test_available_empty_output(self):
+        self.assertEqual(encoder.available(""), set())
+
+    def test_unset_and_libx264_choose_libx264(self):
+        self.assertEqual(encoder.choose(None, self.HW), ("libx264", None))
+        self.assertEqual(encoder.choose("", self.HW), ("libx264", None))
+        self.assertEqual(encoder.choose("libx264", self.HW), ("libx264", None))
+
+    def test_auto_picks_hardware_when_available(self):
+        self.assertEqual(encoder.choose("auto", self.HW), ("h264_videotoolbox", None))
+
+    def test_auto_without_hardware_is_libx264(self):
+        self.assertEqual(encoder.choose("auto", {"libx264"}), ("libx264", None))
+
+    def test_explicit_hardware_unavailable_warns_and_falls_back(self):
+        name, warn = encoder.choose("h264_videotoolbox", {"libx264"})
+        self.assertEqual(name, "libx264")
+        self.assertIn("h264_videotoolbox", warn)
+
+    def test_explicit_hardware_available(self):
+        self.assertEqual(encoder.choose("h264_videotoolbox", self.HW), ("h264_videotoolbox", None))
+
+    def test_unknown_value_raises(self):
+        with self.assertRaises(encoder.EncoderError):
+            encoder.choose("bogus", self.HW)
+
+
+class EncoderArgsTest(unittest.TestCase):
+    def test_libx264_default_is_exactly_the_legacy_args(self):
+        self.assertEqual(" ".join(encoder.video_args("libx264")),
+                         "-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p")
+
+    def test_libx264_crf_override(self):
+        self.assertIn("18", encoder.video_args("libx264", crf=18))
+
+    def test_hardware_bitrate_by_height(self):
+        self.assertEqual(encoder.video_args("h264_videotoolbox", height=1080),
+                         ["-c:v", "h264_videotoolbox", "-b:v", "12M", "-pix_fmt", "yuv420p"])
+        self.assertIn("6M", encoder.video_args("h264_videotoolbox", height=720))
+        self.assertIn("8M", encoder.video_args("h264_videotoolbox", height=480))
+
+    def test_unknown_encoder_name_raises(self):
+        with self.assertRaises(encoder.EncoderError):
+            encoder.video_args("nvenc")
+
+
+class EncoderFallbackTest(unittest.TestCase):
+    def _builder(self):
+        return lambda name: ["ffmpeg", "-c:v", name]
+
+    def test_hardware_failure_retries_once_with_libx264(self):
+        import contextlib
+        calls = []
+
+        def run(cmd):
+            calls.append(cmd)
+            if "h264_videotoolbox" in cmd:
+                raise ff.FFError("hw boom")
+            return "ok"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            result = encoder.run_with_fallback(self._builder(), "h264_videotoolbox", run)
+        self.assertEqual(result, "ok")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1], ["ffmpeg", "-c:v", "libx264"])
+        self.assertIn("encoder h264_videotoolbox failed, retried with libx264", out.getvalue())
+
+    def test_libx264_failure_is_not_retried(self):
+        calls = []
+
+        def run(cmd):
+            calls.append(cmd)
+            raise ff.FFError("sw boom")
+        with self.assertRaises(ff.FFError):
+            encoder.run_with_fallback(self._builder(), "libx264", run)
+        self.assertEqual(len(calls), 1)
+
+    def test_both_fail_raises_with_both_tails(self):
+        def run(cmd):
+            raise ff.FFError("tail-" + cmd[-1])
+        with self.assertRaises(ff.FFError) as cm:
+            import contextlib
+            with contextlib.redirect_stdout(io.StringIO()):
+                encoder.run_with_fallback(self._builder(), "h264_videotoolbox", run)
+        msg = str(cm.exception)
+        self.assertIn("tail-h264_videotoolbox", msg)
+        self.assertIn("tail-libx264", msg)
+
+    def test_success_first_try_runs_once(self):
+        calls = []
+        encoder.run_with_fallback(self._builder(), "h264_videotoolbox", lambda c: calls.append(c))
+        self.assertEqual(len(calls), 1)
+
+
+class HeartbeatTest(unittest.TestCase):
+    def _run(self, code, **kw):
+        import contextlib, sys
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            try:
+                res = ff.run([sys.executable, "-c", code], **kw)
+                err = None
+            except ff.FFError as exc:
+                res, err = None, exc
+        return res, err, out.getvalue()
+
+    def test_beats_while_child_runs(self):
+        res, err, text = self._run("import time; time.sleep(1.2)", heartbeat_s=0.5)
+        self.assertIsNone(err)
+        lines = [ln for ln in text.splitlines() if ln.startswith("still running: ")]
+        self.assertGreaterEqual(len(lines), 2, text)
+        self.assertRegex(lines[0], r"^still running: \S.* \d+(\.\d+)?s$")
+
+    def test_child_stdout_still_returned(self):
+        res, err, _ = self._run("print('hello')", heartbeat_s=0.5)
+        self.assertEqual(res.strip(), "hello")
+
+    def test_capture_stderr_returns_stderr(self):
+        res, _, _ = self._run("import sys; sys.stderr.write('measured')", heartbeat_s=0.5,
+                              capture_stderr=True)
+        self.assertEqual(res, "measured")
+
+    def test_failing_child_propagates_rc_and_stderr_tail(self):
+        _, err, _ = self._run("import sys; sys.stderr.write('bad thing'); sys.exit(3)", heartbeat_s=0.5)
+        self.assertIsNotNone(err)
+        self.assertIn("(3)", str(err))
+        self.assertIn("bad thing", str(err))
+
+    def test_heartbeat_longer_than_process_prints_nothing(self):
+        _, err, text = self._run("print('x')", heartbeat_s=30)
+        self.assertIsNone(err)
+        self.assertNotIn("still running", text)
+
+    def test_default_has_no_heartbeat(self):
+        _, _, text = self._run("import time; time.sleep(0.3)")
+        self.assertEqual(text, "")

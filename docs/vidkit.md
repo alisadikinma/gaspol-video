@@ -8,7 +8,8 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 
 | Module | What | Replaces (per project) |
 |---|---|---|
-| `ff` | `probe`, `duration`, `run`, `ffmpeg` | ad-hoc `ffprobe` helpers in every script |
+| `ff` | `probe`, `duration`, `run` (`heartbeat_s=N` prints `still running: <file> <s>s` every N seconds), `ffmpeg` | ad-hoc `ffprobe` helpers in every script |
+| `encoder` | `available`, `choose`, `video_args`, `run_with_fallback` (env `GASPOL_VIDEO_ENCODER`, see below) | the hard-coded `-c:v libx264 ...` in each encode |
 | `gates` | `gate_av` (video = audio length), `gate_uniform` (same sample rate and channels before concat) | `gerbang.py` |
 | `join` | `concat_copy`, `join_xfade`, `clip_starts` (timeline maths for dissolves) | `join.py`, the `rakit_*.py` concat steps |
 | `patch` | `freeze_box`: freeze a rectangle of a clip to one frame | `freeze_patch.py` |
@@ -112,3 +113,11 @@ CLI: `vidkit beats FILE` prints the times as JSON. `tools/sfx_snap.py` applies `
 | `stages.StageCache(path).record(stage, fp, outputs)` | writes atomically (temp file + `os.replace`). A corrupt or absent cache file reads as empty. An unwritable place prints one stderr warning and turns caching off for the run, never a crash |
 
 Used by `tools/edit_render.py`: parts live in `<project>/.tmp/edit-parts/` with `stages.json`. The fingerprint covers the source bytes, the segment's plan fields, the final ffmpeg command (colour flags included) and `RENDERER_VERSION`. `--no-cache` forces a full render. `--print` ends with a `cached`/`rendered` line per stage.
+
+## Encoder choice (`encoder`)
+
+`GASPOL_VIDEO_ENCODER` selects the video encoder of `tools/edit_render.py` encodes. Default (unset) is `libx264`: the commands are byte-identical to before. `auto` uses `h264_videotoolbox` when `ffmpeg -hide_banner -encoders` lists it, else libx264. An explicit `h264_videotoolbox` that is not available falls back to libx264 with a warning. Any other value is an error.
+
+Hardware is opt-in because its quality per bitrate differs from CRF 20. It takes a bitrate by short side (1080: 12M, 720: 6M, other: 8M). A failed hardware encode is retried once with libx264 and logs `encoder X failed, retried with libx264`. The cache fingerprint covers the final command, so a changed encoder re-encodes the parts. `edit_render` also prints `still running: <part> <s>s` every 30 seconds during an encode.
+
+Measured 2026-10-16 on this Mac (3 synthetic 1080x1920 clips of 6s, `--no-cache`): libx264 1.2s, 16.9 MB; `auto` (h264_videotoolbox used) 2.9s, 27.5 MB. Both passed the A/V gate. No benefit on that clip, so the default stays libx264.
