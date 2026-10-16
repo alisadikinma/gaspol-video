@@ -430,6 +430,15 @@ FOR each batch (ACT or sub-batch):
      C) Regenerate entire batch — start fresh
 
   5.5. RENDER OFFER (only after option A above):
+     0. STILLS-FIRST GATE (before ANY clip render offer, GV-18): run
+        `python3 tools/verdict_page.py page {output_folder}`. The owner opens
+        `output/verdict.html` in a browser, marks every keyframe PASS / MAYBE / NO,
+        and saves the downloaded file as `{output_folder}/work/verdict.json`. Then
+        `python3 tools/verdict_page.py check {output_folder}` MUST exit 0 (add
+        `--allow-maybe` only if the owner accepts MAYBE scenes). Exit 1 lists scenes
+        to fix or re-render as stills first; exit 2 means the file is missing or
+        broken. No render offer until exit 0. Skipping needs an explicit owner
+        statement, recorded in the ledger/project notes with its date.
      a. FOR each approved scene, build `{platform, mode, duration_s, aspect, refs}`
         from `scene-plan.md` and the prompt just approved, and run
         `python3 tools/renders.py {output_folder} eligible --json '<scene json>'`.

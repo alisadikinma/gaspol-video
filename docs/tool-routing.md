@@ -49,6 +49,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Print a logo/sablon onto a person's clothing | `vidkit bond` |
 | Freeze one region of a clip (a bar that must not move) | `vidkit freeze` |
 | Look at a clip without watching it | `qa_frames.py` (gate), `vidkit sheet`, `vidkit montage` |
+| Let the owner approve keyframes before clips are rendered | `verdict_page.py page`, then `verdict_page.py check` (gate) |
 | Remotion shot: scaffold / render / stills | `templates/remotion/scaffold.mjs`, `scripts/render-all.mjs`, `render-stills.mjs` |
 | Remotion shot: several frames or the end state for QA | `scripts/frames.mjs`, `scripts/qa-end.mjs` |
 | Compare the rendered master with the script | `verify_render.py` |
