@@ -65,7 +65,7 @@ Field rules (enforced by `registry_build.validate`):
 - `replaces`: list of tool ids that exist in `tools`.
 - `distinct_because`: string; required (non-empty) only to excuse a duplicate pair.
 - `internal_reason`: non-empty string means "not reachable from a route row, and here is why" (e.g. imported helper). Otherwise the tool must appear in `tools` of at least one route.
-- `routes[].task` / `routes[].use`: non-empty, no `|` character, no newline. `routes[].tools`: existing tool ids (may be empty only for rows that point outside this plugin, such as the `gaspol-catalog deckkit` row).
+- `routes[].task` / `routes[].use`: non-empty, no `|` character, no newline. `routes[].tools`: existing tool ids (may be empty only for rows whose target is not a registered `tools/` file: rows that point outside this plugin (the `gaspol-catalog deckkit` row) or at in-plugin files that are not tools (a plan key, `templates/remotion/...`)).
 - `ffprobe_allow[].id` must exist and its file must really contain `ffprobe`; `reason` non-empty. A listed file that no longer contains `ffprobe` is a stale entry and fails.
 
 Excluded from coverage: `__init__.py` files, `tools/_venv.py`, `tools/vidkit/__main__.py` (the CLI entry; its subcommands are routed by their module).

@@ -633,6 +633,48 @@ class SuggestTest(unittest.TestCase):
         self.assertEqual(registry_build.score_tool(reg["tools"][0], {"mix", "audio", "the"}), 1)
 
 
+class HyphenTagScoringTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.reg = json.loads((ROOT / "tools/registry.json").read_text(encoding="utf-8"))
+
+    def scores(self, tool, text):
+        # score through the public ranking path: a one-tool registry lists the tool only when score > 0
+        return bool(registry_build.suggest_tools({"tools": [tool]}, text, top=1))
+
+    def test_clip_manifest_text_ranks_probe_clips_first(self):
+        top = registry_build.suggest_tools(self.reg, "write work/clip-manifest.json", top=1)
+        self.assertEqual(top[0]["id"], "tools/probe_clips.py")
+
+    def test_gate_av_tag_scores_its_tool(self):
+        tool = next(t for t in self.reg["tools"] if "gate-av" in t.get("tasks", []))
+        self.assertTrue(self.scores(tool, "run the gate-av check"))
+
+    def test_concat_still_ranks_join_first(self):
+        top = registry_build.suggest_tools(self.reg, "ffmpeg -f concat -i list.txt out.mp4", top=1)
+        self.assertEqual(top[0]["id"], "tools/vidkit/join.py")
+
+    def test_every_task_tag_scores_its_own_tool(self):
+        dead = [
+            (t["id"], tag)
+            for t in self.reg["tools"]
+            for tag in t.get("tasks", [])
+            if not self.scores(t, tag)
+        ]
+        self.assertEqual(dead, [])
+
+    def test_whole_hyphen_tag_scores_two_and_parts_one_without_double_count(self):
+        tool = {"id": "tools/a.py", "purpose": "Zzz.", "tasks": ["clip-manifest"]}
+        whole = registry_build.score_tool(tool, registry_build.text_words("clip-manifest"))
+        part = registry_build.score_tool(tool, registry_build.text_words("manifest only"))
+        self.assertEqual(whole, 2)
+        self.assertEqual(part, 1)
+
+    def test_text_token_hyphen_parts_are_added(self):
+        words = registry_build.text_words("Clip-Manifest concat")
+        self.assertTrue({"clip-manifest", "clip", "manifest", "concat"} <= words)
+
+
 class HookTest(unittest.TestCase):
     REG = {"tools": [{"id": "tools/vidkit/join.py", "purpose": "Join clips.", "tasks": ["concat"]}]}
 

@@ -40,6 +40,7 @@ END_MARK = "<!-- registry:routes:end -->"
 FF_EXEMPT = "tools/vidkit/ff.py"
 FFPROBE_RE = re.compile(r"\bffprobe\b")
 WORD_RE = re.compile(r"[a-z0-9]+")
+TOKEN_RE = re.compile(r"[a-z0-9-]+")
 SCAN_LIMIT = 200 * 1024
 HOOK_EXTS = {".py", ".mjs", ".sh"}
 HOOK_SKIP_DIRS = ("tools", "tests", "templates")
@@ -326,15 +327,35 @@ def cmd_render(args) -> int:
     return 0
 
 
+def text_words(text) -> set:
+    """Words of a text: hyphen-joined tokens plus each of their hyphen parts."""
+    words = set()
+    for tok in TOKEN_RE.findall(str(text).lower()):
+        words.add(tok)
+        words.update(p for p in tok.split("-") if p)
+    return words
+
+
+def _tag_score(tag, words, skip=frozenset()) -> int:
+    """2 for the whole tag as a word; else 1 per hyphen part (>=4 letters, not already
+    scored as a purpose word) found as a word, capped at 2."""
+    if tag in words:
+        return 2
+    if "-" in tag:
+        parts = [p for p in tag.split("-") if len(p) >= 4 and p not in skip]
+        return min(2, sum(1 for p in parts if p in words))
+    return 0
+
+
 def score_tool(tool, words) -> int:
     tasks = [t for t in tool.get("tasks", []) if isinstance(t, str)]
-    score = 2 * sum(1 for t in tasks if t in words)
     purpose = set(w for w in WORD_RE.findall(str(tool.get("purpose", "")).lower()) if len(w) >= 4)
+    score = sum(_tag_score(t, words, purpose) for t in tasks)
     return score + sum(1 for w in purpose if w in words)
 
 
 def suggest_tools(reg, text, top=3) -> list:
-    words = set(WORD_RE.findall(text.lower()))
+    words = text_words(text)
     scored = []
     for order, t in enumerate(reg.get("tools", [])):
         if isinstance(t, dict) and isinstance(t.get("id"), str):
