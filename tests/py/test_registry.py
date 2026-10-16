@@ -329,6 +329,120 @@ class CliTest(FakeRoot):
         self.assertEqual(rc, 0, out)
 
 
+BEGIN = "<!-- registry:routes:begin -->"
+END = "<!-- registry:routes:end -->"
+
+
+def route(task, use, tools=()):
+    return {"task": task, "use": use, "tools": list(tools)}
+
+
+class RenderTest(FakeRoot):
+    def write(self, reg):
+        (self.root / "tools/registry.json").write_text(json.dumps(reg))
+
+    def setUp(self):
+        super().setUp()
+        self.doc = self.root / "docs/tool-routing.md"
+        self.doc.parent.mkdir(parents=True, exist_ok=True)
+        self.reg = registry(
+            routes=[route("Join clips", "`vidkit concat`"), route("Mix", "`mix.py`")]
+        )
+        self.write(self.reg)
+        self.block = (
+            "| I want to... | Use |\n|---|---|\n"
+            "| Join clips | `vidkit concat` |\n| Mix | `mix.py` |\n"
+        )
+
+    def put(self, inner, before="intro\n\n", after="\n## Tail\ntext\n"):
+        self.doc.write_text(before + BEGIN + "\n" + inner + END + "\n" + after)
+
+    def test_render_check_reports_drift(self):
+        self.put(self.block.replace("`mix.py`", "`other.py`"))
+        rc, out, _ = cli("render", "--check", root=self.root)
+        self.assertEqual(rc, 1)
+        self.assertIn("drift", out)
+
+    def test_render_check_ok_and_writes_nothing(self):
+        self.put(self.block)
+        before = self.doc.read_bytes()
+        rc, _, _ = cli("render", "--check", root=self.root)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.doc.read_bytes(), before)
+
+    def test_render_check_drift_writes_nothing(self):
+        self.put("stale\n")
+        before = self.doc.read_bytes()
+        cli("render", "--check", root=self.root)
+        self.assertEqual(self.doc.read_bytes(), before)
+
+    def test_render_writes_block_and_keeps_outside_bytes(self):
+        self.put("stale\n")
+        rc, out, _ = cli("render", root=self.root)
+        self.assertEqual(rc, 0)
+        self.assertIn("routing table: 2 routes written", out)
+        self.assertEqual(
+            self.doc.read_text(),
+            "intro\n\n" + BEGIN + "\n" + self.block + END + "\n\n## Tail\ntext\n",
+        )
+
+    def test_render_idempotent(self):
+        self.put("stale\n")
+        cli("render", root=self.root)
+        first = self.doc.read_bytes()
+        rc, out, _ = cli("render", root=self.root)
+        self.assertEqual(rc, 0)
+        self.assertIn("routing table: unchanged", out)
+        self.assertEqual(self.doc.read_bytes(), first)
+
+    def test_render_missing_markers_exit_2(self):
+        self.doc.write_text("no markers here\n")
+        rc, _, err = cli("render", root=self.root)
+        self.assertEqual(rc, 2)
+        self.assertIn("marker", err)
+        rc, _, _ = cli("render", "--check", root=self.root)
+        self.assertEqual(rc, 2)
+
+    def test_render_reversed_markers_exit_2(self):
+        self.doc.write_text(END + "\nx\n" + BEGIN + "\n")
+        rc, _, err = cli("render", root=self.root)
+        self.assertEqual(rc, 2)
+        self.assertIn("marker", err)
+
+    def test_render_missing_doc_exit_2(self):
+        rc, _, err = cli("render", root=self.root)
+        self.assertEqual(rc, 2)
+        self.assertIn("tool-routing.md", err)
+
+    def test_render_refuses_invalid_route(self):
+        self.write(registry(routes=[route("a | b", "`x`")]))
+        self.put("stale\n")
+        before = self.doc.read_bytes()
+        rc, _, _ = cli("render", root=self.root)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.doc.read_bytes(), before)
+
+    def test_route_with_pipe_is_validate_problem(self):
+        self.assertProblem(registry(routes=[route("a | b", "`x`")]), "pipe")
+
+    def test_pipe_inside_code_span_of_use_is_allowed(self):
+        self.assertEqual(self.problems(registry(routes=[route("t", "`a b|c` x")])), [])
+
+    def test_pipe_outside_code_span_of_use_rejected(self):
+        self.assertProblem(registry(routes=[route("t", "a | b")]), "pipe")
+
+    def test_committed_doc_matches_committed_registry(self):
+        rc, out, _ = cli("render", "--check", root=ROOT)
+        self.assertEqual(rc, 0, out)
+
+    def test_committed_registry_has_fiftyeight_routes_and_validates(self):
+        reg = json.loads((ROOT / "tools/registry.json").read_text())
+        self.assertEqual(len(reg["routes"]), 58)
+        self.assertEqual(registry_build.validate(reg, ROOT), [])
+        deck = [r for r in reg["routes"] if r["task"].startswith("Deck / slide")]
+        self.assertEqual(deck[0]["tools"], [])
+
+
 class ScriptTest(unittest.TestCase):
     def test_help_runs_as_script(self):
         r = subprocess.run(

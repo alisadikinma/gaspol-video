@@ -8,6 +8,7 @@ Run Python tools from the plugin root (`python3 tools/<name>.py`, `python3 -m to
 Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.sh`
 (`~/.gaspol-video/venv/bin/python`). Node tools: `node tools/<name>.mjs`.
 
+<!-- registry:routes:begin -->
 | I want to... | Use |
 |---|---|
 | Download someone's video from a link | `python3 -m tools.vidkit ingest <url> <dir>` |
@@ -68,6 +69,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Units of billed renders, failed attempts, re-rolls per scene (no prices) | `cost_log.py` |
 | YouTube stats | `yt_stats.py` |
 | Deck / slide post-processing (PDF, watermark, numbering) | NOT here: `gaspol-catalog` `tools/deckkit` |
+<!-- registry:routes:end -->
 
 ## When no tool fits (inject back)
 

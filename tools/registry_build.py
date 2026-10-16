@@ -2,11 +2,14 @@
 """Tool registry: load, discover and validate `tools/registry.json`.
 
     python3 tools/registry_build.py validate [--coverage] [--root DIR]
+    python3 tools/registry_build.py render [--check] [--root DIR]
 
 `registry.json` is the single source of truth for every tool and every
 task-to-tool route. `validate` exits 0 when it is sound, 1 listing every
 problem (one per line, `<id or route #>: <problem>`) and 2 when the registry
-file is missing or not JSON. `--coverage` also demands that every file found
+file is missing or not JSON. `render` rewrites the routes table in
+`docs/tool-routing.md` between two marker comments; `render --check` exits 1
+when that block differs from the registry and writes nothing. `--coverage` also demands that every file found
 under `tools/` has an entry and is reachable from a route (or says why not).
 """
 
@@ -25,6 +28,9 @@ PHASES = {"1", "2", "3", "4", "5", "6", "7", "shared"}
 TASK_RE = re.compile(r"^[a-z0-9-]+$")
 PURPOSE_MAX = 140
 EXCLUDED = {"tools/_venv.py", "tools/vidkit/__main__.py"}
+DOC_REL = "docs/tool-routing.md"
+BEGIN_MARK = "<!-- registry:routes:begin -->"
+END_MARK = "<!-- registry:routes:end -->"
 GLOBS = ("tools/*.py", "tools/*.mjs", "tools/vidkit/*.py", "tools/vidkit/js/*.mjs")
 
 
@@ -148,7 +154,7 @@ def _check_routes(routes, ids, problems):
             v = r.get(key)
             if not isinstance(v, str) or not v.strip():
                 problems.append(f"{label}: {key} is empty")
-            elif "|" in v or "\n" in v:
+            elif ("|" in (re.sub(r"`[^`\n]*`", "", v) if key == "use" else v)) or "\n" in v:
                 problems.append(f"{label}: {key} has a pipe or newline")
         rt = r.get("tools")
         if not isinstance(rt, list):
@@ -235,6 +241,55 @@ def cmd_validate(args) -> int:
     return 1
 
 
+def render_block(routes) -> str:
+    lines = ["| I want to... | Use |", "|---|---|"]
+    lines += [f"| {r['task']} | {r['use']} |" for r in routes]
+    return "\n".join(lines) + "\n"
+
+
+def cmd_render(args) -> int:
+    root = Path(args.root)
+    try:
+        reg = load(root / REGISTRY_REL)
+    except RegistryError as e:
+        print(f"registry: {e}", file=sys.stderr)
+        return 2
+    doc = root / DOC_REL
+    try:
+        with open(doc, encoding="utf-8", newline="") as f:
+            text = f.read()
+    except OSError as e:
+        print(f"routing table: cannot read {doc}: {e.strerror or e}", file=sys.stderr)
+        return 2
+    b = text.find(BEGIN_MARK + "\n")
+    e = text.find(END_MARK)
+    if b < 0 or e < 0 or e < b:
+        print(
+            f"routing table: {DOC_REL} needs {BEGIN_MARK} then {END_MARK} "
+            "(marker missing or out of order)",
+            file=sys.stderr,
+        )
+        return 2
+    problems = [p for p in validate(reg, root) if "route" in p]
+    if problems:
+        for p in problems:
+            print(p)
+        print(f"registry: {len(problems)} route problem(s), not rendering")
+        return 1
+    start = b + len(BEGIN_MARK) + 1
+    new = text[:start] + render_block(reg.get("routes", [])) + text[e:]
+    if new == text:
+        print("routing table: unchanged")
+        return 0
+    if args.check:
+        print("routing table: drift between registry and " + DOC_REL)
+        return 1
+    with open(doc, "w", encoding="utf-8", newline="") as f:
+        f.write(new)
+    print(f"routing table: {len(reg.get('routes', []))} routes written")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Tool registry loader and validator.")
     ap.add_argument("--root", default=str(PLUGIN_ROOT), help="plugin root (default: this plugin)")
@@ -242,6 +297,9 @@ def build_parser() -> argparse.ArgumentParser:
     v = sub.add_parser("validate", help="check tools/registry.json")
     v.add_argument("--coverage", action="store_true", help="every tool file must be registered and routed")
     v.set_defaults(func=cmd_validate)
+    r = sub.add_parser("render", help="write the routes table into docs/tool-routing.md")
+    r.add_argument("--check", action="store_true", help="exit 1 on drift, write nothing")
+    r.set_defaults(func=cmd_render)
     return ap
 
 
