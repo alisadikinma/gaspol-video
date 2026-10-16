@@ -25,6 +25,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | ...with per-character settings/seed, only the spoken spans | `node tools/vidkit/js/cast_voice.mjs plan.json` |
 | Clean platform dialogue before voice change | `clean_voice.py` |
 | Word timings of a clip | `node tools/vidkit/js/eleven.mjs stt`; from an alignment json: `vidkit words` |
+| Music that follows the topic, tone and beat arc | `music_brief.py <project>` writes `work/music-palette.json` + plan segments, then `gen_music.py --recipes work/music-palette.json --only <ids>` |
 | Sound effects: generate | `gen_sfx.py` (palette), `eleven.mjs sfx` (one-off prompt) |
 | Sound effects: mix into the cut | `mix_sfx.py`; move cues out from under narration: `vidkit.speech.snap_to_gaps` |
 | Phone notification / alarm sound without paid files | `vidkit synth notification|alarm` |
