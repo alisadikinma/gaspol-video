@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   easeOut, clamp01, blurIn, glitch, countUp, strokeProgress, leadIn, exitFx,
   springIn, drift, carouselX, cueVisible, cueStyle,
+  stepState, vignetteAlpha, burstParticles,
 } from "../../templates/remotion/lib/overlayFx.mjs";
 
 const FPS_LIST = [24, 25, 30, 60];
@@ -269,4 +270,63 @@ test("cueStyle throws on zero or negative length", () => {
 test("overlayFx.mjs has no import line", () => {
   const src = readFileSync(new URL("../../templates/remotion/lib/overlayFx.mjs", import.meta.url), "utf8");
   assert.equal(/^\s*import[\s{(]/m.test(src), false);
+});
+
+// ---- GV-19 viral vocabulary ----
+
+test("stepState: before first mark, at mark, lit after 0.25 s, sorted by n", () => {
+  const marks = [{ n: 2, f: 90 }, { n: 1, f: 30 }];
+  assert.deepEqual(stepState(29, marks, 3), { active: 0, litProgress: 0 });
+  assert.deepEqual(stepState(30, marks, 3), { active: 1, litProgress: 0 });
+  const mid = stepState(33, marks, 3);
+  assert.equal(mid.active, 1);
+  assert.ok(mid.litProgress > 0 && mid.litProgress < 1);
+  // 0.25 s at 30 fps = round(7.5) = 8 frames
+  assert.equal(stepState(38, marks, 3).litProgress, 1);
+  assert.equal(stepState(89, marks, 3).active, 1);
+  assert.equal(stepState(90, marks, 3).active, 2);
+  assert.equal(stepState(90, marks, 3).litProgress, 0);
+  assert.equal(stepState(500, marks, 3).active, 2);
+  assert.deepEqual(stepState(10, [], 3), { active: 0, litProgress: 0 });
+});
+
+test("vignetteAlpha: zero outside, fades, blinks, bounded", () => {
+  const inF = 30, outF = 90, fps = 30;
+  assert.equal(vignetteAlpha(inF - 1, inF, outF, fps), 0);
+  assert.equal(vignetteAlpha(inF, inF, outF, fps), 0);
+  assert.ok(vignetteAlpha(inF + 5, inF, outF, fps) > 0);
+  assert.equal(vignetteAlpha(outF, inF, outF, fps), 0);
+  assert.equal(vignetteAlpha(outF + 10, inF, outF, fps), 0);
+  const seen = new Set();
+  for (let f = inF - 5; f <= outF + 5; f++) {
+    const a = vignetteAlpha(f, inF, outF, fps);
+    assert.ok(Number.isFinite(a));
+    assert.ok(a >= 0 && a <= 1);
+    if (f > inF + 5 && f < outF - 6) {
+      assert.ok(a >= 0.55 - 1e-9, `blink floor at ${f}: ${a}`);
+      seen.add(a.toFixed(3));
+    }
+  }
+  assert.ok(seen.size > 3, "blink must vary");
+  assert.deepEqual(vignetteAlpha(40, inF, outF, fps), vignetteAlpha(40, inF, outF, fps));
+  assert.ok(Number.isFinite(vignetteAlpha(NaN, inF, outF, fps)));
+});
+
+test("burstParticles: count, determinism, seed, fall range", () => {
+  const a = burstParticles(40, 30, 30, 7, 14);
+  assert.equal(a.length, 14);
+  assert.deepEqual(a, burstParticles(40, 30, 30, 7, 14));
+  assert.notDeepEqual(a, burstParticles(40, 30, 30, 8, 14));
+  assert.deepEqual(burstParticles(40, 30, 30, 7, 0), []);
+  assert.equal(burstParticles(40, 30, 30, 7, 1).length, 1);
+  assert.ok(burstParticles(0, 30, 30, 7, 5).every((p) => p.y >= -0.1 - 1e-9));
+  assert.ok(burstParticles(0, 30, 30, 7, 5).every((p) => p.opacity === 0));
+  // 2.2 s after start every particle (delay <= 0.5 s, fall 1.6 s) is below the frame
+  assert.ok(burstParticles(30 + 66, 30, 30, 7, 20).every((p) => p.y >= 1.1 - 1e-9));
+  for (const p of burstParticles(60, 30, 30, 3, 30)) {
+    assert.ok(p.x >= 0 && p.x <= 1);
+    assert.ok(Number.isFinite(p.rot) && Number.isFinite(p.y) && p.opacity >= 0 && p.opacity <= 1);
+  }
+  // pure positions follow the same x across frames (seeded, not per-frame random)
+  assert.equal(burstParticles(40, 30, 30, 7, 5)[2].x, burstParticles(50, 30, 30, 7, 5)[2].x);
 });

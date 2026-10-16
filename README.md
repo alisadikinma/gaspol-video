@@ -1,8 +1,13 @@
 # gaspol-video
 
-**v3.11.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
+**v3.16.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
 
 Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
+
+> **v3.16.0 — viral style and framework.** Overlay sticker icons, step counter, red vignette, falling burst and a
+> `viral` caption preset; a retention report on a finished cut (`tools/retention_gate.py`, `video-validate --retention`);
+> a 7-stage viral checklist every short-form script must carry (`tools/viral_checklist.py`). Course figures are tagged
+> `source: course`; the reports never block. See [v3.16.0 Changelog](#v3160-changelog).
 
 > **v3.11.0 — keywords that move, and pictures behind the speaker.**
 > Only the important keywords are highlighted — not subtitles: `tools/overlay_plan.py` refuses text
@@ -236,6 +241,10 @@ Run any phase independently:
 > Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.
 
 The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
+
+## v3.16.0 Changelog
+
+- **Viral style and framework (GV-19).** `vidkit audiostudy` and a 12-clip study (onsets follow speech, so music tempo and SFX timing are `not measured`); `KineticOverlay` icons `warning money check cross clock lock`, `steps`, `vignette`, `burst`, `center` anchor, `viral` preset; `tools/retention_gate.py` + doc 20 + `video-validate --retention`; `F12_Viral_Framework.md` + `tools/viral_checklist.py` + `video-script` Hard Rule 27 + `--script` S10. Imitation of structure only, see `NOTICE`.
 
 ## v3.11.0 Changelog
 

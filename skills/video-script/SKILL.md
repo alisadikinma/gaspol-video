@@ -37,6 +37,7 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 | Modular assets | `reference/storytelling_script_gen/F10_Modular_Asset_and_AB_Testing.md` |
 | Pattern interrupts | `reference/storytelling_script_gen/F11_Pattern_Interrupt_and_Retention.md` |
 | EV products ONLY | `reference/storytelling_script_gen/F4_EV_Persona_Matrix.md` |
+| Short-form target (Shorts/Reels/TikTok) ONLY: viral 7-stage checklist, title formula, loop ending | `reference/storytelling_script_gen/F12_Viral_Framework.md` |
 
 ### Phase 3: Scene Breakdown
 | Task | Read |
@@ -97,6 +98,8 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 
 26. **(v3.11.1) Rewrite output files clean after each decision.** When a decision changes `strategic-brief.md`, `av-script.md` or `scene-plan.md`, rewrite the affected sections so the file reads as the current truth. Do not append "UPDATE" notes under stale tables. Keep a short `## Riwayat` section at the end: date, what changed, why.
 
+27. **(GV-19) Short-form scripts carry the filled Viral Checklist.** For a platform Shorts/Reels/TikTok target, the generated `av-script.md` MUST end with the `## Viral Checklist` block of `F12_Viral_Framework.md`, every `{verdict}` replaced by a real verdict. Run `python3 tools/viral_checklist.py check {output_folder}/av-script.md` before the approval gate and show its findings. A `FAIL:` is reported to the owner, who fixes it or accepts it with a reason in Production Notes. F12 adds to the 9 Commandments and the Hook/CTA vaults; it never overrides them.
+
 ## Workflow
 
 ### Phase 2: SCRIPT GENERATION (Output: av-script.md)
@@ -114,6 +117,7 @@ READ these files ONLY:
 9. `reference/storytelling_script_gen/F10_Modular_Asset_and_AB_Testing.md`
 10. `reference/storytelling_script_gen/F11_Pattern_Interrupt_and_Retention.md`
 11. IF product is EV-related: `reference/storytelling_script_gen/F4_EV_Persona_Matrix.md`
+12. IF the platform is short-form (Shorts/Reels/TikTok): `reference/storytelling_script_gen/F12_Viral_Framework.md` (adds to the files above, never overrides the 9 Commandments, F5 or F6)
 Total: 10-11 files. This is the heaviest phase — script generation needs most references.
 IMPORTANT: Do NOT load image-video-gen/ files in this phase.
 
@@ -157,6 +161,38 @@ Output format: 3-column A/V table with beat labels
 
 ## Production Notes
 {key creative decisions, reference shots, mood board direction}
+
+## Viral Checklist
+{short-form only: omit this block for long-form. One row per item of F12, filled by the generator against the script just written. Verdict is PASS, FAIL: reason, N/A: reason, or PENDING: reason (PENDING only for posting and analytics)}
+
+| Stage | Item | Verdict |
+|---|---|---|
+| topic research | `specific-niche` | {verdict} |
+| topic research | `viral-factor` | {verdict} |
+| topic research | `market-demand` | {verdict} |
+| hook | `no-greeting` | {verdict} |
+| hook | `visual-hook` | {verdict} |
+| hook | `honest-promise` | {verdict} |
+| hook | `title-formula` | {verdict} |
+| hook | `person-claim-verified` | {verdict} |
+| script | `killer-structure` | {verdict} |
+| script | `foreshadow` | {verdict} |
+| script | `tight-body` | {verdict} |
+| script | `chat-tone` | {verdict} |
+| script | `loop-ending` | {verdict} |
+| edit | `cut-every-1-3s` | {verdict} |
+| edit | `contextual-broll` | {verdict} |
+| edit | `captions-safe-zone` | {verdict} |
+| edit | `audio-clean` | {verdict} |
+| caption | `caption-type` | {verdict} |
+| caption | `hashtag-3-tier` | {verdict} |
+| caption | `invites-interaction` | {verdict} |
+| posting | `omnipresence` | PENDING: {reason} |
+| posting | `custom-cover` | PENDING: {reason} |
+| posting | `music-licence` | PENDING: {reason} |
+| analytics | `benchmarks` | PENDING: {reason} |
+| analytics | `outlier-identified` | PENDING: {reason} |
+| analytics | `replicate-winner` | PENDING: {reason} |
 ```
 
 #### Step 2.3: Script Approval
@@ -545,6 +581,7 @@ B) Mau review manifest lagi
 - [ ] **(v3.11.1) No visual implies an unproven claim** — each visual shows only what the sourced narration states; an image that suggests a consequence nobody has documented is cut. For `video_type: issue`, the brief's `## Honesty Limits` are re-checked line by line
 - [ ] **(v3.11.1) Screen text matches voice** — every keyword on screen is also spoken in that line; one unit per quantity across voice and screen (no switching units mid-claim); one figure per claim, never two competing benchmarks in one line
 - [ ] **(v3.11.1) Foreshadow answered by voice** — every promise made in the Foreshadow ("the answer is at the end") is answered in the spoken narration, not only by on-screen text
+- [ ] **(GV-19) Viral Checklist filled (short-form only)** — `python3 tools/viral_checklist.py check` was run and its findings shown; no `{verdict}` placeholder left
 - [ ] **(v3.11.1) Sources** — every number in narration or on screen has a Source note and a real-article screenshot in ref-manifest
 
 ### Reference Collection Quality Gate (Phase 3.5)
