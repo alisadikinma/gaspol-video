@@ -1259,5 +1259,82 @@
       ]
     }
   ],
-  "ffprobe_allow": []
+  "ffprobe_allow": [
+    {
+      "id": "tools/burn_subs.py",
+      "reason": "needs -select_streams v:0 stream=height to scale subtitle size; migrate under follow-up"
+    },
+    {
+      "id": "tools/check_vo_duration.py",
+      "reason": "format=duration probe via subprocess; Phase G migrates to vidkit.ff.probe and removes this entry"
+    },
+    {
+      "id": "tools/clean_voice.py",
+      "reason": "needs format=duration and -select_streams a stream=index (audio-track check) per call; migrate under follow-up"
+    },
+    {
+      "id": "tools/composite.py",
+      "reason": "needs -select_streams per call; migrate under follow-up"
+    },
+    {
+      "id": "tools/edit_render.py",
+      "reason": "format duration plus per-stream duration (-select_streams stream=duration) for the A/V gate; migrate under follow-up"
+    },
+    {
+      "id": "tools/gen_music.py",
+      "reason": "format=duration probe with its own missing-binary fallback; migrate under follow-up"
+    },
+    {
+      "id": "tools/gen_vo.mjs",
+      "reason": "Node tool; format=duration probe via execFile that returns null when ffprobe is absent; vidkit.ff is Python-only"
+    },
+    {
+      "id": "tools/make_stems.py",
+      "reason": "format=duration probe raising StemError when ffprobe is absent; migrate under follow-up"
+    },
+    {
+      "id": "tools/mix_music.py",
+      "reason": "format=duration probe returning None when ffprobe is absent; migrate under follow-up"
+    },
+    {
+      "id": "tools/mix_sfx.py",
+      "reason": "format=duration probe returning None when ffprobe is absent; migrate under follow-up"
+    },
+    {
+      "id": "tools/overlay_plan.py",
+      "reason": "format=duration probe of overlay clips; docstring says needs ffprobe; migrate under follow-up"
+    },
+    {
+      "id": "tools/person_mask.py",
+      "reason": "needs -count_packets with nb_read_packets and r_frame_rate as JSON, which ff.probe does not return"
+    },
+    {
+      "id": "tools/probe_clips.py",
+      "reason": "full -show_streams JSON for the manifest; degrades loudly without ffprobe"
+    },
+    {
+      "id": "tools/qa_frames.py",
+      "reason": "needs stream=duration,r_frame_rate plus format=duration in one call; migrate under follow-up"
+    },
+    {
+      "id": "tools/registry_build.py",
+      "reason": "mentions ffprobe in the scan rule, its regex and its error text only; it never calls ffprobe"
+    },
+    {
+      "id": "tools/retention_gate.py",
+      "reason": "checks shutil.which('ffprobe') up front and mentions it in docs/error text; probing itself is delegated to mix_music and qa_frames"
+    },
+    {
+      "id": "tools/track_screen.py",
+      "reason": "v:0 stream probe plus format=duration via subprocess; Phase G migrates to vidkit.ff.probe and removes this entry"
+    },
+    {
+      "id": "tools/vidkit/color.py",
+      "reason": "needs color_space/primaries/transfer/range fields ff.probe does not return"
+    },
+    {
+      "id": "tools/voice_changer.mjs",
+      "reason": "Node tool; format=duration probe via execFile that returns null on failure; vidkit.ff is Python-only"
+    }
+  ]
 }

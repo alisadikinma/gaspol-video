@@ -165,7 +165,7 @@ class ValidateTest(FakeRoot):
 
     def test_ffprobe_allow_stale_entry(self):
         reg = registry(ffprobe_allow=[{"id": "tools/composite.py", "reason": "r"}])
-        self.assertProblem(reg, "tools/composite.py: ffprobe_allow is stale")
+        self.assertProblem(reg, "tools/composite.py: stale ffprobe_allow entry (no ffprobe in file)")
 
     def test_ffprobe_allow_live_entry(self):
         (self.root / "tools/composite.py").write_text('run(["ffprobe", "-v"])\n')
@@ -521,6 +521,62 @@ class CommittedVidkitCoverageTest(unittest.TestCase):
         self.assertTrue(by_id["tools/vidkit/js/env.mjs"]["internal_reason"])
         self.assertIn("tools/vidkit/gates.py", routed)
         self.assertIn("tools/vidkit/patch.py", routed)
+
+
+class FfprobeScanTest(FakeRoot):
+    def probe_reg(self, **over):
+        return registry(
+            entry(),
+            entry(id="tools/new_probe.py", tasks=["probe"], internal_reason="test"),
+            **over,
+        )
+
+    def setUp(self):
+        super().setUp()
+        (self.root / "tools/new_probe.py").write_text("x = 1\n")
+
+    def scan(self, reg):
+        return [p for p in registry_build.validate(reg, self.root, coverage=True) if "ffprobe" in p]
+
+    def test_unlisted_ffprobe_reported_exactly(self):
+        (self.root / "tools/new_probe.py").write_text("# uses ffprobe\n")
+        probs = self.scan(self.probe_reg())
+        self.assertEqual(
+            probs, ["tools/new_probe.py: ffprobe outside vidkit/ff.py and not in ffprobe_allow"]
+        )
+
+    def test_allowed_ffprobe_passes(self):
+        (self.root / "tools/new_probe.py").write_text("# uses ffprobe\n")
+        reg = self.probe_reg(ffprobe_allow=[{"id": "tools/new_probe.py", "reason": "r"}])
+        self.assertEqual(self.scan(reg), [])
+
+    def test_ff_py_is_exempt(self):
+        (self.root / "tools/vidkit/ff.py").write_text("run(['ffprobe'])\n")
+        probs = self.scan(self.probe_reg())
+        self.assertEqual(probs, [])
+
+    def test_init_file_is_scanned(self):
+        (self.root / "tools/vidkit/__init__.py").write_text("# ffprobe\n")
+        probs = self.scan(self.probe_reg())
+        self.assertIn(
+            "tools/vidkit/__init__.py: ffprobe outside vidkit/ff.py and not in ffprobe_allow",
+            probs,
+        )
+
+    def test_word_boundary(self):
+        (self.root / "tools/new_probe.py").write_text("x = 'myffprobe_x'\n")
+        self.assertEqual(self.scan(self.probe_reg()), [])
+
+    def test_not_scanned_without_coverage(self):
+        (self.root / "tools/new_probe.py").write_text("# ffprobe\n")
+        probs = registry_build.validate(self.probe_reg(), self.root)
+        self.assertFalse(any("outside vidkit" in p for p in probs))
+
+    def test_allow_schema_bad_shapes(self):
+        probs = self.problems(registry(ffprobe_allow="x"))
+        self.assertIn("registry: ffprobe_allow must be a list", probs)
+        probs = self.problems(registry(ffprobe_allow=[{"id": 3, "reason": "r"}]))
+        self.assertTrue(any("needs a string id" in p for p in probs))
 
 
 class ScriptTest(unittest.TestCase):

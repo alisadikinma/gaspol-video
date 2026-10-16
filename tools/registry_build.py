@@ -31,6 +31,9 @@ EXCLUDED = {"tools/_venv.py", "tools/vidkit/__main__.py"}
 DOC_REL = "docs/tool-routing.md"
 BEGIN_MARK = "<!-- registry:routes:begin -->"
 END_MARK = "<!-- registry:routes:end -->"
+FF_EXEMPT = "tools/vidkit/ff.py"
+FFPROBE_RE = re.compile(r"\bffprobe\b")
+SCAN_GLOBS = ("tools/**/*.py", "tools/**/*.mjs")
 GLOBS = ("tools/*.py", "tools/*.mjs", "tools/vidkit/*.py", "tools/vidkit/js/*.mjs")
 
 
@@ -186,9 +189,25 @@ def _check_ffprobe_allow(allow, root, problems):
             except (OSError, UnicodeDecodeError):
                 has = None
             if not has:
-                problems.append(f"{aid}: ffprobe_allow is stale (file no longer uses ffprobe)")
+                problems.append(f"{aid}: stale ffprobe_allow entry (no ffprobe in file)")
         if not isinstance(a.get("reason"), str) or not a["reason"].strip():
             problems.append(f"{aid}: ffprobe_allow reason is empty")
+
+
+def _scan_ffprobe(reg, root, problems):
+    allow = reg.get("ffprobe_allow", [])
+    listed = {a["id"] for a in allow if isinstance(a, dict) and isinstance(a.get("id"), str)}
+    for pattern in SCAN_GLOBS:
+        for p in sorted(root.glob(pattern)):
+            rel = p.relative_to(root).as_posix()
+            if rel == FF_EXEMPT or not p.is_file():
+                continue
+            try:
+                hit = FFPROBE_RE.search(p.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                continue
+            if hit and rel not in listed:
+                problems.append(f"{rel}: ffprobe outside vidkit/ff.py and not in ffprobe_allow")
 
 
 def validate(reg, root, coverage=False) -> list:
@@ -212,6 +231,7 @@ def validate(reg, root, coverage=False) -> list:
     routed = _check_routes(reg.get("routes", []), ids_seen, problems)
     _check_ffprobe_allow(reg.get("ffprobe_allow", []), root, problems)
     if coverage:
+        _scan_ffprobe(reg, root, problems)
         for tid in discover(root):
             if tid not in ids_seen:
                 problems.append(f"{tid}: not in registry")
