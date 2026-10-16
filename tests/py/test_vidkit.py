@@ -1,10 +1,12 @@
 import json
+import random
+import struct
 import tempfile
 import unittest
 from pathlib import Path
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
-from tools.vidkit import cover, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
+from tools.vidkit import beats, cover, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
 
 
 class IngestTest(unittest.TestCase):
@@ -298,6 +300,115 @@ class BondTest(unittest.TestCase):
         ff.ffmpeg("-i", src, "-vf", "scale=1080:1920,select=eq(n\\,0),crop=300:60:390:900", "-frames:v", "1", b)
         diff = np.abs(cv2.imread(str(a)).astype(int) - cv2.imread(str(b)).astype(int)).mean()
         self.assertGreater(diff, 20, "print should darken the cloth where it lands")
+
+
+def click_wav(path, clicks, seconds=6.0, rate=16000, channels=1, noise=0.003, amp=0.9):
+    """Write a wav of short decaying clicks at ``clicks`` seconds over low noise."""
+    import math
+    import wave
+    rnd = random.Random(7)
+    n = int(seconds * rate)
+    data = [rnd.uniform(-noise, noise) for _ in range(n)]
+    for t in clicks:
+        i0 = int(t * rate)
+        for k in range(int(0.02 * rate)):
+            if i0 + k < n:
+                data[i0 + k] += amp * math.exp(-k / (0.004 * rate)) * math.sin(2 * math.pi * 900 * k / rate)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(channels); w.setsampwidth(2); w.setframerate(rate)
+        frames = bytearray()
+        for v in data:
+            frames += struct.pack("<h", int(max(-1, min(1, v)) * 32767)) * channels
+        w.writeframes(bytes(frames))
+    return str(path)
+
+
+@requires_ffmpeg
+class BeatsTest(unittest.TestCase):
+    CLICKS = [0.5, 1.5, 2.5, 3.5, 4.5]
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_detects_five_clicks(self):
+        wav = click_wav(self.dir / "c.wav", self.CLICKS)
+        found = beats.detect(wav)
+        self.assertEqual(len(found), 5, found)
+        for got, want in zip(found, self.CLICKS):
+            self.assertAlmostEqual(got, want, delta=0.03)
+
+    def test_silence_has_no_beats(self):
+        wav = click_wav(self.dir / "s.wav", [], noise=0.0)
+        self.assertEqual(beats.detect(wav), [])
+
+    def test_low_noise_only_has_no_beats(self):
+        wav = click_wav(self.dir / "n.wav", [])
+        self.assertEqual(beats.detect(wav), [])
+
+    def test_missing_file_raises(self):
+        with self.assertRaises(beats.BeatError):
+            beats.detect(str(self.dir / "nope.wav"))
+
+    def test_undecodable_file_raises(self):
+        bad = self.dir / "bad.wav"
+        bad.write_bytes(b"not audio at all")
+        with self.assertRaises(beats.BeatError):
+            beats.detect(str(bad))
+
+    def test_clicks_closer_than_min_gap_collapse(self):
+        wav = click_wav(self.dir / "g.wav", [1.0, 1.1, 3.0])
+        found = beats.detect(wav, min_gap_s=0.25)
+        self.assertEqual(len(found), 2, found)
+        self.assertAlmostEqual(found[1], 3.0, delta=0.03)
+        self.assertEqual(len(beats.detect(wav, min_gap_s=0.05)), 3)
+
+    def test_single_beat(self):
+        wav = click_wav(self.dir / "one.wav", [2.0])
+        found = beats.detect(wav)
+        self.assertEqual(len(found), 1)
+        self.assertAlmostEqual(found[0], 2.0, delta=0.03)
+
+    def test_stereo_44k_input_still_works(self):
+        wav = click_wav(self.dir / "st.wav", self.CLICKS, rate=44100, channels=2)
+        found = beats.detect(wav)
+        self.assertEqual(len(found), 5, found)
+        for got, want in zip(found, self.CLICKS):
+            self.assertAlmostEqual(got, want, delta=0.03)
+
+    def test_snap_moves_inside_window_only(self):
+        self.assertEqual(beats.snap([1.54, 1.9], [1.5, 2.5], 0.12), [1.5, 1.9])
+
+    def test_snap_picks_nearest_beat(self):
+        self.assertEqual(beats.snap([1.58], [1.5, 1.62], 0.12), [1.62])
+
+    def test_snap_window_zero_moves_nothing(self):
+        self.assertEqual(beats.snap([1.54, 1.5], [1.5], 0), [1.54, 1.5])
+
+    def test_snap_before_first_and_after_last_beat(self):
+        self.assertEqual(beats.snap([0.05, 9.0, 0.45], [0.5, 4.0], 0.12), [0.05, 9.0, 0.5])
+
+    def test_snap_with_no_beats_changes_nothing(self):
+        self.assertEqual(beats.snap([1.0, 2.0], [], 0.12), [1.0, 2.0])
+
+    def test_cli_prints_json_times(self):
+        import io
+        from contextlib import redirect_stdout
+        from tools.vidkit.__main__ import main
+        wav = click_wav(self.dir / "cli.wav", self.CLICKS)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = main(["beats", wav])
+        self.assertEqual(rc, 0)
+        got = json.loads(buf.getvalue())
+        self.assertEqual(len(got), 5)
+
+    def test_cli_missing_file_fails(self):
+        from tools.vidkit.__main__ import main
+        self.assertEqual(main(["beats", str(self.dir / "nope.wav")]), 1)
 
 
 if __name__ == "__main__":

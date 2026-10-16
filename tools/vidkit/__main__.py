@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, track, unwhite
+from . import beats, cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, track, unwhite
 
 
 def _json(p):
@@ -95,6 +95,11 @@ def main(argv=None):
     s = sub.add_parser("words", help="word timings from an ElevenLabs alignment json")
     s.add_argument("alignment")
 
+    s = sub.add_parser("beats", help="beat times of a music file, as JSON seconds")
+    s.add_argument("file")
+    s.add_argument("--min-gap", type=float, default=0.25)
+    s.add_argument("--threshold", type=float, default=1.5)
+
     s = sub.add_parser("energy", help="dB envelope of a file between two times")
     s.add_argument("file")
     s.add_argument("start", type=float)
@@ -161,6 +166,8 @@ def main(argv=None):
         elif a.cmd == "words":
             for w in speech.words_from_alignment(_json(a.alignment)):
                 print(f"{w['word']}@{w['start']:.2f}-{w['end']:.2f}")
+        elif a.cmd == "beats":
+            print(json.dumps(beats.detect(a.file, min_gap_s=a.min_gap, threshold=a.threshold)))
         elif a.cmd == "energy":
             print(" ".join(f"{t:.2f}:{db:g}" for t, db in speech.energy_db(a.file, a.start, a.end)))
         elif a.cmd == "normalize":
@@ -173,7 +180,7 @@ def main(argv=None):
         elif a.cmd == "bond":
             from . import bond
             print(json.dumps(bond.bond_print(a.clip, a.out, a.print_png, a.cx, a.top, a.width, a.rot)))
-    except (gates.GateError, ff.FFError, ValueError, RuntimeError) as exc:
+    except (gates.GateError, ff.FFError, beats.BeatError, ValueError, RuntimeError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
     return 0
