@@ -31,6 +31,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Clips of one kelompok differ in colour / grade | `python3 -m tools.vidkit colormatch CLIPS...` (report; add `--apply OUTDIR` only after the owner looked at `vidkit sheet`; `vidkit.colormatch.plan/apply`) |
 | Beat times of a music file | `python3 -m tools.vidkit beats FILE` (`vidkit.beats.detect`) |
 | Land SFX cues on the music beat | `python3 tools/sfx_snap.py <project> --music FILE` (writes `work/sfx-plan.snapped.json`; `snap` = `vidkit.beats.snap`) |
+| Skip an expensive step when its inputs did not change | `vidkit.stages.fingerprint(files, params, version)` + `StageCache(path).is_fresh/record`. `tools/edit_render.py` already uses it: a re-run skips unchanged segments (`--no-cache` forces a full render) |
 | Phone notification / alarm sound without paid files | `vidkit synth notification|alarm` |
 | Music: generate / mix | `gen_music.py`, `mix_music.py` |
 | Final loudness (-14 LUFS) with A/V kept aligned | `vidkit normalize` |

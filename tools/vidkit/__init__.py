@@ -3,4 +3,4 @@
 Stdlib + ffmpeg except ``bond`` (cv2, numpy). Run the CLI from the plugin root:
 ``python3 -m tools.vidkit --help``.
 """
-from . import beats, color, colormatch, ff, gates, join, loudness, patch, sheet, speech, synth, track  # noqa: F401
+from . import beats, color, colormatch, ff, gates, join, loudness, patch, sheet, speech, stages, synth, track  # noqa: F401

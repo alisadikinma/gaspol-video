@@ -663,3 +663,197 @@ class SourceWarningTest(unittest.TestCase):
         self.assertEqual((a, b), ("", ""))
         self.assertEqual(err.getvalue().count("left unconverted"), 1)
         self.assertEqual(err.getvalue().count("\n"), 1)
+
+
+def _sha(path):
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+class StageCacheRenderTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name)
+        (self.project / "clips").mkdir()
+        for n in (1, 2):
+            make_clip(self.project / "clips" / f"scene-0{n}.mp4", seconds=2.5)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _segments(self, out2=1.5):
+        return [
+            {"kind": "clip", "src": "clips/scene-01.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/scene-02.mp4", "in_s": 0.0, "out_s": out2},
+        ]
+
+    def _render(self, plan, **kw):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            out = edit_render.render(plan, self.project, **kw)
+        text = buf.getvalue()
+        encodes = [ln for ln in text.splitlines() if ln.startswith("+ ") and "libx264" in ln]
+        return out, text, len(encodes)
+
+    @requires_ffmpeg
+    def test_second_run_skips_everything_and_master_is_identical(self):
+        plan = write_plan(self.project, self._segments())
+        out, text, n = self._render(plan)
+        self.assertEqual(n, 2)
+        self.assertIn("skipped 0 of 2 segments (cached)", text)
+        first = _sha(out)
+
+        out2, text2, n2 = self._render(plan)
+        self.assertEqual(n2, 0)
+        self.assertIn("skipped 2 of 2 segments (cached)", text2)
+        self.assertIn("-f concat", text2, "the concat always runs")
+        self.assertIn("A/V duration gate passed", text2, "the gate always runs")
+        self.assertEqual(_sha(out2), first)
+
+        out3, _, n3 = self._render(plan, cache=False)
+        self.assertEqual(n3, 2)
+        self.assertEqual(_sha(out3), first, "cached master must equal a full render")
+
+    @requires_ffmpeg
+    def test_changing_one_out_s_re_encodes_only_that_segment(self):
+        self._render(write_plan(self.project, self._segments()))
+        plan = write_plan(self.project, self._segments(out2=1.0))
+        out, text, n = self._render(plan)
+        self.assertEqual(n, 1)
+        self.assertIn("skipped 1 of 2 segments (cached)", text)
+        self.assertAlmostEqual(duration_of(out, "v:0"), 3.0, delta=0.2)
+
+    @requires_ffmpeg
+    def test_no_cache_re_encodes_everything(self):
+        plan = write_plan(self.project, self._segments())
+        self._render(plan)
+        _, text, n = self._render(plan, cache=False)
+        self.assertEqual(n, 2)
+        self.assertNotIn("skipped", text, "no cache is consulted, so nothing is reported skipped")
+        self.assertEqual(self._render(plan)[2], 0, "--no-cache leaves the cached parts alone")
+
+    @requires_ffmpeg
+    def test_changed_encode_command_invalidates_every_part(self):
+        plan = write_plan(self.project, self._segments())
+        self._render(plan)
+        orig = color.ENCODE_FLAGS
+        color.ENCODE_FLAGS = orig + ["-metadata", "title=cache-test"]
+        self.addCleanup(setattr, color, "ENCODE_FLAGS", orig)
+        _, text, n = self._render(plan)
+        self.assertEqual(n, 2)
+        self.assertIn("skipped 0 of 2 segments (cached)", text)
+
+    @requires_ffmpeg
+    def test_older_renderer_version_is_stale(self):
+        plan = write_plan(self.project, self._segments())
+        self._render(plan)
+        orig = edit_render.RENDERER_VERSION
+        edit_render.RENDERER_VERSION = "2"
+        self.addCleanup(setattr, edit_render, "RENDERER_VERSION", orig)
+        self.assertEqual(self._render(plan)[2], 2)
+
+    @requires_ffmpeg
+    def test_source_rewritten_with_same_bytes_stays_fresh(self):
+        plan = write_plan(self.project, self._segments())
+        self._render(plan)
+        src = self.project / "clips" / "scene-01.mp4"
+        src.write_bytes(src.read_bytes())
+        self.assertEqual(self._render(plan)[2], 0)
+
+    @requires_ffmpeg
+    def test_changed_source_bytes_re_encode_that_segment(self):
+        plan = write_plan(self.project, self._segments())
+        self._render(plan)
+        make_clip(self.project / "clips" / "scene-01.mp4", seconds=2.6)
+        self.assertEqual(self._render(plan)[2], 1)
+
+    @requires_ffmpeg
+    def test_deleted_part_is_re_encoded(self):
+        plan = write_plan(self.project, self._segments())
+        self._render(plan)
+        parts = sorted((self.project / ".tmp" / "edit-parts").glob("part-*.mp4"))
+        self.assertEqual(len(parts), 2)
+        parts[0].unlink()
+        self.assertEqual(self._render(plan)[2], 1)
+
+    @requires_ffmpeg
+    def test_identical_segments_get_distinct_stages(self):
+        seg = {"kind": "clip", "src": "clips/scene-01.mp4", "in_s": 0.0, "out_s": 1.0}
+        plan = write_plan(self.project, [dict(seg), dict(seg)])
+        self._render(plan)
+        data = json.loads((self.project / ".tmp" / "edit-parts" / "stages.json").read_text())
+        self.assertEqual(sorted(data), ["seg-1", "seg-2"])
+        self.assertEqual(self._render(plan)[2], 0)
+
+    @requires_ffmpeg
+    def test_dissolve_group_merge_is_cached_too(self):
+        segs = self._segments(out2=1.5)
+        segs[1]["transition_in"] = {"kind": "dissolve", "dur_s": 0.4}
+        plan = write_plan(self.project, segs)
+        out, _, n = self._render(plan)
+        self.assertEqual(n, 3)
+        first = _sha(out)
+        out2, text, n2 = self._render(plan)
+        self.assertEqual(n2, 0)
+        self.assertIn("skipped 2 of 2 segments (cached)", text)
+        self.assertEqual(_sha(out2), first)
+
+    @requires_ffmpeg
+    def test_unwritable_parts_dir_falls_back_to_a_full_render(self):
+        (self.project / ".tmp").write_text("a file where the cache dir should be")
+        plan = write_plan(self.project, self._segments())
+        out, text, n = self._render(plan)
+        self.assertEqual(n, 2)
+        self.assertIn("caching disabled", text)
+        self.assertTrue(Path(out).is_file())
+        self.assertEqual(self._render(plan)[2], 2)
+
+    @requires_ffmpeg
+    def test_unwritable_cache_file_warns_and_still_renders(self):
+        parts = self.project / ".tmp" / "edit-parts"
+        (parts / "stages.json").mkdir(parents=True)
+        plan = write_plan(self.project, self._segments())
+        out, text, n = self._render(plan)
+        self.assertEqual(n, 2)
+        self.assertIn("caching disabled", text)
+        self.assertTrue(Path(out).is_file())
+
+    def test_zero_segments_still_rejected_and_leaves_no_cache(self):
+        plan = write_plan(self.project, [])
+        with self.assertRaises(edit_render.PlanError):
+            edit_render.render(plan, self.project)
+        self.assertFalse((self.project / ".tmp").exists())
+
+    def test_cli_has_cache_and_no_cache_flags(self):
+        import contextlib, io
+        from unittest import mock
+        seen = []
+        with mock.patch.object(edit_render, "render",
+                               side_effect=lambda *a, **k: seen.append(k) or "x"):
+            edit_render.main([str(self.project)])
+            edit_render.main([str(self.project), "--no-cache"])
+            edit_render.main([str(self.project), "--cache"])
+        self.assertEqual([k["cache"] for k in seen], [True, False, True])
+
+    @requires_ffmpeg
+    def test_print_lists_cached_or_rendered_per_stage(self):
+        import contextlib, io
+        plan = write_plan(self.project, self._segments())
+
+        def shown():
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                edit_render.main([str(self.project), "--print"])
+            return buf.getvalue()
+
+        before = shown()
+        self.assertIn("seg-1: rendered", before)
+        self.assertIn("seg-2: rendered", before)
+        self._render(plan)
+        after = shown()
+        self.assertIn("seg-1: cached", after)
+        self.assertIn("seg-2: cached", after)
+        write_plan(self.project, self._segments(out2=1.0))
+        self.assertIn("seg-1: cached", shown())
+        self.assertIn("seg-2: rendered", shown())

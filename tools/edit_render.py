@@ -25,7 +25,7 @@ from pathlib import Path
 # tools/ is not a package on sys.path when this file runs as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools.vidkit import color  # noqa: E402
+from tools.vidkit import color, stages  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
@@ -36,6 +36,9 @@ AV_TOLERANCE_S = 0.04
 # A freeze longer than this reads as a stall rather than a beat. Warned, never blocked:
 # sometimes a held frame is the intent.
 PAD_WARN_S = 1.0
+
+# Bump when the encode recipe changes in a way the ffmpeg command line does not show.
+RENDERER_VERSION = "1"
 
 VALID_KINDS = ("clip", "shot")
 VALID_PAD_MODES = ("freeze", "black")
@@ -470,8 +473,81 @@ def format_sheet(plan):
     return "\n".join(lines)
 
 
-def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False):
-    """Render the plan. Returns the output path, or None when degraded."""
+def _relocate(cmds, parts, old, new):
+    """Point every path under `old` at `new` (the cached parts folder)."""
+    old, new = str(old), str(new)
+    cmds = [[a.replace(old, new) if isinstance(a, str) and a.startswith(old) else a for a in c]
+            for c in cmds]
+    return cmds, [Path(str(p).replace(old, new, 1)) for p in parts]
+
+
+def _stage_of(cmd):
+    """('seg-1', ...) for part-001.mp4, ('group-1', ...) for group-001.mp4."""
+    name = Path(cmd[-1]).stem
+    kind, num = name.split("-")
+    return f"{'seg' if kind == 'part' else kind}-{int(num)}"
+
+
+def _stage_fingerprint(plan, cmd, stage, parts_dir):
+    """What decides whether an encoded part is still good: the bytes it is made from, the
+    plan fields behind it and the FINAL command (so any encoder or colour flag change
+    invalidates it), with its own output path and the project location normalised away."""
+    prefixes = ((str(parts_dir), "<parts>"), (str(plan.project), "<project>"))
+
+    def norm(a):
+        for prefix, token in prefixes:
+            if isinstance(a, str) and a.startswith(prefix):
+                return token + a[len(prefix):]
+        return a
+
+    if stage.startswith("seg-"):
+        seg = plan.segments[int(stage[4:]) - 1]
+        files = [plan.project / seg["src"]]
+        params = {"seg": seg, "cmd": [norm(a) for a in cmd]}
+    else:
+        files = [Path(cmd[i + 1]) for i, a in enumerate(cmd) if a == "-i"]
+        params = {"cmd": [norm(a) for a in cmd]}
+    return stages.fingerprint(files, params, RENDERER_VERSION)
+
+
+def _prepare_parts_dir(plan, use_cache):
+    """The folder parts live in, and the cache over it (None when caching is off)."""
+    if not use_cache:
+        return plan.project / "work" / "render", None
+    parts_dir = plan.project / ".tmp" / "edit-parts"
+    try:
+        parts_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"warning: cannot create {parts_dir} ({exc}); caching disabled for this run",
+              file=sys.stderr)
+        return plan.project / "work" / "render", None
+    return parts_dir, stages.StageCache(parts_dir / "stages.json")
+
+
+def stage_status(plan):
+    """[(stage, 'cached' | 'rendered')] as a render now would find them. Read-only."""
+    cmds, parts, work = build_commands(plan)
+    parts_dir = plan.project / ".tmp" / "edit-parts"
+    cmds, _ = _relocate(cmds, parts, work, parts_dir)
+    part_cache = stages.StageCache(parts_dir / "stages.json")
+    status = []
+    for cmd in cmds:
+        stage = _stage_of(cmd)
+        try:
+            fresh = part_cache.is_fresh(stage, _stage_fingerprint(plan, cmd, stage, parts_dir),
+                                        [Path(cmd[-1])])
+        except stages.StageError:
+            fresh = False
+        status.append((stage, "cached" if fresh else "rendered"))
+    return status
+
+
+def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False, cache=True):
+    """Render the plan. Returns the output path, or None when degraded.
+
+    With `cache` (the default) each segment encode and each dissolve merge is skipped when
+    its fingerprint is unchanged and its part file still exists; parts then stay in
+    <project>/.tmp/edit-parts/. The concat and the A/V gate always run."""
     if FFMPEG is None:
         msg = ("ffmpeg not found on PATH — nothing was rendered. Install ffmpeg, or run the "
                "printed commands elsewhere: python3 tools/edit_render.py <project> --print")
@@ -485,15 +561,42 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False)
         plan.data["out"] = str(out)
 
     cmds, parts, work = build_commands(plan)
+    parts_dir, part_cache = _prepare_parts_dir(plan, cache)
+    caching = part_cache is not None
+    if parts_dir != work:
+        cmds, parts = _relocate(cmds, parts, work, parts_dir)
+        work = parts_dir
     work.mkdir(parents=True, exist_ok=True)
     plan.out.parent.mkdir(parents=True, exist_ok=True)
 
+    skipped = {"seg": 0, "group": 0}
+    totals = {"seg": 0, "group": 0}
     for cmd in cmds:
+        stage = _stage_of(cmd)
+        kind = stage.split("-")[0]
+        totals[kind] += 1
+        output = Path(cmd[-1])
+        fp = None
+        if caching:
+            try:
+                fp = _stage_fingerprint(plan, cmd, stage, parts_dir)
+            except stages.StageError:
+                fp = None
+            if fp and part_cache.is_fresh(stage, fp, [output]):
+                skipped[kind] += 1
+                continue
         print("+ " + " ".join(cmd))
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
-            what = "a dissolve merge" if Path(cmd[-1]).name.startswith("group-") else "a segment"
+            what = "a dissolve merge" if kind == "group" else "a segment"
             raise PlanError(f"ffmpeg failed on {what}:\n{proc.stderr.strip()[-800:]}")
+        if caching and fp:
+            part_cache.record(stage, fp, [output])
+
+    if caching:
+        print(f"skipped {skipped['seg']} of {totals['seg']} segments (cached)")
+        if totals["group"]:
+            print(f"skipped {skipped['group']} of {totals['group']} dissolve merges (cached)")
 
     listfile = work / "concat.txt"
     listfile.write_text("".join(f"file '{p.resolve()}'\n" for p in parts))
@@ -509,7 +612,7 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False)
     if not ok:
         raise PlanError(f"{message} — the render is rejected, not shipped with a note")
 
-    if not keep_parts:
+    if not caching and not keep_parts:
         for p in [*parts, *work.glob("part-*.mp4")]:
             p.unlink(missing_ok=True)
         listfile.unlink(missing_ok=True)
@@ -525,6 +628,10 @@ def main(argv=None):
     ap.add_argument("--print", dest="show", action="store_true",
                     help="print the segment sheet and the ffmpeg commands, render nothing")
     ap.add_argument("--keep", action="store_true", help="keep the per-segment parts")
+    ap.add_argument("--cache", dest="cache", action="store_true", default=True,
+                    help="skip unchanged segments, parts kept in <project>/.tmp/edit-parts (default)")
+    ap.add_argument("--no-cache", dest="cache", action="store_false",
+                    help="re-encode every segment; parts are cleaned up unless --keep")
     args = ap.parse_args(argv)
 
     project = Path(args.project)
@@ -538,8 +645,12 @@ def main(argv=None):
                 print("\ncommands:")
                 for cmd in build_commands(plan)[0]:
                     print("  " + " ".join(cmd))
+                print("\nstages:")
+                for stage, state in stage_status(plan):
+                    print(f"  {stage}: {state}")
             return 0
-        result = render(plan_path, project, out=args.out, allow_degraded=True, keep_parts=args.keep)
+        result = render(plan_path, project, out=args.out, allow_degraded=True, keep_parts=args.keep,
+                        cache=args.cache)
         return 0 if result else 0
     except PlanError as exc:
         print(f"edit_render: {exc}", file=sys.stderr)

@@ -148,6 +148,10 @@ value while the handle plays instead of zooming on.
 
 ---
 
+### 4.2 Re-renders skip unchanged segments
+
+Each segment encode and each dissolve merge is fingerprinted (source bytes, the segment's plan fields, the final ffmpeg command including the colour flags, and `RENDERER_VERSION` in `tools/edit_render.py`). A part whose fingerprint is unchanged and whose file still exists is not encoded again; the tool prints `skipped N of M segments (cached)`. The parts and `stages.json` live in `<project>/.tmp/edit-parts/` and are kept between runs. The concat and the A/V gate always run, so a cached master is still checked. `--no-cache` re-encodes everything; `--keep` only matters then. If the cache folder cannot be written the tool warns and renders in full. Bump `RENDERER_VERSION` when the encode recipe changes in a way the command line does not show.
+
 ## 5. The A/V duration gate
 
 After every render:

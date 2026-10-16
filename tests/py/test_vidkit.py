@@ -681,3 +681,122 @@ class ColorMatchCliTest(unittest.TestCase):
         rc, _, err = self.run_cli(*self.clips, str(bad))
         self.assertEqual(rc, 1)
         self.assertIn("bad.mp4", err)
+
+
+class FingerprintTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        self.a = self.d / "a.bin"
+        self.a.write_bytes(b"alpha")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_same_inputs_same_fingerprint(self):
+        from tools.vidkit import stages
+        one = stages.fingerprint([self.a], {"x": 1, "y": [2]})
+        two = stages.fingerprint([self.a], {"y": [2], "x": 1})
+        self.assertEqual(one, two)
+        self.assertRegex(one, r"^[0-9a-f]{64}$")
+
+    def test_file_bytes_params_and_version_each_change_it(self):
+        from tools.vidkit import stages
+        base = stages.fingerprint([self.a], {"x": 1})
+        self.assertNotEqual(base, stages.fingerprint([self.a], {"x": 2}))
+        self.assertNotEqual(base, stages.fingerprint([self.a], {"x": 1}, version="2"))
+        self.a.write_bytes(b"alphb")
+        self.assertNotEqual(base, stages.fingerprint([self.a], {"x": 1}))
+
+    def test_same_bytes_under_another_name_is_the_same(self):
+        from tools.vidkit import stages
+        b = self.d / "b.bin"
+        b.write_bytes(b"alpha")
+        self.assertEqual(stages.fingerprint([self.a]), stages.fingerprint([b]))
+
+    def test_file_order_matters(self):
+        from tools.vidkit import stages
+        b = self.d / "b.bin"
+        b.write_bytes(b"beta")
+        self.assertNotEqual(stages.fingerprint([self.a, b]), stages.fingerprint([b, self.a]))
+
+    def test_missing_file_names_itself(self):
+        from tools.vidkit import stages
+        with self.assertRaises(stages.StageError) as cm:
+            stages.fingerprint([self.d / "gone.bin"])
+        self.assertIn("gone.bin", str(cm.exception))
+
+    def test_large_file_is_streamed_in_order(self):
+        from tools.vidkit import stages
+        big = self.d / "big.bin"
+        big.write_bytes(b"z" * (3 * 1024 * 1024 + 5))
+        self.assertEqual(stages.fingerprint([big]), stages.fingerprint([big]))
+        big.write_bytes(b"z" * (3 * 1024 * 1024 + 4) + b"y")
+        self.assertNotEqual(stages.fingerprint([big]),
+                            stages.fingerprint([self.d / "a.bin"]))
+
+
+class StageCacheTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        self.out = self.d / "out.bin"
+        self.out.write_bytes(b"x")
+        self.path = self.d / "cache" / "stages.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_record_then_fresh(self):
+        from tools.vidkit import stages
+        c = stages.StageCache(self.path)
+        self.assertFalse(c.is_fresh("s", "fp1", [self.out]))
+        c.record("s", "fp1", [self.out])
+        self.assertTrue(stages.StageCache(self.path).is_fresh("s", "fp1", [self.out]))
+        self.assertFalse(c.is_fresh("s", "fp2", [self.out]))
+        self.assertFalse(c.is_fresh("other", "fp1", [self.out]))
+
+    def test_deleted_output_is_not_fresh(self):
+        from tools.vidkit import stages
+        c = stages.StageCache(self.path)
+        c.record("s", "fp1", [self.out])
+        self.out.unlink()
+        self.assertFalse(c.is_fresh("s", "fp1", [self.out]))
+
+    def test_corrupt_cache_is_empty_and_replaced_on_record(self):
+        from tools.vidkit import stages
+        self.path.parent.mkdir()
+        self.path.write_text("{not json")
+        c = stages.StageCache(self.path)
+        self.assertFalse(c.is_fresh("s", "fp1", [self.out]))
+        c.record("s", "fp1", [self.out])
+        self.assertEqual(json.loads(self.path.read_text())["s"]["fp"], "fp1")
+
+    def test_wrong_shape_cache_is_empty(self):
+        from tools.vidkit import stages
+        self.path.parent.mkdir()
+        self.path.write_text("[1, 2]")
+        self.assertFalse(stages.StageCache(self.path).is_fresh("s", "fp1", [self.out]))
+
+    def test_failed_replace_keeps_the_old_cache(self):
+        from unittest import mock
+        from tools.vidkit import stages
+        c = stages.StageCache(self.path)
+        c.record("s", "old", [self.out])
+        before = self.path.read_text()
+        with mock.patch("os.replace", side_effect=OSError("boom")):
+            c.record("s", "new", [self.out])
+        self.assertEqual(self.path.read_text(), before)
+        self.assertEqual([p.name for p in self.path.parent.iterdir()], ["stages.json"])
+
+    def test_unwritable_dir_warns_and_never_caches(self):
+        import contextlib
+        from tools.vidkit import stages
+        blocker = self.d / "file"
+        blocker.write_text("x")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            c = stages.StageCache(blocker / "sub" / "stages.json")
+            c.record("s", "fp1", [self.out])
+        self.assertIn("caching disabled", err.getvalue())
+        self.assertFalse(c.is_fresh("s", "fp1", [self.out]))

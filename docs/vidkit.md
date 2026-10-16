@@ -102,3 +102,13 @@ CLI: `vidkit colormatch CLIPS... [--reference F] [--max-gain 0.15] [--min-delta 
 | `beats.snap(times, beats, window_s)` | each time goes to the nearest beat within `window_s`, else stays |
 
 CLI: `vidkit beats FILE` prints the times as JSON. `tools/sfx_snap.py` applies `snap` to a cue sheet and writes a new file. Onset energy suits percussive music; a pad-only bed may return `[]`, and then `sfx_snap.py` exits 2 and leaves the plan alone.
+
+## Stage cache (`stages`)
+
+| Function | What |
+|---|---|
+| `stages.fingerprint(files=(), params=None, version="1")` | sha256 over each file's content sha256 (1 MiB chunks, in order, names ignored), the canonical json of `params` and `version`. `StageError` names a missing file |
+| `stages.StageCache(path).is_fresh(stage, fp, outputs)` | true only when the recorded fingerprint equals `fp` AND every output file exists |
+| `stages.StageCache(path).record(stage, fp, outputs)` | writes atomically (temp file + `os.replace`). A corrupt or absent cache file reads as empty. An unwritable place prints one stderr warning and turns caching off for the run, never a crash |
+
+Used by `tools/edit_render.py`: parts live in `<project>/.tmp/edit-parts/` with `stages.json`. The fingerprint covers the source bytes, the segment's plan fields, the final ffmpeg command (colour flags included) and `RENDERER_VERSION`. `--no-cache` forces a full render. `--print` ends with a `cached`/`rendered` line per stage.
