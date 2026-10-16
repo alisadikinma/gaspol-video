@@ -296,6 +296,12 @@ class OverlayPlanTest(unittest.TestCase):
         self.assertIn("scene 03 steps mark 1: duplicate", msg)
         self.assertIn("scene 03 steps mark 4:", msg)
 
+    def test_steps_n_out_of_time_order_refused(self):
+        steps = {"total": 3, "marks": [{"n": 3, "words": "cerita"}, {"n": 1, "words": "hutan"}]}
+        msg = self.refused(_scene(steps=steps))
+        self.assertIn("scene 03 steps mark 1:", msg)
+        self.assertIn("increase", msg)
+
     def test_steps_malformed_refused(self):
         for steps in ("x", {"total": 3}, {"total": 3, "marks": []},
                       {"total": 3, "marks": [{"n": 1}]}, {"total": 3, "marks": ["a"]}):

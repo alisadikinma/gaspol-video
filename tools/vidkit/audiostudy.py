@@ -133,9 +133,11 @@ def study(clip, words=None):
     """Everything measured about one clip. ``words`` = ``[[word, start_s, end_s], ...]``."""
     samples = decode_mono(clip)
     hits = onsets(samples, 16000)
-    cuts = [round(c, 3) for c in ingest.detect_cuts(str(clip))]
+    has_picture = ff.probe(str(clip))["video"] is not None
+    cuts = [round(c, 3) for c in ingest.detect_cuts(str(clip))] if has_picture else []
+    lufs = float(loudness.measure(clip)["input_i"])
     starts = [float(w[1]) for w in words or []]
     return {"clip": str(clip), "duration": round(ff.duration(clip), 3),
-            "loudness_lufs": float(loudness.measure(clip)["input_i"]),
+            "loudness_lufs": lufs if math.isfinite(lufs) else None,
             "cuts": cuts, "onsets": hits, "tempo_bpm": tempo(hits),
             "energy": energy_profile(clip), "relations": relate(hits, starts, cuts)}

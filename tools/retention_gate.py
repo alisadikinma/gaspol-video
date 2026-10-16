@@ -18,6 +18,7 @@ Stdlib only. Needs ffmpeg and ffprobe.
 """
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -107,35 +108,57 @@ def _norm_word(entry, offset=0.0):
     {"text", "start_ms", "end_ms"} (vo-manifest) or {"word"|"text", "start", "end"} seconds."""
     text = entry.get("text", entry.get("word", ""))
     if "start_ms" in entry:
-        return text, offset + entry["start_ms"] / 1000.0, offset + entry["end_ms"] / 1000.0
+        return (text, offset + float(entry["start_ms"]) / 1000.0,
+                offset + float(entry["end_ms"]) / 1000.0)
     return text, offset + float(entry["start"]), offset + float(entry["end"])
+
+
+def _plan_offsets(project):
+    """{vo item id: at_s} from work/audio-plan.json layers (id = stem of the layer's `out`,
+    the same key gen_subs uses). Empty when the plan is absent."""
+    path = Path(project) / "work" / "audio-plan.json"
+    if not path.is_file():
+        return {}
+    out = {}
+    for scene in json.loads(path.read_text(encoding="utf-8")).get("scenes", []):
+        for layer in scene.get("layers", []):
+            if "out" in layer and "at_s" in layer:
+                out[Path(layer["out"]).stem] = float(layer["at_s"])
+    return out
 
 
 def load_words(project, words_file=None):
     """(words, reason). words = sorted [(text, start_s, end_s)] on the film timeline, or None
-    with a reason why they are unknown. `--words-file` wins over the manifest."""
+    with a reason why they are unknown. `--words-file` wins over the manifest. Manifest items
+    are placed with their own `at_s`, else the `at_s` of the audio-plan.json layer whose `out`
+    names the same file (gen_vo.mjs writes no offsets itself)."""
     project = Path(project)
     try:
         if words_file:
             data = json.loads(Path(words_file).read_text(encoding="utf-8"))
-            words = sorted(_norm_word(w) for w in data)
+            words = sorted((_norm_word(w) for w in data), key=lambda w: w[1])
             return (words, "") if words else (None, "words file %s has no words" % words_file)
         path = project / "vo" / "vo-manifest.json"
         if not path.is_file():
             return None, "no vo/vo-manifest.json and no --words-file"
         items = [it for it in json.loads(path.read_text(encoding="utf-8")).get("items", [])
                  if it.get("words")]
+        if not items:
+            return None, "vo-manifest.json has no word timings"
+        plan_at = _plan_offsets(project)
+        words = []
+        for it in items:
+            if "at_s" in it:
+                offset = float(it["at_s"])
+            elif it.get("id") in plan_at:
+                offset = plan_at[it["id"]]
+            else:
+                return None, ("no film offset for vo item %r (no at_s in vo-manifest.json and no "
+                              "matching layer in work/audio-plan.json), so word times cannot be "
+                              "placed on the film timeline; pass --words-file" % it.get("id"))
+            words += [_norm_word(w, offset) for w in it["words"]]
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         raise GateError("word source unreadable: %s" % exc)
-    if not items:
-        return None, "vo-manifest.json has no word timings"
-    if len(items) > 1 and any("at_s" not in it for it in items):
-        return None, ("vo-manifest.json items carry no film offset (at_s), "
-                      "so word times cannot be placed on the film timeline; pass --words-file")
-    words = []
-    for it in items:
-        offset = float(it.get("at_s", 0.0))
-        words += [_norm_word(w, offset) for w in it["words"]]
     return sorted(words, key=lambda w: w[1]), ""
 
 
@@ -152,7 +175,7 @@ def hook_row(words, reason, limit):
 
 # ---------------------------------------------------------------- R3 foreshadow
 
-_TC_RE = re.compile(r"(\d+):(\d+(?:\.\d+)?)")
+_TC_RE = re.compile(r"(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)")
 
 
 def _cells(line):
@@ -170,13 +193,14 @@ def foreshadow_row(av_text, window):
     found = []
     for line in av_text.splitlines():
         if not line.lstrip().startswith("|"):
+            beat_col = None  # table ended: the next one needs its own Beat header
             continue
         cells = _cells(line)
-        if beat_col is None and any(_plain(c) == "beat" for c in cells):
-            beat_col = [_plain(c) for c in cells].index("beat")
+        plain = [_plain(c) for c in cells]
+        if beat_col is None and "beat" in plain:
+            beat_col = plain.index("beat")
             continue
-        col = beat_col if beat_col is not None else len(cells) - 1
-        if col < len(cells) and _plain(cells[col]).startswith("foreshadow"):
+        if beat_col is not None and beat_col < len(cells) and plain[beat_col].startswith("foreshadow"):
             found.append(cells[0])
     if not found:
         return row("R3 foreshadow", "FAIL", "no Foreshadow beat in av-script.md", threshold)
@@ -184,7 +208,7 @@ def foreshadow_row(av_text, window):
     if not m:
         return row("R3 foreshadow", "not measured",
                    "cannot parse timecode %r" % found[0], threshold)
-    start = int(m.group(1)) * 60 + float(m.group(2))
+    start = int(m.group(1) or 0) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
     ok = lo - EPS <= start <= hi + EPS
     return row("R3 foreshadow", "PASS" if ok else "FAIL",
                "Foreshadow starts at %.2f s" % start, threshold)
@@ -221,10 +245,15 @@ def broll_segments(plan):
     lengths include `pad_end_s`, as edit_render lays them out)."""
     out, t = [], 0.0
     for i, seg in enumerate(plan.get("segments", []), 1):
-        length = (float(seg["out_s"]) - float(seg["in_s"])) + float(seg.get("pad_end_s", 0.0) or 0.0)
+        try:
+            length = ((float(seg["out_s"]) - float(seg["in_s"]))
+                      + float(seg.get("pad_end_s", 0.0) or 0.0))
+        except (TypeError, ValueError) as exc:
+            raise GateError("work/edit-plan.json segment %d: non-numeric time (%s)" % (i, exc))
         if seg.get("kind") == "shot" or str(seg.get("role", "")).lower() in BROLL_ROLES:
             out.append({"id": str(seg.get("id") or "seg-%02d" % i), "src": seg["src"],
-                        "start": round(t, 3), "end": round(t + length, 3)})
+                        "start": round(t, 3), "end": round(t + length, 3),
+                        "in_s": float(seg["in_s"]), "out_s": float(seg["out_s"])})
         t += length
     return out
 
@@ -247,8 +276,8 @@ def render_section(seg, sha, sheet_rel, spoken, verdict="", note=None):
     return "\n".join(lines) + "\n"
 
 
-_SPLIT_RE = re.compile(r"(?m)^(?=## Segment \S+\s*$)")
-_ID_RE = re.compile(r"## Segment (\S+)")
+_SPLIT_RE = re.compile(r"(?m)^(?=## Segment .+$)")
+_ID_RE = re.compile(r"## Segment (.+?)[ \t]*$", re.M)
 _SHA_RE = re.compile(r"(?m)^- src_sha256: (\S+)")
 _CELL_RE = re.compile(r"(?m)^\|\s*%s\s*\|(.*)\|\s*$" % re.escape(QUESTION))
 
@@ -280,6 +309,12 @@ def _make_sheet(master, seg, project):
     return out.relative_to(project).as_posix()
 
 
+def _fingerprint(seg, src):
+    """What a verdict was judged against: the cut points and the clip bytes."""
+    key = "%s|%s|%s" % (seg["in_s"], seg["out_s"], qa_frames._sha256(src))
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
 def build_qa(project, master, plan, words):
     """Write work/retention-qa.md for the plan's b-roll. Verdicts survive for a src whose
     bytes did not change and are cleared, with a note, for one that did. Returns the segments."""
@@ -293,7 +328,7 @@ def build_qa(project, master, plan, words):
         if not src.is_file():
             print("segment %s  skipped: %s is missing on disk" % (seg["id"], seg["src"]))
             continue
-        sha, prev = qa_frames._sha256(src), old.get(seg["id"])
+        sha, prev = _fingerprint(seg, src), old.get(seg["id"])
         sheet_rel = _make_sheet(master, seg, project)
         spoken = _spoken(words, seg["start"], seg["end"])
         if prev and prev[1] == sha:
@@ -324,7 +359,7 @@ def check_qa(project, plan):
         src = project / seg["src"]
         if not src.is_file():
             problems.append("R4 FAIL %s: %s is missing on disk" % (label, seg["src"]))
-        elif sha != qa_frames._sha256(src):
+        elif sha != _fingerprint(seg, src):
             problems.append("R4 FAIL %s: verdict was judged against a different clip "
                             "(src_sha256 does not match %s)" % (label, seg["src"]))
         m = qa_frames._VERDICT_RE.match(cell)
@@ -415,6 +450,12 @@ def bgm_row(voice_path, music_path, spans, limit):
 
 # ---------------------------------------------------------------- report and CLI
 
+def _num(x, key):
+    if isinstance(x, (bool, str)):
+        raise TypeError(key)
+    return float(x)
+
+
 def resolve_config(project, args):
     """DEFAULTS, then work/retention.json, then command-line flags."""
     cfg = dict(DEFAULTS)
@@ -433,7 +474,13 @@ def resolve_config(project, args):
         value = getattr(args, key, None)
         if value is not None:
             cfg[key] = value
-    cfg["foreshadow_by_s"] = tuple(float(x) for x in cfg["foreshadow_by_s"])
+    try:
+        for key in ("static_max_s", "hook_first_word_by_s", "bgm_headroom_db"):
+            cfg[key] = _num(cfg[key], key)
+        cfg["foreshadow_by_s"] = tuple(
+            _num(x, "foreshadow_by_s") for x in cfg["foreshadow_by_s"])
+    except (TypeError, ValueError):
+        raise GateError("retention settings must be numbers (foreshadow_by_s: two numbers LO HI)")
     if len(cfg["foreshadow_by_s"]) != 2 or cfg["foreshadow_by_s"][0] > cfg["foreshadow_by_s"][1]:
         raise GateError("foreshadow_by_s must be two numbers LO HI with LO <= HI")
     return cfg
@@ -459,7 +506,7 @@ def run_report(project, master, words_file, cfg, log=print):
     try:
         rows.append(check_static(str(master), cfg["static_max_s"]))
     except ff.FFError as exc:
-        raise GateError("freeze detection failed on %s: %s" % (master.name, str(exc).splitlines()[-1]))
+        raise GateError("freeze detection failed on %s: %s" % (master.name, (str(exc).splitlines() or [repr(exc)])[-1]))
     rows.append(hook_row(words, why, cfg["hook_first_word_by_s"]))
     av_path = project / "av-script.md"
     rows.append(foreshadow_row(av_path.read_text(encoding="utf-8"), cfg["foreshadow_by_s"])
@@ -470,14 +517,14 @@ def run_report(project, master, words_file, cfg, log=print):
         try:
             build_qa(project, str(master), plan, words)
         except ff.FFError as exc:
-            raise GateError("contact sheet failed: %s" % str(exc).splitlines()[-1])
+            raise GateError("contact sheet failed: %s" % (str(exc).splitlines() or [repr(exc)])[-1])
     rows.append(broll_row(project, plan))
     stems = project / "output" / "stems"
     try:
         rows.append(bgm_row(str(stems / "voice.wav"), str(stems / "music.wav"),
                             words_to_spans(words) if words else None, cfg["bgm_headroom_db"]))
     except (ff.FFError, mix_music.MusicError, RuntimeError) as exc:
-        raise GateError("bgm headroom measurement failed: %s" % str(exc).splitlines()[-1])
+        raise GateError("bgm headroom measurement failed: %s" % (str(exc).splitlines() or [repr(exc)])[-1])
     report = render_report(rows)
     out = project / "work" / "retention-report.md"
     out.parent.mkdir(exist_ok=True)

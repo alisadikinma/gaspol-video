@@ -228,7 +228,7 @@ def _resolve_steps(steps, words, offset, fps, scene, problems):
     if not isinstance(marks, list) or not marks:
         problems.append(f"{head}: needs a non-empty marks list")
         return None
-    out, seen, idx = [], set(), 0
+    out, seen, idx, last_n = [], set(), 0, 0
     for mark in marks:
         if not isinstance(mark, dict):
             problems.append(f"{head}: each mark must be {{n, words}} (got {mark!r})")
@@ -241,6 +241,10 @@ def _resolve_steps(steps, words, offset, fps, scene, problems):
             problems.append(f"{label}: duplicate n")
             continue
         seen.add(n)
+        if n < last_n:
+            problems.append(f"{label}: n must increase with time (comes after n {last_n})")
+            continue
+        last_n = n
         if not str(mark.get("words", "")).strip():
             problems.append(f"{label}: missing words")
         elif words is not None:

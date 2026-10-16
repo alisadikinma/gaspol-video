@@ -108,11 +108,11 @@ class HookTest(unittest.TestCase):
         return rg.hook_row(words, why, limit)
 
     def test_first_word_at_2_9_passes(self):
-        m = manifest(dict(words=[word("a", 2900, 3200)]))
+        m = manifest(dict(at_s=0.0, words=[word("a", 2900, 3200)]))
         self.assertEqual(self.hook(m)["status"], "PASS")
 
     def test_first_word_at_3_1_fails(self):
-        m = manifest(dict(words=[word("a", 3100, 3400)]))
+        m = manifest(dict(at_s=0.0, words=[word("a", 3100, 3400)]))
         self.assertEqual(self.hook(m)["status"], "FAIL")
 
     def test_no_manifest_is_not_measured(self):
@@ -121,18 +121,74 @@ class HookTest(unittest.TestCase):
     def test_manifest_with_empty_words_is_not_measured(self):
         self.assertEqual(self.hook(manifest(dict(words=[])))["status"], "not measured")
 
+    def test_manifest_alone_is_not_measured_even_for_one_layer(self):
+        row = self.hook(manifest(dict(words=[word("a", 100, 300)])))
+        self.assertEqual(row["status"], "not measured")
+        self.assertIn("--words-file", row["numbers"])
+
     def test_two_items_without_film_offsets_is_not_measured(self):
         m = manifest(dict(words=[word("a", 0, 200)]), dict(words=[word("b", 0, 200)]))
         row = self.hook(m)
         self.assertEqual(row["status"], "not measured")
-        self.assertIn("offset", row["numbers"])
+        self.assertIn("--words-file", row["numbers"])
 
-    def test_item_offset_at_s_moves_the_first_word(self):
+    def test_manifest_item_at_s_is_still_honoured(self):
         m = manifest(dict(at_s=5.0, words=[word("a", 100, 300)]),
                      dict(at_s=0.5, words=[word("b", 400, 600)]))
         row = self.hook(m)
         self.assertEqual(row["status"], "PASS")
         self.assertIn("0.90", row["numbers"])
+
+    def plan_project(self, items, layers):
+        """manifest the way gen_vo writes it (no at_s) + audio-plan.json layers with at_s."""
+        project = self.project(manifest(*items))
+        plan = {"scenes": [{"scene": 1, "layers": layers}]}
+        write(project / "work" / "audio-plan.json", json.dumps(plan))
+        return project
+
+    def test_offsets_come_from_audio_plan_layers_by_out_stem(self):
+        project = self.plan_project(
+            [dict(words=[word("a", 100, 300)]), dict(words=[word("b", 400, 600)])],
+            [dict(kind="narration", at_s=5.0, out="vo/i0.mp3"),
+             dict(kind="dialogue", at_s=0.5, out="vo/i1.mp3")])
+        words, why = rg.load_words(project)
+        self.assertEqual(words[0][0], "b")
+        self.assertAlmostEqual(words[0][1], 0.9)
+        self.assertAlmostEqual(words[1][1], 5.1)
+
+    def test_single_layer_starting_late_is_a_fail_not_a_false_pass(self):
+        project = self.plan_project(
+            [dict(words=[word("a", 100, 300)])],
+            [dict(kind="narration", at_s=4.0, out="vo/i0.mp3")])
+        words, why = rg.load_words(project)
+        self.assertEqual(rg.hook_row(words, why, 3.0)["status"], "FAIL")
+
+    def test_plan_missing_a_layer_for_an_item_is_not_measured(self):
+        project = self.plan_project(
+            [dict(words=[word("a", 100, 300)]), dict(words=[word("b", 400, 600)])],
+            [dict(kind="narration", at_s=0.0, out="vo/i0.mp3")])
+        words, why = rg.load_words(project)
+        self.assertIsNone(words)
+        self.assertIn("--words-file", why)
+
+    def test_words_file_sorted_by_start_time_not_alphabet(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        wf = write(Path(d.name) / "w.json", json.dumps([
+            {"word": "zebra", "start": 1.0, "end": 1.2},
+            {"word": "apple", "start": 5.0, "end": 5.2}]))
+        words, _ = rg.load_words(Path(d.name), str(wf))
+        self.assertEqual([w[0] for w in words], ["zebra", "apple"])
+        row = rg.hook_row(words, "", 3.0)
+        self.assertEqual(row["status"], "PASS")
+        self.assertIn("zebra", row["numbers"])
+        self.assertEqual(rg._spoken(words, 0.0, 10.0), "zebra apple")
+
+    def test_bad_manifest_word_raises_gate_error(self):
+        m = manifest(dict(at_s=0.0, words=[{"text": "a", "start_ms": "x", "end_ms": 5}]))
+        project = self.project(m)
+        with self.assertRaises(rg.GateError):
+            rg.load_words(project)
 
     def test_words_file_overrides_when_no_manifest(self):
         d = tempfile.TemporaryDirectory()
@@ -142,7 +198,7 @@ class HookTest(unittest.TestCase):
         self.assertEqual(rg.hook_row(words, why, 3.0)["status"], "FAIL")
 
     def test_limit_override(self):
-        m = manifest(dict(words=[word("a", 2900, 3200)]))
+        m = manifest(dict(at_s=0.0, words=[word("a", 2900, 3200)]))
         self.assertEqual(self.hook(m, limit=2.0)["status"], "FAIL")
 
 
@@ -183,6 +239,21 @@ class ForeshadowTest(unittest.TestCase):
 
     def test_window_override(self):
         self.assertEqual(self.fs(av("| 0:04 | v | a | Foreshadow |"), 5.0, 8.0)["status"], "FAIL")
+
+    def test_viral_checklist_row_is_not_a_foreshadow_beat(self):
+        text = (av("| 0:00-0:03 | v | a | Hook |") +
+                "\n## Viral Checklist\n\n| Area | Rule | Tool | Item | Status |\n|---|---|---|---|---|\n"
+                "| script | r | t | foreshadow | PASS |\n")
+        row = self.fs(text)
+        self.assertEqual(row["status"], "FAIL")
+        self.assertIn("no Foreshadow beat", row["numbers"])
+
+    def test_table_without_beat_header_is_not_scanned(self):
+        text = "| a | b |\n|---|---|\n| 0:05 | Foreshadow |\n"
+        self.assertEqual(self.fs(text)["status"], "FAIL")
+
+    def test_hms_timecode(self):
+        self.assertEqual(self.fs(av("| 00:00:05 | v | a | Foreshadow |"))["status"], "PASS")
 
 
 def make_project(tmp, broll_ids=("b1",)):
@@ -233,6 +304,16 @@ class BrollTest(unittest.TestCase):
                              dict(kind="shot", src="b.mp4", in_s=0, out_s=1)]}
         self.assertEqual(rg.broll_segments(plan)[0]["start"], 1.5)
 
+    def test_non_numeric_pad_end_raises_gate_error(self):
+        plan = {"segments": [dict(kind="shot", src="b.mp4", in_s=0, out_s=1, pad_end_s="x")]}
+        with self.assertRaises(rg.GateError):
+            rg.broll_segments(plan)
+
+    def test_segment_id_with_spaces_round_trips(self):
+        seg = {"id": "scene 1 b", "src": "a.mp4", "start": 0.0, "end": 1.0}
+        parsed = rg._parse_qa(rg.render_section(seg, "abc", "x.jpg", "hi"))
+        self.assertEqual(list(parsed), ["scene 1 b"])
+
     def test_empty_segment_list_has_no_broll(self):
         self.assertEqual(rg.broll_segments({"segments": []}), [])
 
@@ -264,6 +345,19 @@ class BrollTest(unittest.TestCase):
         self.build(project, master)
         self.set_cell(project, "PASS")
         media.make_clip(project / "clips" / "b1.mp4", seconds=3.0, audio=False, size="160x120")
+        self.build(project, master)
+        text = (project / "work" / "retention-qa.md").read_text(encoding="utf-8")
+        self.assertIn("| Picture matches the spoken words | |", text)
+        self.assertIn("changed since last judged", text)
+
+    @media.requires_ffmpeg
+    def test_verdict_cleared_when_cut_points_change(self):
+        project, master = make_project(self.tmp.name)
+        self.build(project, master)
+        self.set_cell(project, "PASS")
+        plan = json.loads((project / "work" / "edit-plan.json").read_text())
+        plan["segments"][1]["out_s"] = 2.5
+        write(project / "work" / "edit-plan.json", json.dumps(plan))
         self.build(project, master)
         text = (project / "work" / "retention-qa.md").read_text(encoding="utf-8")
         self.assertIn("| Picture matches the spoken words | |", text)
@@ -407,6 +501,8 @@ class CliTest(unittest.TestCase):
         write(self.project / "av-script.md", av("| 0:00-0:03 | v | a | Hook |",
                                                 "| 0:04-0:06 | v | a | Foreshadow |"))
         write(self.project / "vo" / "vo-manifest.json", manifest(dict(words=[word("a", 500, 900)])))
+        write(self.project / "work" / "audio-plan.json", json.dumps(
+            {"scenes": [{"scene": 1, "layers": [dict(kind="narration", at_s=0.0, out="vo/i0.mp3")]}]}))
 
     def rows(self):
         text = (self.project / "work" / "retention-report.md").read_text(encoding="utf-8")
@@ -453,6 +549,32 @@ class CliTest(unittest.TestCase):
         code, _, err = run_main("report", str(self.project))
         self.assertEqual(code, 2)
         self.assertIn("static_max", err)
+
+    def test_non_numeric_retention_json_value_exits_2_with_one_line(self):
+        write(self.project / "work" / "retention.json", json.dumps({"static_max_s": "3"}))
+        code, _, err = run_main("report", str(self.project))
+        self.assertEqual(code, 2)
+        self.assertEqual(len(err.strip().splitlines()), 1)
+
+    def test_bad_foreshadow_value_exits_2(self):
+        write(self.project / "work" / "retention.json", json.dumps({"foreshadow_by_s": [1, "x"]}))
+        self.assertEqual(run_main("report", str(self.project))[0], 2)
+
+    @media.requires_ffmpeg
+    def test_bad_manifest_word_exits_2(self):
+        write(self.project / "vo" / "vo-manifest.json",
+              manifest(dict(at_s=0, words=[{"text": "a", "start_ms": "x", "end_ms": 1}])))
+        code, _, err = run_main("report", str(self.project))
+        self.assertEqual(code, 2)
+        self.assertEqual(len(err.strip().splitlines()), 1)
+
+    @media.requires_ffmpeg
+    def test_non_numeric_pad_end_s_exits_2(self):
+        write(self.project / "work" / "edit-plan.json", json.dumps({"segments": [
+            dict(kind="shot", src="clips/b1.mp4", in_s=0.0, out_s=2.0, pad_end_s="x")]}))
+        code, _, err = run_main("report", str(self.project))
+        self.assertEqual(code, 2)
+        self.assertEqual(len(err.strip().splitlines()), 1)
 
     def test_missing_master_exits_2_with_one_line(self):
         (self.project / "output" / "master.mp4").unlink()

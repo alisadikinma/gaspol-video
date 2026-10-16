@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import math
+import subprocess
 import tempfile
 import unittest
 import wave
@@ -119,6 +120,24 @@ class MediaTest(unittest.TestCase):
             clip = make_clip(self.dir / f"c{secs}.mp4", secs)
             self.assertEqual(len(audiostudy.energy_profile(clip, seg_s=2.0)), 2, secs)
 
+    def lavfi_audio(self, name, source):
+        out = self.dir / name
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", source,
+                        "-t", "1", str(out)], check=True)
+        return out
+
+    def test_study_audio_only_file_has_no_cuts(self):
+        clip = self.lavfi_audio("tone.wav", "sine=frequency=440:duration=1")
+        rep = audiostudy.study(clip)
+        self.assertEqual(rep["cuts"], [])
+        self.assertAlmostEqual(rep["duration"], 1.0, delta=0.2)
+
+    def test_study_silent_clip_stores_null_loudness_and_valid_json(self):
+        clip = self.lavfi_audio("silence.wav", "anullsrc=r=16000:cl=mono")
+        rep = audiostudy.study(clip)
+        self.assertIsNone(rep["loudness_lufs"])
+        self.assertNotIn("Infinity", json.dumps(rep, allow_nan=False))
+
     def test_study_returns_every_key_and_serializes(self):
         clip = make_clip(self.dir / "s.mp4", 2.0)
         rep = audiostudy.study(clip, words=[["ok", 0.5, 0.8]])
@@ -150,6 +169,14 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(len(out.strip().splitlines()), 1)
         self.assertEqual(json.loads(report.read_text())["clip"], str(clip))
+
+    def test_silent_clip_prints_silent(self):
+        clip = self.dir / "silence.wav"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                        "anullsrc=r=16000:cl=mono", "-t", "1", str(clip)], check=True)
+        code, out, _ = self.run_cli(clip)
+        self.assertEqual(code, 0)
+        self.assertIn("silent", out)
 
     def test_missing_file_fails_with_one_line(self):
         code, _, err = self.run_cli(self.dir / "nope.mp4")

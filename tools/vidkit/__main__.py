@@ -137,7 +137,9 @@ def main(argv=None):
                 with open(a.out, "w") as fh:
                     json.dump(rep, fh, indent=1)
             bpm = rep["tempo_bpm"]
-            print(f"{a.clip} {rep['duration']:.1f}s {rep['loudness_lufs']:.1f} LUFS "
+            lufs = rep["loudness_lufs"]
+            loud = "silent" if lufs is None else f"{lufs:.1f} LUFS"
+            print(f"{a.clip} {rep['duration']:.1f}s {loud} "
                   f"{len(rep['onsets'])} onsets {'%.0f BPM' % bpm if bpm else 'no tempo'}")
         elif a.cmd == "karaoke":
             words = [tuple(w) for w in _json(a.words)]
