@@ -1697,3 +1697,16 @@ buttons, the progress bar — sits over the lower band and will cover anything p
 Both apply at once and do not conflict. The prompt negative stops the video model drawing text into
 the picture; burned captions are added afterwards from the script. The em-dash ban applies to spoken
 text only: a printed caption keeps the em dash.
+
+
+## 31. Retention gate defaults (course advice)
+
+Used by `tools/retention_gate.py` (`reference/post-production/20-retention-gate.md`). All values are course advice, `source: course`, not platform data. Override per project in `work/retention.json` or with a command-line flag; the tool reports and never blocks.
+
+| Key | Default | Flag | Rule |
+|---|---|---|---|
+| `static_max_s` | `3.0` | `--static-max-s` | R1: a still of this length or longer is a FAIL (>=) |
+| `hook_first_word_by_s` | `3.0` | `--hook-first-word-by-s` | R2: first spoken word starts by this time |
+| `foreshadow_by_s` | `(3.0, 6.0)` | `--foreshadow-by-s LO HI` | R3: the Foreshadow beat starts inside this window |
+| `bgm_headroom_db` | `12.0` | `--bgm-headroom-db` | R5: voice minus music in every spoken span (same value as `mix_music.MIN_HEADROOM_DB`) |
+| `source` | `course` | none | Tag printed on every report row |

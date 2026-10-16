@@ -20,8 +20,9 @@ Unified validation skill for the AI Video Promo Engine. Covers 5 validation targ
 | `--image` | NB2 prompt rules + actual keyframe image review | image-prompts.md + keyframes/*.png |
 | `--video` | VEO prompt rules, visual QA verdicts (V1-V16) | video-prompts.md + scene-plan.md + work/visual-qa.md |
 | `--post` | Post-production: rendered master and plan files (P1-P6) |
+| `--retention` | Retention gate on a finished cut (RT1-RT5, report only) | master + av-script.md + vo-manifest.json + edit-plan.json |
 | `--refs` | Cross-file reference consistency (24 checks) | All reference + skill + agent files |
-| `--all` | Everything above | All files |
+| `--all` | Everything above, including `--retention` | All files |
 
 If no flag provided, use AskUserQuestion:
 ```
@@ -33,7 +34,8 @@ A) Script output (av-script.md)
 B) Image prompts + keyframe images
 C) Video prompts (VEO)
 D) Reference file consistency
-E) All — validate everything
+E) Retention gate (finished cut)
+F) All — validate everything
 ```
 
 ---
@@ -548,6 +550,29 @@ A second ASR pass over the rendered master (`output/master-mixed.mp4`, falling b
   `composite insert` (see `tools/composite.py insert`) freezes the master at a timestamp and plays a
   shot in full, which shifts every later scene's position on the master clock — read drift after an
   insert against OUTPUT time, not the original edit-plan timeline.
+
+## Retention Validation (`--retention`)
+
+Runs on a finished cut. The numbers are course advice (`source: course`, defaults in
+`reference/global-promo-config.md` §31), so this section only reports. A FAIL is a flag for the
+owner, never a blocker, and the tool exits 0 on it. Detail: `reference/post-production/20-retention-gate.md`.
+
+```
+python3 tools/retention_gate.py report {output_folder} [--master FILE]
+python3 tools/retention_gate.py check  {output_folder}
+```
+
+Check names are `RT1`-`RT5` here so they do not collide with the `--refs` checks R1-R7; the tool's own report rows are labelled R1-R5 in the same order.
+
+| Check | Tool rule | Reads | Reports |
+|---|---|---|---|
+| RT1 Static frame | R1 | master | every still of 3.0 s or longer (a 3.0 s still is a FAIL) |
+| RT2 Hook | R2 | `vo/vo-manifest.json` or `--words-file` | first spoken word by 3.0 s; `not measured` without word timings |
+| RT3 Foreshadow | R3 | `av-script.md` Beat column | a `Foreshadow` row that starts 3-6 s in; no such row is a FAIL |
+| RT4 B-roll matches the word | R4 | `work/edit-plan.json` | writes `work/retention-qa.md`; Claude fills one Verdict cell per b-roll segment; `check` exits 1 on an empty, malformed or `FAIL:` cell |
+| RT5 BGM under the voice | R5 | `output/stems/voice.wav` + `music.wav` | voice at least 12 dB over music in every spoken span; `not measured` without stems |
+
+Status values: `PASS`, `FAIL`, `not measured` (an input is missing; never read as PASS), `needs verdict` (RT4 cells still empty). Exit 2 means the tool could not run.
 
 ## Output Format
 
