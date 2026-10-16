@@ -1265,10 +1265,6 @@
       "reason": "needs -select_streams v:0 stream=height to scale subtitle size; migrate under follow-up"
     },
     {
-      "id": "tools/check_vo_duration.py",
-      "reason": "format=duration probe via subprocess; Phase G migrates to vidkit.ff.probe and removes this entry"
-    },
-    {
       "id": "tools/clean_voice.py",
       "reason": "needs format=duration and -select_streams a stream=index (audio-track check) per call; migrate under follow-up"
     },
@@ -1323,10 +1319,6 @@
     {
       "id": "tools/retention_gate.py",
       "reason": "checks shutil.which('ffprobe') up front and mentions it in docs/error text; probing itself is delegated to mix_music and qa_frames"
-    },
-    {
-      "id": "tools/track_screen.py",
-      "reason": "v:0 stream probe plus format=duration via subprocess; Phase G migrates to vidkit.ff.probe and removes this entry"
     },
     {
       "id": "tools/vidkit/color.py",
