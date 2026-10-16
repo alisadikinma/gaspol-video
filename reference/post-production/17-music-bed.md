@@ -9,7 +9,53 @@ Schema (`music-plan.json`) in `10-post-production-pipeline.md`. Values in `globa
 
 ---
 
-## 1. The track is derived, not asked for
+## 0. The brief route (default since GV-18)
+
+A fixed mood list gives a port film and a hospital film the same bed. The brief route writes one
+prompt per segment from the film's own topic, so each film gets its own music.
+
+The post skill writes `work/music-brief.json` from `strategic-brief.md` (topic, domain, tone, the
+Domain Knowledge section as `sound_world`) and `av-script.md` (scene timings and beat labels as
+`segments`):
+
+```json
+{
+  "topic": "night shift at a container port",
+  "domain": "port logistics",
+  "tone": "Serious",
+  "sound_world": "container cranes, diesel engines, distant horns, wet concrete",
+  "segments": [
+    {"from_s": 0,  "to_s": 12, "beat": "hook",    "energy": 3},
+    {"from_s": 12, "to_s": 60, "beat": "build",   "energy": 2},
+    {"from_s": 60, "to_s": 75, "beat": "peak",    "energy": 5},
+    {"from_s": 75, "to_s": 90, "beat": "resolve", "energy": 2}
+  ]
+}
+```
+
+- `beat` is one of `hook | build | body | peak | resolve | cta`.
+- `energy` is a whole number from 1 (very low) to 5 (maximum).
+- Segments must not overlap. `to_s` is after `from_s`.
+
+```bash
+python3 tools/music_brief.py {output_folder} --print     # 1. show the segment table, writes nothing
+python3 tools/music_brief.py {output_folder}             # 2. writes work/music-palette.json and the segments of work/music-plan.json
+python3 tools/gen_music.py --recipes work/music-palette.json --only <ids> --dry-run   # 3. name what will bill
+# 4. confirm the ids with the user: this bills ElevenLabs Music
+python3 tools/gen_music.py --recipes work/music-palette.json --only <ids>             # 5. generate
+python3 tools/mix_music.py {output_folder}                                            # 6. mix
+```
+
+Each mood id is a hash of prompt and length (`brief-<10 hex>`). An unchanged segment keeps its id,
+finds its track in the library and is never billed twice. Always pass `--only <ids>` of the current
+brief, never a bare `gen_music.py` call. The billed run needs the same user confirmation as section 1.
+
+No `work/music-brief.json` (no strategic brief, or the user declined): use the tone table in
+section 1. That table is only the FALLBACK.
+
+---
+
+## 1. The track is derived, not asked for (FALLBACK when no brief exists)
 
 ```
 av-script.md per-scene music direction

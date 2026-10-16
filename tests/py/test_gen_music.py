@@ -62,6 +62,41 @@ class PlanWorkTest(unittest.TestCase):
         self.assertIn("unknown mood: nonexistent-mood", str(ctx.exception))
 
 
+class ProjectPaletteTest(unittest.TestCase):
+    """A palette written by tools/music_brief.py lives in the project, not the plugin."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.library = Path(self.tmp.name) / "lib"
+        (self.library / "tracks").mkdir(parents=True)
+        self.palette_path = Path(self.tmp.name) / "work" / "music-palette.json"
+        self.palette_path.parent.mkdir()
+        self.palette = {
+            "defaults": PALETTE["defaults"],
+            "moods": [{"id": "brief-abc1234567", "tones": ["Serious"],
+                       "prompt": "port cranes at dawn, low pulse", "duration_s": 30}],
+        }
+        self.palette_path.write_text(json.dumps(self.palette))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_plan_work_accepts_project_mood_id(self):
+        palette = gen_music.load_palette(self.library, recipes=self.palette_path)
+        todo, skipped = gen_music.plan_work(palette, self.library, only=["brief-abc1234567"])
+        self.assertEqual([m["id"] for m in todo], ["brief-abc1234567"])
+        self.assertEqual(skipped, [])
+
+    def test_dry_run_lists_mood_and_makes_no_network_call(self):
+        lines = []
+        with patch("urllib.request.urlopen", side_effect=AssertionError("network used")):
+            result = gen_music.generate(self.library, env={}, only=["brief-abc1234567"],
+                                        dry_run=True, log=lines.append,
+                                        recipes=self.palette_path)
+        self.assertEqual(result["planned"], ["brief-abc1234567"])
+        self.assertTrue(any("brief-abc1234567" in l for l in lines))
+
+
 class BuildRequestTest(unittest.TestCase):
     def test_duration_from_mood(self):
         mood = {"id": "tense-low-pulse", "prompt": "low pulsing bed", "duration_s": 60}

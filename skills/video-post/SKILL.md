@@ -524,9 +524,24 @@ captions never compete for the same reading order.
 
 ### 4.2 Music
 
+Brief route (default). Write `work/music-brief.json` from `strategic-brief.md` (`topic`, `domain`,
+`tone`, and the Domain Knowledge section as `sound_world`) and `av-script.md` (scene timings and beat
+labels become `segments`, each `{from_s, to_s, beat, energy}`; `beat` is `hook|build|body|peak|resolve|cta`,
+`energy` is 1-5). Shape and rules: `reference/post-production/17-music-bed.md` section 0.
+
 ```bash
+python3 tools/music_brief.py {output_folder}
+python3 tools/gen_music.py --recipes work/music-palette.json --only <ids> --dry-run
+# confirm the billed ids with the user: this bills ElevenLabs Music
+python3 tools/gen_music.py --recipes work/music-palette.json --only <ids>
 python3 tools/mix_music.py {output_folder}
 ```
+
+`<ids>` are the mood ids in `work/music-palette.json` that have no track yet. A segment that is
+unchanged keeps its id and is never billed twice.
+
+No `work/music-brief.json` and no way to write one: fall back to the tone table in 17-music-bed.md
+section 1 and run `python3 tools/mix_music.py {output_folder}` alone.
 
 The track is derived from the per-scene music direction already in `av-script.md` plus the video
 tone, not asked for again. The bed sits at least 12 dB below the voice by measurement.
