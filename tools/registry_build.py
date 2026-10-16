@@ -3,18 +3,24 @@
 
     python3 tools/registry_build.py validate [--coverage] [--root DIR]
     python3 tools/registry_build.py render [--check] [--root DIR]
+    python3 tools/registry_build.py suggest [--top N] [--text-file PATH]
+    python3 tools/registry_build.py hook < payload.json
 
 `registry.json` is the single source of truth for every tool and every
 task-to-tool route. `validate` exits 0 when it is sound, 1 listing every
 problem (one per line, `<id or route #>: <problem>`) and 2 when the registry
 file is missing or not JSON. `render` rewrites the routes table in
 `docs/tool-routing.md` between two marker comments; `render --check` exits 1
-when that block differs from the registry and writes nothing. `--coverage` also demands that every file found
+when that block differs from the registry and writes nothing. `suggest` ranks
+registered tools against a text (stdin or `--text-file`) and always exits 0.
+`hook` is the PreToolUse reminder behind `hooks/tool-reminder.sh`: it never
+blocks, and every failure is one `tool-reminder: <reason>` line on stderr. `--coverage` also demands that every file found
 under `tools/` has an entry and is reachable from a route (or says why not).
 """
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -33,6 +39,16 @@ BEGIN_MARK = "<!-- registry:routes:begin -->"
 END_MARK = "<!-- registry:routes:end -->"
 FF_EXEMPT = "tools/vidkit/ff.py"
 FFPROBE_RE = re.compile(r"\bffprobe\b")
+WORD_RE = re.compile(r"[a-z0-9]+")
+SCAN_LIMIT = 200 * 1024
+HOOK_EXTS = {".py", ".mjs", ".sh"}
+HOOK_SKIP_DIRS = ("tools", "tests", "templates")
+HOOK_KEYWORDS = re.compile(r"ffmpeg|ffprobe|remotion", re.IGNORECASE)
+HOOK_HEAD = "gaspol-video: tools that already do similar work:\n"
+HOOK_RULE = (
+    "Use one, or extend tools/vidkit with a test and a registry row (docs/tool-routing.md). "
+    "If none fits, say why in your reply."
+)
 SCAN_GLOBS = ("tools/**/*.py", "tools/**/*.mjs")
 GLOBS = ("tools/*.py", "tools/*.mjs", "tools/vidkit/*.py", "tools/vidkit/js/*.mjs")
 
@@ -310,6 +326,102 @@ def cmd_render(args) -> int:
     return 0
 
 
+def score_tool(tool, words) -> int:
+    tasks = [t for t in tool.get("tasks", []) if isinstance(t, str)]
+    score = 2 * sum(1 for t in tasks if t in words)
+    purpose = set(w for w in WORD_RE.findall(str(tool.get("purpose", "")).lower()) if len(w) >= 4)
+    return score + sum(1 for w in purpose if w in words)
+
+
+def suggest_tools(reg, text, top=3) -> list:
+    words = set(WORD_RE.findall(text.lower()))
+    scored = []
+    for order, t in enumerate(reg.get("tools", [])):
+        if isinstance(t, dict) and isinstance(t.get("id"), str):
+            s = score_tool(t, words)
+            if s > 0:
+                scored.append((-s, order, t))
+    scored.sort(key=lambda x: (x[0], x[1]))
+    return [t for _, _, t in scored[: max(top, 0)]]
+
+
+def cmd_suggest(args) -> int:
+    root = Path(args.root)
+    try:
+        text = Path(args.text_file).read_text(encoding="utf-8", errors="replace") if args.text_file else sys.stdin.read()
+        reg = load(root / REGISTRY_REL)
+    except (RegistryError, OSError) as e:
+        print(f"suggest: {e}", file=sys.stderr)
+        return 0
+    for t in suggest_tools(reg, text, args.top):
+        print(f"{t['id']} \u2014 {t.get('purpose', '')}")
+    return 0
+
+
+def _payload_text(payload):
+    """Return (path, text) of a Write/Edit payload, or None when malformed."""
+    if not isinstance(payload, dict):
+        return None
+    ti = payload.get("tool_input")
+    if not isinstance(ti, dict):
+        return None
+    path = ti.get("file_path")
+    text = ti.get("content") if "content" in ti else ti.get("new_string")
+    if not isinstance(path, str) or not path or not isinstance(text, str):
+        return None
+    return path, text[:SCAN_LIMIT]
+
+
+def should_fire(payload, plugin_root) -> bool:
+    got = _payload_text(payload)
+    if got is None:
+        return False
+    path, text = got
+    if os.path.splitext(path)[1].lower() not in HOOK_EXTS:
+        return False
+    if not text or not HOOK_KEYWORDS.search(text):
+        return False
+    p = Path(path)
+    if p.is_absolute():
+        try:
+            rel = p.resolve().relative_to(Path(plugin_root).resolve())
+        except ValueError:
+            return True
+        parts = rel.parts
+    else:
+        parts = p.parts
+    return not any(d in parts[:-1] for d in HOOK_SKIP_DIRS)
+
+
+def hook_output(payload, reg) -> str:
+    got = _payload_text(payload)
+    text = got[1] if got else ""
+    lines = [f"{t['id']} \u2014 {t.get('purpose', '')}" for t in suggest_tools(reg, text, 3)]
+    ctx = (HOOK_HEAD + "\n".join(lines) + "\n" if lines else "") + HOOK_RULE
+    return json.dumps(
+        {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": ctx}},
+        ensure_ascii=False,
+    )
+
+
+def cmd_hook(args) -> int:
+    try:
+        payload = json.loads(sys.stdin.read())
+    except (ValueError, OSError) as e:
+        print(f"tool-reminder: bad payload on stdin: {e}", file=sys.stderr)
+        return 0
+    try:
+        if not should_fire(payload, args.root):
+            return 0
+        reg = load(Path(args.root) / REGISTRY_REL)
+        out = hook_output(payload, reg)
+    except Exception as e:  # the hook must never block a write
+        print(f"tool-reminder: {e}", file=sys.stderr)
+        return 0
+    print(out)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Tool registry loader and validator.")
     ap.add_argument("--root", default=str(PLUGIN_ROOT), help="plugin root (default: this plugin)")
@@ -320,6 +432,12 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("render", help="write the routes table into docs/tool-routing.md")
     r.add_argument("--check", action="store_true", help="exit 1 on drift, write nothing")
     r.set_defaults(func=cmd_render)
+    g = sub.add_parser("suggest", help="rank registered tools against a text")
+    g.add_argument("--top", type=int, default=3, help="how many tools to print (default 3)")
+    g.add_argument("--text-file", help="read the text from this file (default: stdin)")
+    g.set_defaults(func=cmd_suggest)
+    h = sub.add_parser("hook", help="PreToolUse reminder: payload JSON on stdin, never blocks")
+    h.set_defaults(func=cmd_hook)
     return ap
 
 

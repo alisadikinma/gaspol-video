@@ -579,6 +579,113 @@ class FfprobeScanTest(FakeRoot):
         self.assertTrue(any("needs a string id" in p for p in probs))
 
 
+class SuggestTest(unittest.TestCase):
+    def run_suggest(self, text, *extra):
+        r = subprocess.run(
+            [sys.executable, str(ROOT / "tools/registry_build.py"), "suggest", *extra],
+            input=text,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.splitlines()
+
+    def test_concat_text_ranks_join_first(self):
+        lines = self.run_suggest("ffmpeg -f concat -i list.txt out.mp4")
+        self.assertTrue(lines[0].startswith("tools/vidkit/join.py \u2014 "), lines)
+
+    def test_top_limits_lines(self):
+        lines = self.run_suggest("ffmpeg concat overlay subtitles music loudness", "--top", "2")
+        self.assertEqual(len(lines), 2)
+
+    def test_default_top_is_three(self):
+        lines = self.run_suggest("ffmpeg concat overlay subtitles music loudness probe")
+        self.assertEqual(len(lines), 3)
+
+    def test_nothing_scores_prints_nothing(self):
+        self.assertEqual(self.run_suggest("qqq zzz"), [])
+
+    def test_text_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "t.txt"
+            f.write_text("ffmpeg concat", encoding="utf-8")
+            r = subprocess.run(
+                [sys.executable, str(ROOT / "tools/registry_build.py"), "suggest", "--text-file", str(f)],
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("tools/vidkit/join.py", r.stdout)
+
+    def test_scoring_and_registry_order_ties(self):
+        reg = {
+            "tools": [
+                {"id": "tools/a.py", "purpose": "Alpha thing.", "tasks": ["foo"]},
+                {"id": "tools/b.py", "purpose": "Beta thing.", "tasks": ["foo"]},
+                {"id": "tools/c.py", "purpose": "Gamma thing.", "tasks": ["foo", "bar"]},
+            ]
+        }
+        ids = [t["id"] for t in registry_build.suggest_tools(reg, "foo bar", top=3)]
+        self.assertEqual(ids, ["tools/c.py", "tools/a.py", "tools/b.py"])
+
+    def test_purpose_words_score_once_and_need_four_letters(self):
+        reg = {"tools": [{"id": "tools/a.py", "purpose": "Mix the mix of audio audio.", "tasks": ["zzz"]}]}
+        self.assertEqual(registry_build.score_tool(reg["tools"][0], {"mix", "audio", "the"}), 1)
+
+
+class HookTest(unittest.TestCase):
+    REG = {"tools": [{"id": "tools/vidkit/join.py", "purpose": "Join clips.", "tasks": ["concat"]}]}
+
+    def payload(self, path="/proj/s.py", key="content", text="ffmpeg -f concat", tool="Write"):
+        return {"tool_name": tool, "tool_input": {"file_path": path, key: text}}
+
+    def test_should_fire_table(self):
+        cases = [
+            ("write content", self.payload(), True),
+            ("edit new_string", self.payload(key="new_string", tool="Edit"), True),
+            ("md no fire", self.payload(path="/proj/n.md"), False),
+            ("mjs fires", self.payload(path="/proj/n.mjs"), True),
+            ("sh fires", self.payload(path="/proj/n.sh"), True),
+            ("under tools", self.payload(path=str(ROOT / "tools/x.py")), False),
+            ("under tests", self.payload(path=str(ROOT / "tests/py/x.py")), False),
+            ("under templates", self.payload(path=str(ROOT / "templates/x.py")), False),
+            ("outside root with tools dir fires", self.payload(path="/other/tools/x.py"), True),
+            ("no keyword", self.payload(text="print('hello')"), False),
+            ("capital Remotion", self.payload(text="import Remotion"), True),
+            ("ffprobe", self.payload(text="run ffprobe"), True),
+            ("empty content", self.payload(text=""), False),
+            ("missing tool_input", {"tool_name": "Write"}, False),
+            ("tool_input not dict", {"tool_input": "x"}, False),
+            ("payload not dict", ["x"], False),
+            ("garbage", None, False),
+            ("path not string", {"tool_input": {"file_path": 3, "content": "ffmpeg"}}, False),
+            ("content not string", {"tool_input": {"file_path": "/p/a.py", "content": 5}}, False),
+        ]
+        for name, payload, want in cases:
+            with self.subTest(name):
+                self.assertEqual(registry_build.should_fire(payload, ROOT), want)
+
+    def test_large_content_scans_first_200kb_only(self):
+        late = "x" * (registry_build.SCAN_LIMIT + 10) + " ffmpeg"
+        self.assertFalse(registry_build.should_fire(self.payload(text=late), ROOT))
+        early = "ffmpeg " + "x" * (registry_build.SCAN_LIMIT + 10)
+        self.assertTrue(registry_build.should_fire(self.payload(text=early), ROOT))
+
+    def test_hook_output_json_with_suggestion(self):
+        out = json.loads(registry_build.hook_output(self.payload(), self.REG))
+        h = out["hookSpecificOutput"]
+        self.assertEqual(h["hookEventName"], "PreToolUse")
+        ctx = h["additionalContext"]
+        self.assertTrue(ctx.startswith("gaspol-video: tools that already do similar work:\n"))
+        self.assertIn("tools/vidkit/join.py \u2014 Join clips.", ctx)
+        self.assertTrue(ctx.endswith(registry_build.HOOK_RULE))
+
+    def test_hook_output_no_match_is_rule_only(self):
+        reg = {"tools": [{"id": "tools/a.py", "purpose": "Alpha.", "tasks": ["qqq"]}]}
+        ctx = json.loads(registry_build.hook_output(self.payload(), reg))["hookSpecificOutput"]["additionalContext"]
+        self.assertEqual(ctx, registry_build.HOOK_RULE)
+
+
 class ScriptTest(unittest.TestCase):
     def test_help_runs_as_script(self):
         r = subprocess.run(
