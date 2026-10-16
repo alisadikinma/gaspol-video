@@ -253,7 +253,137 @@ class OverlayPlanTest(unittest.TestCase):
         for icon in overlay_plan.ICONS:
             self.run_plan(_scene(cues=[_cue(icon=icon)]))
         self.assertEqual(overlay_plan.ICONS,
-                         ("fire", "gavel", "chart", "cloud", "question", "arrow", "circle"))
+                         ("fire", "gavel", "chart", "cloud", "question", "arrow", "circle",
+                          "warning", "money", "check", "cross", "clock", "lock"))
+
+    # ---- GV-19 viral vocabulary ----
+
+    def test_steps_resolve_to_frames(self):
+        steps = {"total": 3, "marks": [{"n": 1, "words": "cerita"}, {"n": 2, "words": "hutan"}]}
+        self.run_plan(_scene(steps=steps))
+        got = self.result()["steps"]
+        self.assertEqual(got["total"], 3)
+        # cerita = word 1 -> 1.5 s; hutan = word 6 -> 4.0 s
+        self.assertEqual(got["marks"], [{"n": 1, "f": round(1.5 * FPS)},
+                                        {"n": 2, "f": round(4.0 * FPS)}])
+
+    def test_steps_absent_by_default(self):
+        self.run_plan(_scene())
+        self.assertNotIn("steps", self.result())
+
+    def test_steps_total_bounds_refused(self):
+        for total in (1, 10, 0, 2.5, "3", True):
+            with self.subTest(total=total):
+                msg = self.refused(_scene(steps={"total": total, "marks": [
+                    {"n": 1, "words": "cerita"}]}))
+                self.assertIn("scene 03 steps:", msg)
+                self.assertIn("total", msg)
+
+    def test_steps_total_edges_ok(self):
+        for total in (2, 9):
+            self.run_plan(_scene(steps={"total": total, "marks": [{"n": 1, "words": "cerita"}]}))
+
+    def test_steps_mark_not_spoken_after_previous_refused(self):
+        steps = {"total": 3, "marks": [{"n": 1, "words": "hutan"}, {"n": 2, "words": "cerita"}]}
+        msg = self.refused(_scene(steps=steps))
+        self.assertIn("scene 03 steps mark 2:", msg)
+        self.assertIn("not found", msg)
+
+    def test_steps_duplicate_n_and_out_of_range_refused(self):
+        steps = {"total": 3, "marks": [{"n": 1, "words": "cerita"}, {"n": 1, "words": "hutan"},
+                                       {"n": 4, "words": "untung"}]}
+        msg = self.refused(_scene(steps=steps))
+        self.assertIn("scene 03 steps mark 1: duplicate", msg)
+        self.assertIn("scene 03 steps mark 4:", msg)
+
+    def test_steps_malformed_refused(self):
+        for steps in ("x", {"total": 3}, {"total": 3, "marks": []},
+                      {"total": 3, "marks": [{"n": 1}]}, {"total": 3, "marks": ["a"]}):
+            with self.subTest(steps=steps):
+                self.assertIn("scene 03 steps", self.refused(_scene(steps=steps)))
+
+    def test_steps_do_not_count_toward_text_share(self):
+        # Seven marks cover the whole speech; the one cue stays at ~2 s of 8 s.
+        marks = [{"n": i + 1, "words": w}
+                 for i, w in enumerate(["bukan", "kebakaran", "hutan", "soal", "yang", "asap"])]
+        self.run_plan(_scene(steps={"total": 6, "marks": marks}))
+        self.assertEqual(len(self.result()["steps"]["marks"]), 6)
+
+    def test_text_share_still_refused_with_steps(self):
+        cues = [_cue(id="a", words=" ".join(SENTENCE.split()[:8]), lead="bukan",
+                     keyword="kebakaran", hold_s=1.0)]
+        msg = self.refused(_scene(cues=cues, steps={"total": 2, "marks": [
+            {"n": 1, "words": "cerita"}]}))
+        self.assertIn("keywords, not subtitles", msg)
+
+    def test_vignette_boolean_only(self):
+        self.run_plan(_scene(cues=[_cue(vignette=True)]))
+        self.assertIs(self.result()["cues"][0]["vignette"], True)
+        for bad in ("yes", 1, None):
+            with self.subTest(bad=bad):
+                self.assertIn("vignette", self.refused(_scene(cues=[_cue(vignette=bad)])))
+
+    def test_vignette_default_false(self):
+        self.run_plan(_scene())
+        self.assertIs(self.result()["cues"][0]["vignette"], False)
+
+    def test_burst_valid_and_defaults(self):
+        self.run_plan(_scene(cues=[_cue(burst={"icon": "money", "count": 14})]))
+        self.assertEqual(self.result()["cues"][0]["burst"], {"icon": "money", "count": 14})
+        self.run_plan(_scene(cues=[_cue()]))
+        self.assertIsNone(self.result()["cues"][0]["burst"])
+        for count in (1, 30):
+            self.run_plan(_scene(cues=[_cue(burst={"icon": "money", "count": count})]))
+
+    def test_burst_invalid_refused(self):
+        for burst in ({"icon": "unicorn", "count": 5}, {"icon": "money", "count": 0},
+                      {"icon": "money", "count": 31}, {"icon": "money", "count": 5.0},
+                      {"icon": "money", "count": True}, {"icon": "money"}, {"count": 5}, "money"):
+            with self.subTest(burst=burst):
+                msg = self.refused(_scene(cues=[_cue(burst=burst)]))
+                self.assertIn("scene 03 cue c1:", msg)
+                self.assertIn("burst", msg)
+
+    def test_unknown_preset_refused(self):
+        msg = self.refused(_scene(preset="tiktok"))
+        self.assertIn("scene 03:", msg)
+        self.assertIn("viral", msg)
+
+    def test_viral_preset_fills_defaults(self):
+        bare = _cue()
+        del bare["fx"], bare["color"]   # _cue states both; the preset fills only what is absent
+        self.run_plan(_scene(preset="viral", cues=[bare]))
+        res = self.result()
+        cue = res["cues"][0]
+        self.assertEqual((cue["fx"], cue["color"], cue["pos"]["anchor"]), (1, "yellow", "center"))
+        self.assertEqual(res["preset"], {"name": "viral", "source": "course",
+                                         "lead_px": 40, "key_px": 120})
+
+    def test_explicit_cue_fields_override_preset(self):
+        words = [{"text": t, "start_ms": i * 500, "end_ms": i * 500 + 400}
+                 for i, t in enumerate(["ada", "40", "titik"])]
+        self.write_manifest([{"id": "s03-host", "scene": "03", "words": _pad(words)}])
+        cue = _cue(words="ada 40", lead="ada", keyword="40", fx=3, color="white",
+                   pos={"anchor": "left"})
+        self.run_plan(_scene(preset="viral", cues=[cue]))
+        got = self.result()["cues"][0]
+        self.assertEqual((got["fx"], got["color"], got["pos"]["anchor"]), (3, "white", "left"))
+
+    def test_no_preset_key_without_preset(self):
+        self.run_plan(_scene())
+        self.assertNotIn("preset", self.result())
+        self.assertEqual(self.result()["cues"][0]["pos"]["anchor"], "top")
+
+    def test_center_anchor_accepted(self):
+        self.run_plan(_scene(cues=[_cue(pos={"anchor": "center"})]))
+        self.assertEqual(self.result()["cues"][0]["pos"]["anchor"], "center")
+
+    def test_all_new_problems_listed_at_once(self):
+        msg = self.refused(_scene(preset="nope", steps={"total": 1, "marks": [{"n": 1, "words": "cerita"}]},
+                                  cues=[_cue(vignette="x", burst={"icon": "zz", "count": 0})]))
+        for needle in ("preset", "steps", "vignette", "burst"):
+            self.assertIn(needle, msg)
+
 
     def test_missing_user_and_ref_files_refused(self):
         panel = {"src": "user:photos/none.jpg", "kind": "image", "x": 0, "y": 0, "w": 1, "h": 1}

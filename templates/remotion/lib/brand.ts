@@ -11,6 +11,8 @@ type BrandFile = typeof brand & {
   // Kinetic overlay (GV-17). Optional so a brand.json written before it still type-checks.
   highlight?: string;
   scriptFont?: string;
+  // Red vignette edge (GV-19). Optional, neutral default below.
+  alarm?: string;
 };
 
 export const COLORS = {
@@ -25,6 +27,8 @@ export const COLORS = {
   // Numbers and hard words in the kinetic overlay. Falls back to the accent for a brand.json
   // written before the key existed.
   highlight: (brand as BrandFile).highlight ?? brand.accent,
+  // Blinking edge glow for a danger word. Neutral red unless brand.json sets "alarm".
+  alarm: (brand as BrandFile).alarm ?? '#D7263D',
   // Mark drawn ON an accent fill (e.g. the check in ImageRevealShot's tag). White unless the
   // project's brand.json sets "onAccent" for an accent too light to carry white.
   onAccent: (brand as BrandFile).onAccent ?? '#ffffff',

@@ -15,6 +15,10 @@ the previous cue's run). in = run start + vo_offset_s - 0.10 (not below 0), keyw
 keyword (or of `key_words`, the spoken tokens for a keyword shown differently) inside the run, out = run end + vo_offset_s + hold_s (default 0.3). Cues may overlap by at
 most 0.1 s and must end inside the clip.
 
+GV-19 optional fields: scene `steps` {total 2-9, marks [{n, words}]} (a numeral bar, not counted
+toward the text share), scene `preset` ("viral", source: course), cue `vignette` (bool) and cue
+`burst` {icon, count 1-30}. An explicit cue field always overrides the preset.
+
 Writes `shots/src/shots/overlay-<scene>.json` (cues with inF / keyF / outF frames and public media
 paths) and stages the clip, media and person-mask frames in `shots/public/overlay/<scene>/`
 (hard link, copy as fallback). A `behind` layer needs frames from tools/person_mask.py for the same
@@ -41,14 +45,24 @@ from tools.gen_captions import _align_norm  # noqa: E402
 
 FFPROBE = shutil.which("ffprobe")
 
-ICONS = ("fire", "gavel", "chart", "cloud", "question", "arrow", "circle")
+ICONS = ("fire", "gavel", "chart", "cloud", "question", "arrow", "circle",
+         "warning", "money", "check", "cross", "clock", "lock")
 FX_KEYWORD = (1, 2, 3, 4)
 COLORS = ("white", "yellow")
 LAYERS = ("front", "behind")
-ANCHORS = ("top", "left", "right")
+ANCHORS = ("top", "left", "right", "center")
 KINDS = ("image", "video")
 PREFIXES = ("user:", "ref:", "remotion:")
 REMOTION_NAME = re.compile(r"^[A-Z][A-Za-z0-9]*$")
+# Two-tier caption defaults (GV-19). Course advice (Montserrat 15-18, centred, a cut every 1-3 s),
+# not platform data: source: course. An explicit cue field always wins. "yellow" is drawn with the
+# project's `highlight` token, so the neon green of the reference is the brand's, not hardcoded.
+PRESETS = {
+    "viral": {"cue": {"color": "yellow", "fx": 1}, "anchor": "center", "lead_px": 40,
+              "key_px": 120, "source": "course"},
+}
+STEPS_MIN, STEPS_MAX = 2, 9
+BURST_MIN, BURST_MAX = 1, 30
 LEAD_S = 0.10
 HOLD_DEFAULT_S = 0.3
 OVERLAP_MAX_S = 0.1
@@ -178,6 +192,70 @@ def _validate_cue_fields(cue, label, problems):
         problems.append(f"{label}: fx 3 needs a digit in keyword")
 
 
+def _is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _validate_viral_fields(cue, label, problems):
+    if "vignette" in cue and not isinstance(cue["vignette"], bool):
+        problems.append(f"{label}: vignette must be true or false (got {cue['vignette']!r})")
+    if cue.get("burst") is not None:
+        burst = cue["burst"]
+        if not isinstance(burst, dict):
+            problems.append(f"{label}: burst must be {{icon, count}} (got {burst!r})")
+            return
+        if burst.get("icon") not in ICONS:
+            problems.append(f"{label}: burst icon {burst.get('icon')!r} not in {list(ICONS)}")
+        count = burst.get("count")
+        if not _is_int(count) or not BURST_MIN <= count <= BURST_MAX:
+            problems.append(f"{label}: burst count must be an integer {BURST_MIN}-{BURST_MAX} "
+                            f"(got {count!r})")
+
+
+def _resolve_steps(steps, words, offset, fps, scene, problems):
+    """Frames for each step mark: {total, marks: [{n, f}]}, or None when refused. Marks are
+    resolved in the order given, each after the previous one. Numerals, not words: they do not
+    count toward TEXT_SHARE_MAX."""
+    head = f"scene {scene} steps"
+    if not isinstance(steps, dict):
+        problems.append(f"{head}: must be {{total, marks}} (got {steps!r})")
+        return None
+    start = len(problems)
+    total = steps.get("total")
+    if not _is_int(total) or not STEPS_MIN <= total <= STEPS_MAX:
+        problems.append(f"{head}: total must be an integer {STEPS_MIN}-{STEPS_MAX} (got {total!r})")
+    marks = steps.get("marks")
+    if not isinstance(marks, list) or not marks:
+        problems.append(f"{head}: needs a non-empty marks list")
+        return None
+    out, seen, idx = [], set(), 0
+    for mark in marks:
+        if not isinstance(mark, dict):
+            problems.append(f"{head}: each mark must be {{n, words}} (got {mark!r})")
+            continue
+        n, label = mark.get("n"), f"{head} mark {mark.get('n')}"
+        if not _is_int(n) or n < 1 or (_is_int(total) and n > total):
+            problems.append(f"{label}: n must be an integer 1-{total} (got {n!r})")
+            continue
+        if n in seen:
+            problems.append(f"{label}: duplicate n")
+            continue
+        seen.add(n)
+        if not str(mark.get("words", "")).strip():
+            problems.append(f"{label}: missing words")
+        elif words is not None:
+            run = resolve_anchor(words, mark["words"], idx)
+            if run is None:
+                problems.append(f"{label}: words {mark['words']!r} not found in the spoken "
+                                f"words after the previous mark")
+            else:
+                idx = run[1] + 1
+                out.append({"n": n, "f": round((words[run[0]]["start_ms"] / 1000 + offset) * fps)})
+    if len(problems) > start:
+        return None
+    return {"total": total, "marks": out}
+
+
 def _plan_scene(out, sc, problems_all):
     """Resolve one scene. Returns (result dict, staging dict) or None when refused."""
     scene = str(sc.get("scene", ""))
@@ -226,6 +304,12 @@ def _plan_scene(out, sc, problems_all):
     if not cues:
         add("no cues")
 
+    preset = None
+    if sc.get("preset") is not None:
+        preset = PRESETS.get(sc["preset"])
+        if preset is None:
+            add(f"preset {sc['preset']!r} not in {list(PRESETS)}")
+
     fps = sc["fps"]
     offset = float(sc.get("vo_offset_s", 0.0))
     files = []          # source Paths in order of first use
@@ -236,14 +320,23 @@ def _plan_scene(out, sc, problems_all):
     seen_ids = set()
     visible = []        # (in_s, out_s) of every timed cue
 
+    steps_out = None
+    if sc.get("steps") is not None:
+        steps_out = _resolve_steps(sc["steps"], words, float(sc.get("vo_offset_s", 0.0)),
+                                   sc["fps"], scene, problems)
+
     for cue in cues:
         cid = str(cue.get("id", "?"))
         if cid in seen_ids:
             add("duplicate cue id", cid)
         seen_ids.add(cid)
         label = f"scene {scene} cue {cid}"
+        if preset:
+            cue = {**preset["cue"], **cue}
+            cue["pos"] = {"anchor": preset["anchor"], **(cue.get("pos") or {})}
         local = []
         _validate_cue_fields(cue, label, local)
+        _validate_viral_fields(cue, label, local)
         problems.extend(local)
         for field in ("words", "keyword"):
             if not str(cue.get(field, "")).strip():
@@ -287,6 +380,8 @@ def _plan_scene(out, sc, problems_all):
         entry.setdefault("script", False)
         entry.setdefault("layer", "front")
         entry.setdefault("icon", None)
+        entry.setdefault("vignette", False)
+        entry.setdefault("burst", None)
         entry.setdefault("source", "")
         pos = dict(cue.get("pos") or {})
         entry["pos"] = {"anchor": pos.get("anchor", "top"), "x": pos.get("x"), "y": pos.get("y")}
@@ -373,6 +468,11 @@ def _plan_scene(out, sc, problems_all):
         "mask": f"{base}/mask/" if needs_mask else None,
         "cues": out_cues,
     }
+    if steps_out:
+        result["steps"] = steps_out
+    if preset:
+        result["preset"] = {"name": sc["preset"], "source": preset["source"],
+                            "lead_px": preset["lead_px"], "key_px": preset["key_px"]}
     staging = {"files": owners, "mask": mask_pngs if needs_mask else None}
     return result, staging
 

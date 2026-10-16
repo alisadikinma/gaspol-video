@@ -5,6 +5,7 @@
   "inkSoft": "#9fb4bd",
   "accent": "#5fd0c4",
   "highlight": "#F5E625",
+  "alarm": "#D7263D",
   "displayFont": "Inter, system-ui, sans-serif",
   "bodyFont": "Inter, system-ui, sans-serif",
   "scriptFont": "'Caveat', 'Bradley Hand', 'Noteworthy', cursive"

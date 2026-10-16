@@ -119,3 +119,38 @@ Over a red flash keep the keyword in `ink` or `highlight`, never red.
    import together, render `KineticOverlay`.
 6. Look at enter-mid, hold and exit-mid of every cue (`scripts/qa-frames.mjs`). Fix placement,
    not the style.
+
+## 8. Viral vocabulary (GV-19)
+
+Five additions for short-form cuts. All are optional plan fields; `overlay_plan.py` refuses a bad
+value and names scene and cue (or mark). Section 0 still holds: keywords, not subtitles, and the
+**50% text-share limit still binds**. Nothing below loosens it.
+
+**Sticker icons.** Six more stroke-only icons for `icon` (and for `burst.icon`): `warning`,
+`money`, `check`, `cross`, `clock`, `lock`. The list in `tools/overlay_plan.py` and
+`lib/overlay-fx.tsx` is identical; a contract test compares them. The audio study
+(`docs/evals/viral-audio-study.md`) added none.
+
+**Step counter.** Scene field `steps: {"total": 4, "marks": [{"n": 1, "words": "pertama"}, ...]}`,
+total 2-9. Each mark's `words` are found after the previous mark and become a frame. A bar of
+numbered circles at the top lights the current step (`highlight`), past steps in `ink`, future
+ones dimmed. The circles are numerals, so they **do not count toward the 50% limit**; the
+spoken words of a mark still have to be real speech.
+
+**Red vignette.** Cue field `vignette: true` (a boolean, nothing else). A red glow on the frame
+edge, centre clear so the face stays readable: fades in 0.15 s, blinks at 3 Hz, fades out 0.2 s,
+maximum alpha 0.55. Colour is the brand token `alarm` (optional in `brand.json`, default
+`#D7263D`). It is the cheap, edge-only variant; for a full-frame background flash that must
+spare the person, use section 6.
+
+**Falling burst.** Cue field `burst: {"icon": "money", "count": 14}`; `icon` from the list,
+`count` an integer 1-30. Icons fall from above the frame over 1.6 s each, starting on the
+keyword, with seeded positions so every render is identical.
+
+**Two-tier preset.** Scene field `preset: "viral"` fills what a cue did not state: `color:
+yellow` (the `highlight` token, so the neon is the brand's), `fx: 1`, `pos.anchor: center`
+(centred across and 64% down so the face stays clear; a new anchor for any cue), and writes size hints lead 40 px / keyword
+120 px. These numbers (Montserrat 15-18, centred, a cut every 1-3 s) are course advice, tagged
+`source: course` in the code, in the generated json (`preset.source`) and here; they are not
+platform data. An explicit cue field always wins over the preset. An unknown preset name is
+refused with the allowed set.
