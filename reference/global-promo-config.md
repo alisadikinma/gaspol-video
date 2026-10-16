@@ -100,7 +100,7 @@ See `reference/image-video-gen/08-kling-production-guide.md` for full Kling 3.0 
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| `image_model` | `Nano Banana 2` (Gemini 3.1 Flash Image) | Primary image model |
+| `image_model` | `gpt-image-2` (indusia `generate_image`, high, 2K, with reference images) | Default image model (v3.13.0). `Nano Banana 2` stays available when the user asks for it |
 | `image_resolution` | `4K` (4096×4096) | For final keyframes |
 | `image_resolution_draft` | `1K` (1024×1024) | For rapid iteration |
 | `nb2_cfg` | `5.0–7.0` | >8 = hyper-processed |
@@ -1617,7 +1617,7 @@ user's `.env`. This is the same client-agnostic rule that forbids hardcoding cli
 | Key | Value |
 |---|---|
 | `render_offer` | `per_batch` |
-| `render_image_model` | `nano-banana-2` |
+| `render_image_model` | `gpt-image-2` |
 | `render_image_resolution` | `2K` |
 | `render_video_model` | `veo-3.1-fast` |
 | `render_video_durations` | `4, 6, 8` |

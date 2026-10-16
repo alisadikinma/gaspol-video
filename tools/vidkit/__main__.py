@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import ff, gates, join, loudness, patch, sheet, speech, synth, track
+from . import cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, track, unwhite
 
 
 def _json(p):
@@ -14,6 +14,40 @@ def _json(p):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="vidkit", description="Reusable video assembly helpers.")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("ingest", help="download a video link with yt-dlp")
+    s.add_argument("url")
+    s.add_argument("out_dir")
+    s.add_argument("--name", default="source")
+
+    s = sub.add_parser("scenes", help="cut a video into scenes with first/mid/last stills + scenes.json")
+    s.add_argument("video")
+    s.add_argument("out_dir")
+    s.add_argument("--threshold", type=float, default=0.3)
+    s.add_argument("--min-len", type=float, default=0.6)
+
+    s = sub.add_parser("karaoke", help="words json [[word,start,end],...] -> karaoke .ass (+ centre watermark)")
+    s.add_argument("words")
+    s.add_argument("out")
+    s.add_argument("--total", type=float, required=True, help="video length, seconds")
+    s.add_argument("--watermark")
+    s.add_argument("--opacity", type=float, default=0.12)
+    s.add_argument("--font", default="Helvetica Neue")
+    s.add_argument("--margin-v", type=int, default=360)
+
+    s = sub.add_parser("cover", help="burn .ass, thumbnail on the first frames, thumbnail as mp4 cover")
+    s.add_argument("video")
+    s.add_argument("thumb")
+    s.add_argument("out")
+    s.add_argument("--ass")
+    s.add_argument("--hold", type=float, default=0.12)
+
+    s = sub.add_parser("unwhite", help="key the white box out of a logo (for blending onto a surface)")
+    s.add_argument("src")
+    s.add_argument("out")
+
+    s = sub.add_parser("mixdown", help="final mix from a plan json: voice + sfx cues + ducked music, -14 LUFS, subs, thumbnail")
+    s.add_argument("plan")
 
     s = sub.add_parser("probe", help="print stream facts as JSON")
     s.add_argument("file")
@@ -87,7 +121,23 @@ def main(argv=None):
 
     a = ap.parse_args(argv)
     try:
-        if a.cmd == "probe":
+        if a.cmd == "ingest":
+            print(ingest.download(a.url, a.out_dir, a.name))
+        elif a.cmd == "scenes":
+            rows = ingest.split_scenes(a.video, a.out_dir, a.threshold, a.min_len)
+            print(f"{len(rows)} scenes -> {a.out_dir}/scenes.json")
+        elif a.cmd == "karaoke":
+            words = [tuple(w) for w in _json(a.words)]
+            open(a.out, "w").write(karaoke.build_ass(words, a.total, a.watermark, a.opacity, a.font, margin_v=a.margin_v))
+            print(a.out)
+        elif a.cmd == "cover":
+            print(cover.apply(a.video, a.thumb, a.out, a.ass, a.hold))
+        elif a.cmd == "unwhite":
+            print(unwhite.unwhite(a.src, a.out))
+        elif a.cmd == "mixdown":
+            r = mixdown.run(_json(a.plan))
+            print(f"ok {r['out']} (was {r['lufs_before']:.1f} LUFS, gain {r['gain_db']:+.1f} dB)")
+        elif a.cmd == "probe":
             print(json.dumps(ff.probe(a.file), indent=1))
         elif a.cmd == "gate-av":
             v, au = gates.gate_av(a.file, a.tolerance)

@@ -47,3 +47,26 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 `templates/remotion/scripts/frames.mjs` and `qa-end.mjs` (multi-frame / end-state QA) now ship with every scaffold.
 
 Tests: `tests/py/test_vidkit.py`, `tests/node/vidkit-js.test.mjs` (run with the venv python to include the `bond` test).
+
+## Ingest (`tools/vidkit/ingest.py`)
+
+| Function | What |
+|---|---|
+| `download(url, dir)` | yt-dlp, best mp4 with audio |
+| `scenes_from_cuts(cuts, duration, min_len)` | cut times to scene spans; flash cuts under `min_len` are dropped |
+| `split_scenes(video, dir, threshold, min_len)` | scene clips, first/mid/last stills, `scenes.json` |
+
+Used by `skills/video-repackage`. CLI: `vidkit ingest`, `vidkit scenes`.
+
+## Finishing (`karaoke`, `cover`, `unwhite`, `mixdown`)
+
+| Module | What |
+|---|---|
+| `karaoke.build_ass(words, total, watermark, opacity)` | 2-word karaoke ASS (`\kf`), groups close at sentence end, `C Sharp` becomes `C#`, optional centre watermark |
+| `cover.apply(video, thumb, out, ass, hold_s)` | burns subtitles, THEN lays the thumbnail on the first `hold_s` seconds (so no subtitle on it), attaches it as cover art |
+| `unwhite.unwhite(src, out)` | keys the white box out of a logo (ffmpeg only, no numpy) |
+| `mixdown.run(plan)` | voice + SFX cues + sidechain-ducked music, two-step loudness (gain to target, then limiter), subs, thumbnail |
+
+`mixdown` plan keys: `video out total ass thumb hold cues[{at,sfx,gain}] music{file,start,gain,fade_in,fade_out} lufs limit`. Cue `at` is absolute seconds; `sfx` is a path or a library clip name. Use absolute paths in the plan. Checked against the REA film: same loudness and peak as the project's own mix script (-14.8 LUFS before gain, peak -1.3 dBFS).
+
+Remotion: `templates/remotion/lib/ali-effects.tsx` (copied into every scaffold). Props only, each start frame is a prop.

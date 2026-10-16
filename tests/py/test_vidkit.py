@@ -4,7 +4,114 @@ import unittest
 from pathlib import Path
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
-from tools.vidkit import ff, gates, join, loudness, patch, sheet, speech, synth, track
+from tools.vidkit import cover, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
+
+
+class IngestTest(unittest.TestCase):
+    def test_scenes_cover_whole_video(self):
+        sc = ingest.scenes_from_cuts([2.0, 5.0], 8.0)
+        self.assertEqual(sc, [(0.0, 2.0), (2.0, 5.0), (5.0, 8.0)])
+
+    def test_flash_cuts_are_dropped(self):
+        sc = ingest.scenes_from_cuts([2.0, 2.2, 7.9], 8.0, min_len=0.6)
+        self.assertEqual(sc, [(0.0, 2.0), (2.0, 8.0)])
+
+    def test_no_cuts_is_one_scene(self):
+        self.assertEqual(ingest.scenes_from_cuts([], 5.0), [(0.0, 5.0)])
+
+    def test_rejects_zero_duration(self):
+        with self.assertRaises(ValueError):
+            ingest.scenes_from_cuts([], 0)
+
+    @requires_ffmpeg
+    def test_split_writes_clips_stills_and_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            a, b, v = Path(d) / "a.mp4", Path(d) / "b.mp4", Path(d) / "v.mp4"
+            make_clip(str(a), 2.0)
+            ff.ffmpeg("-i", a, "-vf", "negate", "-c:a", "copy", b)  # a hard visual cut
+            ff.ffmpeg("-i", a, "-i", b, "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]", "-map", "[v]", v)
+            rows = ingest.split_scenes(str(v), str(Path(d) / "out"), threshold=0.2)
+            self.assertEqual(len(rows), 2)
+            self.assertTrue((Path(d) / "out" / "scene-01-mid.png").exists())
+            self.assertTrue((Path(d) / "out" / "scenes.json").exists())
+
+
+class KaraokeTest(unittest.TestCase):
+    W = [("Stop", 0.0, 0.4), ("bayar", 0.4, 0.8), ("langganan.", 0.9, 1.5), ("Bongkar", 1.6, 2.0)]
+
+    def test_groups_close_at_sentence_end(self):
+        g = karaoke.group_words(self.W)
+        self.assertEqual([[w[0] for w in x] for x in g], [["Stop", "bayar"], ["langganan."], ["Bongkar"]])
+
+    def test_c_sharp_is_merged(self):
+        m = karaoke.merge_sharp([("C", 0, .2), ("Sharp", .2, .5)])
+        self.assertEqual(m, [("C#", 0, .5)])
+
+    def test_ass_has_karaoke_tags_and_watermark(self):
+        ass = karaoke.build_ass(self.W, 3.0, watermark="@x", watermark_opacity=0.12)
+        self.assertIn("\\kf", ass)
+        self.assertIn("@x", ass)
+        self.assertIn("\\1a&HE0&", ass)  # 88% transparent = 0xE0
+
+    def test_no_watermark_when_none(self):
+        self.assertNotIn("\\an5", karaoke.build_ass(self.W, 3.0))
+
+    def test_bad_opacity_is_refused(self):
+        with self.assertRaises(ValueError):
+            karaoke.watermark_event("x", 3.0, opacity=0)
+
+
+class CoverUnwhiteTest(unittest.TestCase):
+    @requires_ffmpeg
+    def test_cover_attaches_picture_and_keeps_length(self):
+        with tempfile.TemporaryDirectory() as d:
+            v, th, o = Path(d) / "v.mp4", Path(d) / "t.png", Path(d) / "o.mp4"
+            make_clip(str(v), 2.0)
+            ff.ffmpeg("-f", "lavfi", "-i", "color=c=red:s=320x240", "-frames:v", 1, th)
+            cover.apply(str(v), str(th), str(o), hold_s=0.2, width=320, height=240)
+            self.assertAlmostEqual(duration_of(str(o)), 2.0, delta=0.1)
+            kinds = ff.run(["ffprobe", "-v", "error", "-show_entries", "stream_disposition=attached_pic", "-of", "csv=p=0", o])
+            self.assertIn("1", kinds)
+
+    def test_cover_refuses_zero_hold(self):
+        with self.assertRaises(ValueError):
+            cover.apply("a", "b", "c", hold_s=0)
+
+    @requires_ffmpeg
+    def test_unwhite_makes_white_transparent(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, out = Path(d) / "l.png", Path(d) / "o.png"
+            ff.ffmpeg("-f", "lavfi", "-i", "color=c=white:s=40x40", "-frames:v", 1, src)
+            unwhite.unwhite(str(src), str(out))
+            err = ff.run(["ffmpeg", "-v", "info", "-i", out, "-vf", "alphaextract,signalstats,metadata=print", "-f", "null", "-"],
+                         capture_stderr=True)
+            import re
+            yavg = float(re.findall(r"YAVG=([\d.]+)", err)[0])
+            self.assertLess(yavg, 10)  # all-white input -> almost fully transparent
+
+
+class MixdownTest(unittest.TestCase):
+    def test_missing_sfx_names_the_path_it_tried(self):
+        with self.assertRaises(FileNotFoundError):
+            mixdown.sfx_path("no-such-clip-xyz")
+
+    def test_music_shorter_than_fades_is_refused(self):
+        with self.assertRaises(ValueError):
+            mixdown.build_music({"file": "x", "start": 9.0, "fade_in": 1.5, "fade_out": 1.5}, 10.0, "o.wav")
+
+    @requires_ffmpeg
+    def test_full_mix_hits_target_loudness_and_keeps_length(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            v, o, sfx, mus = d / "v.mp4", d / "o.mp4", d / "s.wav", d / "m.wav"
+            make_clip(str(v), 4.0)
+            ff.ffmpeg("-f", "lavfi", "-i", "sine=f=880:d=0.3", sfx)
+            ff.ffmpeg("-f", "lavfi", "-i", "sine=f=220:d=2", mus)
+            r = mixdown.run({"video": str(v), "out": str(o), "cues": [{"at": 1.0, "sfx": str(sfx), "gain": 0.8}],
+                             "music": {"file": str(mus), "start": 0.5, "gain": 0.4, "fade_in": 0.5, "fade_out": 0.5}},
+                            workdir=d / "w")
+            self.assertAlmostEqual(duration_of(str(o)), 4.0, delta=0.15)
+            self.assertAlmostEqual(mixdown.measure_lufs(str(d / "w" / "mix.wav")), -14.0, delta=1.0)
 
 
 class PureLogicTest(unittest.TestCase):

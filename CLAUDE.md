@@ -628,8 +628,16 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.12.0
+**Version:** 3.14.0
 **Last Updated:** 2026-10-16
+
+### v3.14.0 Changelog
+
+- **REA finishing kit moved into the plugin.** `vidkit karaoke` (2-word karaoke ASS + centre watermark at any opacity), `vidkit cover` (thumbnail on the first frames AFTER subtitles, plus mp4 cover art), `vidkit unwhite` (logo off its white box, ffmpeg only), `vidkit mixdown` (voice + SFX cues + ducked music, two-step loudness, subs, thumbnail, from one plan json). Remotion `lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover`, props only, copied into every scaffold. `video-repackage` points at them. Checked by rebuilding the REA final mix through `mixdown` (same loudness and peak as the project script) and rendering the effects in a real Remotion workspace. Tests: `tests/py/test_vidkit.py`, `tests/node/scaffold.test.mjs`.
+
+### v3.13.0 Changelog
+
+- **Repackage workflow (`skills/video-repackage`).** The user shares a link to someone else's video; the plugin downloads it, cuts it into scenes, uses each scene as an image reference, keeps the storyline and regenerates every asset. Defaults: image model `gpt-image-2`; cast and costume localised to Indonesian unless the product itself targets another country; Ali's cloned voice; a 3-second hook, a thumbnail on the first frames and as cover metadata, a follow CTA with the `@alisadikinma` popup, and a 12% centre watermark. New `vidkit ingest` (yt-dlp) and `vidkit scenes` (scene cut, first/mid/last stills, `scenes.json`) in `tools/vidkit/ingest.py`, tested in `tests/py/test_vidkit.py`. `docs/pembelajaran-rea.md` records what the REA film taught (voice, keyframes, Remotion, final mix, hook). `global-promo-config.md` `image_model` and `render_image_model` now `gpt-image-2`. Source: REA film, 2026-10-16.
 
 ### v3.12.0 Changelog
 
@@ -928,7 +936,7 @@ All configurable values live in `reference/global-promo-config.md` — single so
 ## gaspol Ticket Counter
 
 Prefix: GV
-Last ticket: GV-17
+Last ticket: GV-19
 
 ## Tool-first rule (library)
 

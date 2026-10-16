@@ -10,6 +10,8 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 
 | I want to... | Use |
 |---|---|
+| Download someone's video from a link | `python3 -m tools.vidkit ingest <url> <dir>` |
+| Cut a video into scenes (clip + first/mid/last stills + scenes.json) | `python3 -m tools.vidkit scenes <video> <dir>` |
 | Probe a clip (duration, fps, size, sample rate, channels) | `python3 -m tools.vidkit probe` / `vidkit.ff.probe` |
 | Check video length = audio length | `vidkit gate-av`; narration fits its cut: `check_vo_duration.py` |
 | Check clips are safe to concat (same sample rate and channels) | `vidkit gate-uniform` |
@@ -28,6 +30,11 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Phone notification / alarm sound without paid files | `vidkit synth notification|alarm` |
 | Music: generate / mix | `gen_music.py`, `mix_music.py` |
 | Final loudness (-14 LUFS) with A/V kept aligned | `vidkit normalize` |
+| Karaoke subtitles from a word list + centre watermark (any opacity) | `python3 -m tools.vidkit karaoke words.json out.ass --total N --watermark @handle` |
+| Thumbnail on the first frames + as mp4 cover (subtitles stay off it) | `python3 -m tools.vidkit cover video thumb out [--ass f.ass]` |
+| Logo on a white box -> mark that blends onto a prop | `python3 -m tools.vidkit unwhite logo.png out.png`, then CSS `mix-blend-mode: multiply` |
+| Final mix in one command (voice + SFX cues + ducked music, -14 LUFS, subs, thumbnail) | `python3 -m tools.vidkit mixdown plan.json` |
+| Follow popup with clicking cursor, "Ssst!", "WOW!", thumbnail cover (Remotion) | `templates/remotion/lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover` |
 | Subtitles / captions / keyword highlight | `gen_subs.py`, `burn_subs.py`, `gen_captions.py`, `caption_keywords.py` |
 | Kinetic text overlay behind the speaker | `overlay_plan.py`, `person_mask.py`, Remotion `KineticOverlay` |
 | Put an app screen into a phone/monitor in a clip | `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |
