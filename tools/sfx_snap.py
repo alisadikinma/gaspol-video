@@ -24,7 +24,7 @@ from tools.vidkit import beats  # noqa: E402
 
 
 def _resolve(project, value):
-    """Absolute stays absolute; a relative path is always inside the project, never the cwd."""
+    """Absolute stays absolute; a relative path is resolved against the project folder, never the cwd."""
     p = Path(value)
     return p if p.is_absolute() else Path(project) / p
 

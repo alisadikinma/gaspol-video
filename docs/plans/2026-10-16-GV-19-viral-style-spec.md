@@ -6,7 +6,7 @@
 
 ## Why
 
-The owner likes the animation, SFX and music of a creator's Shorts and wants the same style, plus a viral-video framework. Two NotebookLM notebooks feed this: the course notebook (`Seefluencer AI Mentor`, framework) and a notebook built from 24 transcripts of the reference channel (`SAMUEL-STYLE 2026-10`). Imitating a style, not copying content: no footage, voice, face or script is reused.
+The owner likes the animation, SFX and music of a creator's Shorts and wants the same style, plus a viral-video framework. Two NotebookLM notebooks feed this: the course notebook (`Seefluencer AI Mentor`, framework) and a notebook built from 24 transcripts of the reference channel (the style-reference notebook). Imitating a style, not copying content: no footage, voice, face or script is reused.
 
 ## Measured facts (12 Shorts downloaded and measured; 1 further download failed)
 
