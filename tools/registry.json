@@ -1,6 +1,229 @@
 {
   "version": 1,
-  "tools": [],
+  "tools": [
+    {
+      "id": "tools/asset_home.py",
+      "purpose": "Locate or adopt the reusable SFX, music and image libraries that live outside the plugin cache.",
+      "tasks": [
+        "library",
+        "locate",
+        "adopt"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/asset_library.py",
+      "purpose": "Find, add, list and reuse generic images across projects, matched on exact prompt and aspect.",
+      "tasks": [
+        "image",
+        "library",
+        "reuse"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/burn_subs.py",
+      "purpose": "Burn subtitles into the master, guarding against missing-glyph fonts and low-contrast colours.",
+      "tasks": [
+        "subtitles",
+        "burn",
+        "font-check"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/caption_keywords.py",
+      "purpose": "Score which run of timed words deserves the highlight on a kinetic caption page.",
+      "tasks": [
+        "caption",
+        "keyword",
+        "scoring"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/check_overlay_strings.py",
+      "purpose": "Fail when a Remotion overlay shows on-screen text that the script never approved.",
+      "tasks": [
+        "overlay",
+        "text",
+        "approved-strings"
+      ],
+      "phase": "4",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/check_vo_duration.py",
+      "purpose": "Fail when a narration line does not fit its cut, or a cut runs on in silence.",
+      "tasks": [
+        "narration",
+        "duration",
+        "fit-check"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/clean_voice.py",
+      "purpose": "Remove background noise from platform-native dialogue before the Voice Changer, keeping duration.",
+      "tasks": [
+        "dialogue",
+        "denoise",
+        "clean"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/composite.py",
+      "purpose": "Put a rendered Remotion shot onto the master as cutaway, overlay, split or insert.",
+      "tasks": [
+        "composite",
+        "cutaway",
+        "overlay",
+        "split"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/composite_logo.py",
+      "purpose": "Paste a real logo file onto a rendered thumbnail as a pixel-exact layer.",
+      "tasks": [
+        "thumbnail",
+        "logo",
+        "composite"
+      ],
+      "phase": "7",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/cost_log.py",
+      "purpose": "Record units of billed renders, failed attempts and re-rolls per scene, with no prices.",
+      "tasks": [
+        "cost",
+        "render",
+        "billing"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/edit_render.py",
+      "purpose": "Assemble the master from work/edit-plan.json with ffmpeg, validating the plan before encoding.",
+      "tasks": [
+        "edit",
+        "render",
+        "master"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_app_screen.py",
+      "purpose": "Make app-screen PNGs for ref/ by capturing a real URL or rendering a Remotion mock.",
+      "tasks": [
+        "app-screen",
+        "capture",
+        "mock"
+      ],
+      "phase": "4",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_captions.py",
+      "purpose": "Build the kinetic caption plan from voice-over or recognizer word timings.",
+      "tasks": [
+        "caption",
+        "plan",
+        "timing"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_music.py",
+      "purpose": "Generate music beds into the shared library from mood recipes, or compose one bed to the master.",
+      "tasks": [
+        "music",
+        "library",
+        "generate"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_sfx.py",
+      "purpose": "Generate SFX clips into the shared library from the palette recipes.",
+      "tasks": [
+        "sfx",
+        "library",
+        "generate"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_subs.py",
+      "purpose": "Build subtitle cues from the script text, with a recognizer used for timing only.",
+      "tasks": [
+        "subtitles",
+        "cues",
+        "script-text"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_vo.mjs",
+      "purpose": "Generate narration audio from work/audio-plan.json with ElevenLabs, with pause tags and caching.",
+      "tasks": [
+        "narration",
+        "tts",
+        "voice-over"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    }
+  ],
   "routes": [
     {
       "task": "Download someone's video from a link",
@@ -20,7 +243,9 @@
     {
       "task": "Check video length = audio length",
       "use": "`vidkit gate-av`; narration fits its cut: `check_vo_duration.py`",
-      "tools": []
+      "tools": [
+        "tools/check_vo_duration.py"
+      ]
     },
     {
       "task": "Check clips are safe to concat (same sample rate and channels)",
@@ -40,17 +265,23 @@
     {
       "task": "Edit from a plan (cuts, motion, shots, transitions)",
       "use": "`edit_render.py`, `plan_motion.py`",
-      "tools": []
+      "tools": [
+        "tools/edit_render.py"
+      ]
     },
     {
       "task": "Insert/overlay/split a shot into a master",
       "use": "`composite.py`",
-      "tools": []
+      "tools": [
+        "tools/composite.py"
+      ]
     },
     {
       "task": "Narration (TTS) from a script",
       "use": "`gen_vo.mjs`",
-      "tools": []
+      "tools": [
+        "tools/gen_vo.mjs"
+      ]
     },
     {
       "task": "One quick line with explicit voice settings and seed",
@@ -70,7 +301,9 @@
     {
       "task": "Clean platform dialogue before voice change",
       "use": "`clean_voice.py`",
-      "tools": []
+      "tools": [
+        "tools/clean_voice.py"
+      ]
     },
     {
       "task": "Word timings of a clip",
@@ -80,12 +313,16 @@
     {
       "task": "Music that follows the topic, tone and beat arc",
       "use": "`music_brief.py <project>` writes `work/music-palette.json` + plan segments, then `gen_music.py --recipes <project>/work/music-palette.json --only <ids>`",
-      "tools": []
+      "tools": [
+        "tools/gen_music.py"
+      ]
     },
     {
       "task": "Sound effects: generate",
       "use": "`gen_sfx.py` (palette), `eleven.mjs sfx` (one-off prompt)",
-      "tools": []
+      "tools": [
+        "tools/gen_sfx.py"
+      ]
     },
     {
       "task": "Sound effects: mix into the cut",
@@ -120,7 +357,9 @@
     {
       "task": "Music: generate / mix",
       "use": "`gen_music.py`, `mix_music.py`",
-      "tools": []
+      "tools": [
+        "tools/gen_music.py"
+      ]
     },
     {
       "task": "Final loudness (-14 LUFS) with A/V kept aligned",
@@ -180,7 +419,12 @@
     {
       "task": "Subtitles / captions / keyword highlight",
       "use": "`gen_subs.py`, `burn_subs.py`, `gen_captions.py`, `caption_keywords.py`",
-      "tools": []
+      "tools": [
+        "tools/gen_subs.py",
+        "tools/burn_subs.py",
+        "tools/gen_captions.py",
+        "tools/caption_keywords.py"
+      ]
     },
     {
       "task": "Kinetic text overlay behind the speaker",
@@ -215,7 +459,9 @@
     {
       "task": "App screen for software that does not exist",
       "use": "`gen_app_screen.py`",
-      "tools": []
+      "tools": [
+        "tools/gen_app_screen.py"
+      ]
     },
     {
       "task": "Print a logo/sablon onto a person's clothing",
@@ -265,7 +511,9 @@
     {
       "task": "Thumbnail logo / headline scrim",
       "use": "`composite_logo.py`, `thumb_scrim.py`",
-      "tools": []
+      "tools": [
+        "tools/composite_logo.py"
+      ]
     },
     {
       "task": "Choose the video encoder for edit renders, or see a long encode is alive",
@@ -275,12 +523,17 @@
     {
       "task": "Render ledger, reusable asset library",
       "use": "`renders.py`, `asset_library.py`, `asset_home.py`",
-      "tools": []
+      "tools": [
+        "tools/asset_library.py",
+        "tools/asset_home.py"
+      ]
     },
     {
       "task": "Units of billed renders, failed attempts, re-rolls per scene (no prices)",
       "use": "`cost_log.py`",
-      "tools": []
+      "tools": [
+        "tools/cost_log.py"
+      ]
     },
     {
       "task": "YouTube stats",
@@ -291,6 +544,13 @@
       "task": "Deck / slide post-processing (PDF, watermark, numbering)",
       "use": "NOT here: `gaspol-catalog` `tools/deckkit`",
       "tools": []
+    },
+    {
+      "task": "Check a Remotion overlay shows only approved on-screen text",
+      "use": "`python3 tools/check_overlay_strings.py <shots-dir> --from-markdown av-script.md --heading \"<block>\"`",
+      "tools": [
+        "tools/check_overlay_strings.py"
+      ]
     }
   ],
   "ffprobe_allow": []

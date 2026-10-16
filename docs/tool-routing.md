@@ -69,6 +69,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Units of billed renders, failed attempts, re-rolls per scene (no prices) | `cost_log.py` |
 | YouTube stats | `yt_stats.py` |
 | Deck / slide post-processing (PDF, watermark, numbering) | NOT here: `gaspol-catalog` `tools/deckkit` |
+| Check a Remotion overlay shows only approved on-screen text | `python3 tools/check_overlay_strings.py <shots-dir> --from-markdown av-script.md --heading "<block>"` |
 <!-- registry:routes:end -->
 
 ## When no tool fits (inject back)

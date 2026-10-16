@@ -435,12 +435,34 @@ class RenderTest(FakeRoot):
         rc, out, _ = cli("render", "--check", root=ROOT)
         self.assertEqual(rc, 0, out)
 
-    def test_committed_registry_has_fiftyeight_routes_and_validates(self):
+    def test_committed_registry_has_fiftynine_routes_and_validates(self):
         reg = json.loads((ROOT / "tools/registry.json").read_text())
-        self.assertEqual(len(reg["routes"]), 58)
+        self.assertEqual(len(reg["routes"]), 59)
         self.assertEqual(registry_build.validate(reg, ROOT), [])
         deck = [r for r in reg["routes"] if r["task"].startswith("Deck / slide")]
         self.assertEqual(deck[0]["tools"], [])
+
+
+class CommittedCoverageTest(unittest.TestCase):
+    def test_coverage_reports_composite_until_registered(self):
+        rc, out, _ = cli("validate", "--coverage", root=ROOT)
+        reg = json.loads((ROOT / "tools/registry.json").read_text())
+        ids = {t["id"] for t in reg["tools"]}
+        self.assertIn("tools/composite.py", ids, out)
+        self.assertNotIn("tools/composite.py: not in registry", out)
+
+    def test_first_half_tools_are_registered_and_routed(self):
+        reg = json.loads((ROOT / "tools/registry.json").read_text())
+        by_id = {t["id"]: t for t in reg["tools"]}
+        routed = {tid for r in reg["routes"] for tid in r["tools"]}
+        for name in ("asset_home", "asset_library", "burn_subs", "caption_keywords",
+                     "check_overlay_strings", "check_vo_duration", "clean_voice",
+                     "composite", "composite_logo", "cost_log", "edit_render",
+                     "gen_app_screen", "gen_captions", "gen_music", "gen_sfx", "gen_subs"):
+            self.assertIn(f"tools/{name}.py", by_id)
+        self.assertIn("tools/gen_vo.mjs", by_id)
+        for tid, t in by_id.items():
+            self.assertTrue(tid in routed or t["internal_reason"], tid)
 
 
 class ScriptTest(unittest.TestCase):
