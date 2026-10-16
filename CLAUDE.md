@@ -72,6 +72,9 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/plan_motion.py` | Fills the `motion` field on static segments of `work/edit-plan.json` — splits a segment over 5.0s into alternating punch-in/punch-out beats, gives a shorter one a single slow punch-in; never overwrites a hand-written `motion` or a `kind: "shot"` segment |
 | `tools/qa_frames.py` | Visual clip QA — a 5-frame contact sheet per rendered clip in `.tmp/qa-scene-NN.jpg` (ids may carry a letter suffix, e.g. `01b`) and a `work/visual-qa.md` verdict sheet with each scene's PLAUSIBILITY block, for Claude to judge in-session; `--check` is the V15 gate (reads verdict cells only, exit 1 on a missing, empty or `FAIL:` cell or a clip changed since judged) |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
+| `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, track smoothing, motion-tracked print bond (cv2). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
+| `tools/vidkit/js/` | Node helpers: `env.mjs` (.env loading, keys never printed), `eleven.mjs` (`tts` with settings + seed, `stt` word timings, `sfx`), `cast_voice.mjs` (voice change with per-character settings and seed, spans only). Test: `tests/node/vidkit-js.test.mjs` |
+| `templates/remotion/scripts/frames.mjs`, `qa-end.mjs` | Multi-frame and end-state Remotion QA, copied into every scaffolded workspace |
 | `templates/remotion/Overlay.template.tsx`, `lib/{overlay-fx.tsx,overlayFx.mjs}` | `KineticOverlay` (GV-17): clip, behind layer, person cut out by mask, front text, source box; six text effects as zero-import maths in `overlayFx.mjs` (unit-tested), drawn by `overlay-fx.tsx` |
 | `templates/remotion/lib/{brand.ts,kit.tsx,browser.tsx,screencast.tsx}` | Generic Remotion components ported from `claude-youtube-editor`, brand tokens only from the project's `brand.json` |
 | `templates/remotion/scripts/{gen-registry,render-all,qa-frames,render-stills}.mjs` | Registry generation, render, QA-still and mock-screen-still scripts copied into every scaffolded workspace |
@@ -625,8 +628,12 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.11.0
-**Last Updated:** 2026-10-15
+**Version:** 3.12.0
+**Last Updated:** 2026-10-16
+
+### v3.12.0 Changelog
+
+- **vidkit: reusable assembly library.** `tools/vidkit/` (Python: A/V and concat gates, xfade/concat join with timeline maths, freeze-box, contact sheets, synth alerts, speech-gap cue snapping, two-pass loudnorm, track smoothing, cloth print bond) and `tools/vidkit/js/` (`env`, `eleven` tts/stt/sfx, `cast_voice`). Distilled from five finished productions; fixes two ffmpeg traps (apad after amix truncating, loudnorm timestamp shift before atrim). `templates/remotion/scripts/frames.mjs` and `qa-end.mjs`. `docs/tool-routing.md` maps task to tool and says to extend the library, not a project folder. Tests: `tests/py/test_vidkit.py`, `tests/node/vidkit-js.test.mjs`.
 
 ### v3.11.0 Changelog
 
@@ -922,3 +929,7 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 Prefix: GV
 Last ticket: GV-17
+
+## Tool-first rule (library)
+
+Before writing any script for video, audio, animation or assembly, read `docs/tool-routing.md` and use the listed tool. If nothing fits, extend `tools/vidkit/` (Python) or `tools/vidkit/js/` (Node) in this plugin, with a test and a row in `docs/tool-routing.md`, in the same session. Never leave a reusable script in a project folder.
