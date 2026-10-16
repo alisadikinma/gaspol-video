@@ -1,0 +1,11 @@
+{
+  "_comment": "owner fills real prices; the tool refuses to guess",
+  "currency": "",
+  "items": {
+    "nb2-image": {"unit": "image", "price": null, "source": ""},
+    "veo-3.1-fast-clip": {"unit": "second", "price": null, "source": ""},
+    "eleven-tts": {"unit": "1k-chars", "price": null, "source": ""},
+    "eleven-music": {"unit": "second", "price": null, "source": ""},
+    "eleven-sfx": {"unit": "clip", "price": null, "source": ""}
+  }
+}

@@ -499,6 +499,11 @@ FOR each batch (ACT or sub-batch):
           with both MCP texts.
         - Any other failure → record `failed` via the CLI with the MCP text
           verbatim. Continue with the next scene either way.
+        - COST LOG: after every billed call (success or failure that was
+          billed), `python3 tools/cost_log.py {output_folder} add --kind
+          veo-3.1-fast-clip --units <seconds rendered> --scene <NN> --status
+          ok|failed`. Log each re-roll as its own entry. A not-billed
+          `Audio generation failed` is not logged.
      g. AFTER the batch, run `python3 tools/probe_clips.py {output_folder}`
         and report its `problems` list to the user.
      h. VISUAL QA (Rule 23): run `python3 tools/qa_frames.py {output_folder}

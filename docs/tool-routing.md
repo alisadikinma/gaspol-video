@@ -56,6 +56,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Stems for a human editor | `make_stems.py` |
 | Thumbnail logo / headline scrim | `composite_logo.py`, `thumb_scrim.py` |
 | Render ledger, reusable asset library | `renders.py`, `asset_library.py`, `asset_home.py` |
+| Cost of billed renders, pre-flight estimate, budget check | `cost_log.py` (prices in `media/pricing.json`) |
 | YouTube stats | `yt_stats.py` |
 | Deck / slide post-processing (PDF, watermark, numbering) | NOT here: `gaspol-catalog` `tools/deckkit` |
 

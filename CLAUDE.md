@@ -52,6 +52,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `skills/video-add-platform/SKILL.md` | Scaffold new video platform support |
 | `tools/_venv.py` | Dependency guard — re-execs into `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv` for the tools below that need it, else exits 2 naming `tools/setup.sh` |
 | `tools/setup.sh`, `requirements.txt` | Build the shared venv (Pillow, playwright, google-api-python-client, google-auth-oauthlib) |
+| `tools/cost_log.py`, `media/pricing.json` | Cost log (`work/cost-log.json`, units only) and pre-flight `estimate`. Money is computed from `media/pricing.json`; an item with null price or empty source is UNPRICED and `estimate` refuses (exit 2) instead of guessing. `check` exits 1 over budget. `GASPOL_PRICING` overrides the pricing path |
 | `tools/renders.py` | Render ledger (`{output_folder}/renders.json`) shared by the Phase 4/5 render offers |
 | `tools/gen_app_screen.py` | `capture` (Playwright, real URL) and `mock` (Remotion `renderStill`) app screens into `ref/ui-*.png` |
 | `tools/asset_home.py` | Where the reusable libraries live: `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/{sfx,music,images}` (survives plugin updates); recipes stay in the plugin's `media/<kind>/library/palette.json`. `where` prints the dirs, `adopt` copies earlier plugin versions' clips/tracks in (never moves). SFX plans without `catalog` and music segments `library:<id>` resolve here |

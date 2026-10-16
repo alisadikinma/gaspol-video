@@ -350,6 +350,9 @@ After the asset library is approved (option A above), offer to render it through
         `record` call with `"status": "failed"` and the MCP text verbatim in
         an `"error"` field, no `cdn_url`; continue with the next prompt — one
         failure never stops the batch.
+      - COST LOG: after every billed call run `python3 tools/cost_log.py
+        {output_folder} add --kind nb2-image --units 1 --scene <NN or asset>
+        --status ok|failed` (a failed billed attempt is `failed`).
 
    c. AFTER a successful render of a generic asset (one that passes the
       uniqueness filter as COMMON but was worth an asset, no ref filenames in
@@ -512,7 +515,9 @@ FOR each batch (ACT or sub-batch):
           --prompt-file <temp-file>` (strips the cdn_url query string,
           computes the prompt sha256). Failure (error string or no local
           path) → same `record` call with `"status": "failed"`; continue
-          with the next prompt.
+          with the next prompt. After each billed call also run
+          `python3 tools/cost_log.py {output_folder} add --kind nb2-image
+          --units 1 --scene <NN> --status ok|failed`.
      e. AFTER the batch, Read every produced image (multimodal) and report
         anything visibly wrong against the prompt (wrong identity, wrong
         colour, garbled text, broken continuity with the previous scene's
