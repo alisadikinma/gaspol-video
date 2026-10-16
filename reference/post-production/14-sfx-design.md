@@ -119,6 +119,51 @@ skip because the sheet looks obviously fine.
 
 ---
 
+## 6b. Punch: layered cues and beat snap
+
+Eight recipes exist for punch (durations from `palette.json`): `sub-boom` 1.2s, `hit-heavy` 0.5s,
+`tail-air` 1.6s, `riser-long` 3.0s, `whoosh-fast` 0.5s, `glitch-hit` 0.4s, `stinger-up` 1.0s,
+`stinger-warn` 1.0s. `gen_sfx.py` makes them only after the owner confirms the cost.
+
+**Layered impact.** One event with a `"stack"` instead of `sfx_id`. Each layer is mixed at
+`at_s + offset_s` (offset down to -0.5s so a riser can lead):
+
+```json
+{"at_s": 12.4, "gain_db": 2, "note": "number lands",
+ "stack": [
+   {"sfx_id": "riser-long", "offset_s": -0.3},
+   {"sfx_id": "sub-boom",   "offset_s": 0},
+   {"sfx_id": "hit-heavy",  "offset_s": 0},
+   {"sfx_id": "tail-air",   "offset_s": 0.1}
+ ]}
+```
+
+Rules:
+
+- **A stack counts as one cue** for the density ceiling, `--no-optional` and the cue sheet. Layers
+  inherit `optional` and `note`.
+- **Layers share the parent's `gain_db`** unless a layer sets its own, so the audibility gate in
+  section 4 still decides. Never raise gain to fake punch: the duck suppresses a cue under speech at
+  any gain.
+- Use a stack only on the two or three biggest moments.
+
+**Beat snap.** After the owner has audited the cue sheet, snap cues onto the music beats:
+
+```bash
+python3 tools/sfx_snap.py {output_folder} --music output/music.mp3
+python3 tools/mix_sfx.py {output_folder} --plan work/sfx-plan.snapped.json
+```
+
+Defaults: `--plan work/sfx-plan.json`, `--window 0.12` seconds. Cues within 0.12s of a beat move to it;
+others stay. A stack moves as one (only the parent `at_s` snaps). The output is
+`work/sfx-plan.snapped.json`; the original plan is never changed. Exit 2 means no beats were found in
+the music: nothing is written, mix the original plan.
+
+**The audit stays a hard gate.** The owner approves the cue sheet (`mix_sfx.py --print`) before the
+snap, and snapping moves cues by at most the window, so it does not reopen the audit.
+
+---
+
 ## 7. Degradation
 
 No ffmpeg: the cue sheet is still authored and printed, nothing is mixed, and the skill says so.
