@@ -491,6 +491,38 @@ class CommittedFullToolsCoverageTest(unittest.TestCase):
         )
 
 
+class CommittedVidkitCoverageTest(unittest.TestCase):
+    def test_committed_registry_fully_covers_repo(self):
+        rc, out, _ = cli("validate", "--coverage", root=ROOT)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual([ln for ln in out.splitlines() if "not in registry" in ln], [])
+
+    def test_every_route_tool_id_exists(self):
+        reg = json.loads((ROOT / "tools/registry.json").read_text())
+        ids = {t["id"] for t in reg["tools"]}
+        for r in reg["routes"]:
+            for tid in r["tools"]:
+                self.assertIn(tid, ids, r["task"])
+
+    def test_vidkit_modules_and_js_helpers_registered(self):
+        reg = json.loads((ROOT / "tools/registry.json").read_text())
+        ids = {t["id"] for t in reg["tools"]}
+        for name in ("audiostudy beats bond color colormatch cover encoder ff gates ingest "
+                     "join karaoke loudness mixdown patch sheet speech stages synth track "
+                     "unwhite").split():
+            self.assertIn(f"tools/vidkit/{name}.py", ids)
+        for name in ("cast_voice", "eleven", "env"):
+            self.assertIn(f"tools/vidkit/js/{name}.mjs", ids)
+
+    def test_env_helper_is_internal_and_gates_patch_routed(self):
+        reg = json.loads((ROOT / "tools/registry.json").read_text())
+        by_id = {t["id"]: t for t in reg["tools"]}
+        routed = {tid for r in reg["routes"] for tid in r["tools"]}
+        self.assertTrue(by_id["tools/vidkit/js/env.mjs"]["internal_reason"])
+        self.assertIn("tools/vidkit/gates.py", routed)
+        self.assertIn("tools/vidkit/patch.py", routed)
+
+
 class ScriptTest(unittest.TestCase):
     def test_help_runs_as_script(self):
         r = subprocess.run(

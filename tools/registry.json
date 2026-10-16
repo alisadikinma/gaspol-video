@@ -472,6 +472,318 @@
       "internal_reason": ""
     },
     {
+      "id": "tools/vidkit/audiostudy.py",
+      "purpose": "Measure a clip's SFX and music timing: onsets, tempo, loudness, energy, and how onsets sit against words and cuts.",
+      "tasks": [
+        "onsets",
+        "tempo",
+        "reference-study"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/beats.py",
+      "purpose": "Detect beats in a music file and snap cue times onto the nearest beat.",
+      "tasks": [
+        "beat-detect",
+        "beat-snap",
+        "music-grid"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/bond.py",
+      "purpose": "Bond a transparent print (logo, watermark) onto cloth in a presenter clip so it looks printed (needs cv2).",
+      "tasks": [
+        "cloth-print",
+        "logo-bond",
+        "fabric-mask"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/color.py",
+      "purpose": "BT.709 colour tagging and BT.601 conversion filters for final encodes.",
+      "tasks": [
+        "color-tag",
+        "bt709",
+        "color-convert"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/colormatch.py",
+      "purpose": "Measure each clip's mean RGB and compute or apply a per-channel gain that pulls outliers toward a reference.",
+      "tasks": [
+        "color-match",
+        "clip-grade",
+        "gain-apply"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/cover.py",
+      "purpose": "Burn subtitles, put a thumbnail on the first frames and attach it as the mp4 cover.",
+      "tasks": [
+        "thumbnail-first-frames",
+        "mp4-cover",
+        "burn-ass"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/encoder.py",
+      "purpose": "Choose the video encoder (libx264 default, optional hardware) from GASPOL_VIDEO_ENCODER.",
+      "tasks": [
+        "encoder-choice",
+        "hardware-encode",
+        "env-switch"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/ff.py",
+      "purpose": "ffmpeg and ffprobe plumbing: run commands with a heartbeat and probe a file's duration, size and audio facts.",
+      "tasks": [
+        "ffmpeg-run",
+        "probe-file",
+        "heartbeat"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/gates.py",
+      "purpose": "Hard pre-assembly checks: video and audio length match, clips share sample rate and channels.",
+      "tasks": [
+        "gate-av",
+        "gate-uniform",
+        "pre-concat-check"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/ingest.py",
+      "purpose": "Download a video link with yt-dlp and cut it into scenes with first, mid and last stills.",
+      "tasks": [
+        "download-link",
+        "scene-cut",
+        "reference-stills"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/join.py",
+      "purpose": "Join clips with hard cuts or cross-dissolves and compute the resulting timeline.",
+      "tasks": [
+        "concat",
+        "crossfade",
+        "timeline-math"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/js/cast_voice.mjs",
+      "purpose": "Voice-change a clip's dialogue spans with per-character settings and seed from a cast file.",
+      "tasks": [
+        "cast-voice-change",
+        "speech-to-speech",
+        "per-character-seed"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/js/eleven.mjs",
+      "purpose": "ElevenLabs helpers: one-off TTS with explicit settings and seed, word timings by STT, and sound effects.",
+      "tasks": [
+        "tts-seeded",
+        "stt-words",
+        "sfx-generate"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/js/env.mjs",
+      "purpose": "Load KEY=VALUE .env files and require keys without ever printing them.",
+      "tasks": [
+        "env-loading",
+        "key-check",
+        "secret-safe"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": "Imported by eleven.mjs and cast_voice.mjs; no CLI of its own."
+    },
+    {
+      "id": "tools/vidkit/karaoke.py",
+      "purpose": "Build karaoke ASS subtitles from a word list plus an optional centre watermark line.",
+      "tasks": [
+        "karaoke-ass",
+        "word-groups",
+        "watermark-text"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/loudness.py",
+      "purpose": "Two-pass loudnorm to a target with audio padded and trimmed to the picture length.",
+      "tasks": [
+        "loudnorm",
+        "lufs-target",
+        "loudness-profile"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/mixdown.py",
+      "purpose": "One-command final mix from a plan json: voice, SFX cues, ducked music, loudness, subtitles and thumbnail.",
+      "tasks": [
+        "final-mix",
+        "ducked-music",
+        "plan-json"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/patch.py",
+      "purpose": "Freeze a rectangle of a clip to one frame so a model-animated bar or number stays still.",
+      "tasks": [
+        "freeze-box",
+        "static-region",
+        "frame-patch"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/sheet.py",
+      "purpose": "Tile frames of a clip, or several images, into one contact sheet or montage JPEG.",
+      "tasks": [
+        "contact-sheet",
+        "montage",
+        "frame-tiling"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/speech.py",
+      "purpose": "Word timing from alignments and speech-gap logic for snapping cues out from under narration.",
+      "tasks": [
+        "word-timing",
+        "speech-gaps",
+        "cue-snap"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/stages.py",
+      "purpose": "Per-stage fingerprint cache that skips a step whose inputs, parameters and recipe version are unchanged.",
+      "tasks": [
+        "fingerprint",
+        "stage-cache",
+        "skip-unchanged"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/synth.py",
+      "purpose": "Synthesize short notification and alarm sounds with ffmpeg alone from layered tone and noise data.",
+      "tasks": [
+        "notification-sound",
+        "alarm-sound",
+        "ffmpeg-synth"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/track.py",
+      "purpose": "Median-filter tracked screen boxes and pin one angle for a static target.",
+      "tasks": [
+        "track-smoothing",
+        "box-jitter",
+        "fixed-angle"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/unwhite.py",
+      "purpose": "Key the white box out of a logo so it blends onto a surface.",
+      "tasks": [
+        "logo-unwhite",
+        "white-key",
+        "blend-prep"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
       "id": "tools/viral_checklist.py",
       "purpose": "Check the viral checklist block of a short-form script and rate analytics against thresholds.",
       "tasks": [
@@ -515,39 +827,52 @@
     {
       "task": "Download someone's video from a link",
       "use": "`python3 -m tools.vidkit ingest <url> <dir>`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/ingest.py"
+      ]
     },
     {
       "task": "Cut a video into scenes (clip + first/mid/last stills + scenes.json)",
       "use": "`python3 -m tools.vidkit scenes <video> <dir>`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/ingest.py"
+      ]
     },
     {
       "task": "Probe a clip (duration, fps, size, sample rate, channels)",
       "use": "`python3 -m tools.vidkit probe` / `vidkit.ff.probe`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/ff.py"
+      ]
     },
     {
       "task": "Check video length = audio length",
       "use": "`vidkit gate-av`; narration fits its cut: `check_vo_duration.py`",
       "tools": [
-        "tools/check_vo_duration.py"
+        "tools/check_vo_duration.py",
+        "tools/vidkit/gates.py"
       ]
     },
     {
       "task": "Check clips are safe to concat (same sample rate and channels)",
       "use": "`vidkit gate-uniform`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/gates.py"
+      ]
     },
     {
       "task": "Join clips with hard cuts",
       "use": "`vidkit concat`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/join.py"
+      ]
     },
     {
       "task": "Join clips with dissolves (audio kept whole)",
       "use": "`vidkit xfade`; clip start times: `vidkit.join.clip_starts`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/join.py"
+      ]
     },
     {
       "task": "Edit from a plan (cuts, motion, shots, transitions)",
@@ -574,7 +899,9 @@
     {
       "task": "One quick line with explicit voice settings and seed",
       "use": "`node tools/vidkit/js/eleven.mjs tts`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/js/eleven.mjs"
+      ]
     },
     {
       "task": "Replace the voice in a clip's dialogue",
@@ -586,7 +913,9 @@
     {
       "task": "...with per-character settings/seed, only the spoken spans",
       "use": "`node tools/vidkit/js/cast_voice.mjs plan.json`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/js/cast_voice.mjs"
+      ]
     },
     {
       "task": "Clean platform dialogue before voice change",
@@ -598,7 +927,10 @@
     {
       "task": "Word timings of a clip",
       "use": "`node tools/vidkit/js/eleven.mjs stt`; from an alignment json: `vidkit words`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/js/eleven.mjs",
+        "tools/vidkit/speech.py"
+      ]
     },
     {
       "task": "Music that follows the topic, tone and beat arc",
@@ -619,35 +951,45 @@
       "task": "Sound effects: mix into the cut",
       "use": "`mix_sfx.py`; move cues out from under narration: `vidkit.speech.snap_to_gaps`",
       "tools": [
-        "tools/mix_sfx.py"
+        "tools/mix_sfx.py",
+        "tools/vidkit/speech.py"
       ]
     },
     {
       "task": "Clips of one kelompok differ in colour / grade",
       "use": "`python3 -m tools.vidkit colormatch CLIPS...` (report; add `--apply OUTDIR` only after the owner looked at `vidkit sheet`; `vidkit.colormatch.plan/apply`)",
-      "tools": []
+      "tools": [
+        "tools/vidkit/colormatch.py"
+      ]
     },
     {
       "task": "Beat times of a music file",
       "use": "`python3 -m tools.vidkit beats FILE` (`vidkit.beats.detect`)",
-      "tools": []
+      "tools": [
+        "tools/vidkit/beats.py"
+      ]
     },
     {
       "task": "Land SFX cues on the music beat",
       "use": "`python3 tools/sfx_snap.py <project> --music-plan work/music-plan.json` (or `--music FILE`; exit 2 bad input, 3 no beats; writes `work/sfx-plan.snapped.json`; `snap` = `vidkit.beats.snap`)",
       "tools": [
-        "tools/sfx_snap.py"
+        "tools/sfx_snap.py",
+        "tools/vidkit/beats.py"
       ]
     },
     {
       "task": "Skip an expensive step when its inputs did not change",
       "use": "`vidkit.stages.fingerprint(files, params, version)` + `StageCache(path).is_fresh/record`. `tools/edit_render.py` already uses it: a re-run skips unchanged segments (`--no-cache` forces a full render)",
-      "tools": []
+      "tools": [
+        "tools/vidkit/stages.py"
+      ]
     },
     {
       "task": "Phone notification / alarm sound without paid files",
       "use": "`vidkit synth notification|alarm`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/synth.py"
+      ]
     },
     {
       "task": "Music: generate / mix",
@@ -660,12 +1002,16 @@
     {
       "task": "Final loudness (-14 LUFS) with A/V kept aligned",
       "use": "`vidkit normalize`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/loudness.py"
+      ]
     },
     {
       "task": "Final loudness to a named, sourced target (`--profile NAME`; unknown or unsourced profile exits 2)",
       "use": "`vidkit normalize --profile`, `loudness.profile()`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/loudness.py"
+      ]
     },
     {
       "task": "Pick the loudness target of a final mix by name",
@@ -675,37 +1021,51 @@
     {
       "task": "Karaoke subtitles from a word list + centre watermark (any opacity)",
       "use": "`python3 -m tools.vidkit karaoke words.json out.ass --total N --watermark @handle`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/karaoke.py"
+      ]
     },
     {
       "task": "Thumbnail on the first frames + as mp4 cover (subtitles stay off it)",
       "use": "`python3 -m tools.vidkit cover video thumb out [--ass f.ass]`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/cover.py"
+      ]
     },
     {
       "task": "Logo on a white box -> mark that blends onto a prop",
       "use": "`python3 -m tools.vidkit unwhite logo.png out.png`, then CSS `mix-blend-mode: multiply`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/unwhite.py"
+      ]
     },
     {
       "task": "Final mix in one command (voice + SFX cues + ducked music, -14 LUFS, subs, thumbnail)",
       "use": "`python3 -m tools.vidkit mixdown plan.json`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/mixdown.py"
+      ]
     },
     {
       "task": "Tag a final encode as BT.709 (flags + `setparams` filter)",
       "use": "`vidkit.color.ENCODE_FLAGS`, `vidkit.color.TAG_FILTER` (already wired into `edit_render.py` and `mixdown`)",
-      "tools": []
+      "tools": [
+        "tools/vidkit/color.py"
+      ]
     },
     {
       "task": "Read a file's colour space / primaries / transfer / range",
       "use": "`vidkit.color.probe_color(path)`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/color.py"
+      ]
     },
     {
       "task": "Does a source need a BT.601 to BT.709 conversion?",
       "use": "`vidkit.color.convert_filter(probe, warnings, source)` (`''` = leave alone)",
-      "tools": []
+      "tools": [
+        "tools/vidkit/color.py"
+      ]
     },
     {
       "task": "Follow popup with clicking cursor, \"Ssst!\", \"WOW!\", thumbnail cover (Remotion)",
@@ -740,7 +1100,9 @@
     {
       "task": "Measure onsets, tempo, energy and word/cut timing of a reference clip",
       "use": "`python3 -m tools.vidkit audiostudy <clip> [--words w.json] [--out r.json]`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/audiostudy.py"
+      ]
     },
     {
       "task": "Retention check on a finished cut (static frame, hook, foreshadow, b-roll, BGM)",
@@ -760,7 +1122,8 @@
       "task": "Put an app screen into a phone/monitor in a clip",
       "use": "`track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx`",
       "tools": [
-        "tools/track_screen.py"
+        "tools/track_screen.py",
+        "tools/vidkit/track.py"
       ]
     },
     {
@@ -773,18 +1136,23 @@
     {
       "task": "Print a logo/sablon onto a person's clothing",
       "use": "`vidkit bond`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/bond.py"
+      ]
     },
     {
       "task": "Freeze one region of a clip (a bar that must not move)",
       "use": "`vidkit freeze`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/patch.py"
+      ]
     },
     {
       "task": "Look at a clip without watching it",
       "use": "`qa_frames.py` (gate), `vidkit sheet`, `vidkit montage`",
       "tools": [
-        "tools/qa_frames.py"
+        "tools/qa_frames.py",
+        "tools/vidkit/sheet.py"
       ]
     },
     {
@@ -836,7 +1204,10 @@
     {
       "task": "Choose the video encoder for edit renders, or see a long encode is alive",
       "use": "env `GASPOL_VIDEO_ENCODER` = `libx264` (default) / `auto` / `h264_videotoolbox` (`vidkit.encoder`); `ff.run(cmd, heartbeat_s=30)`",
-      "tools": []
+      "tools": [
+        "tools/vidkit/encoder.py",
+        "tools/vidkit/ff.py"
+      ]
     },
     {
       "task": "Render ledger, reusable asset library",
