@@ -1,10 +1,12 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 from tests.py.media import duration_of, extract_frame, make_clip, psnr, requires_ffmpeg
 from tools import edit_render
+from tools.vidkit import color
 
 
 def write_plan(project, segments, **extra):
@@ -168,7 +170,7 @@ class EditRenderTest(unittest.TestCase):
         self.assertEqual(
             vf,
             "scale=1920:1080:force_original_aspect_ratio=decrease,"
-            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25" + TAG,
         )
 
     def test_unknown_motion_kind_is_rejected(self):
@@ -240,7 +242,7 @@ class EditRenderTest(unittest.TestCase):
         self.assertEqual(
             vf,
             "scale=1920:1080:force_original_aspect_ratio=decrease,"
-            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25" + TAG,
         )
 
     def test_motion_kind_none_renders_like_no_motion(self):
@@ -255,7 +257,7 @@ class EditRenderTest(unittest.TestCase):
         self.assertEqual(
             vf,
             "scale=1920:1080:force_original_aspect_ratio=decrease,"
-            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25",
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25" + TAG,
         )
 
     def test_non_finite_motion_value_is_rejected(self):
@@ -273,7 +275,13 @@ class EditRenderTest(unittest.TestCase):
         # A string match is not proof the filter runs. This renders it for real: the
         # first frame (zoom 1.00) must be nearly identical to the source, the last
         # frame (zoom 1.08) must genuinely differ — the picture actually moved.
-        make_clip(self.project / "clips" / "scene-01.mp4", seconds=2.0, size="640x480")
+        make_clip(self.project / "clips" / "raw.mp4", seconds=2.0, size="640x480")
+        # The master is now tagged bt709, so the source must carry the same tag or PNG
+        # extraction would decode the two with different matrices and PSNR would measure that.
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(self.project / "clips" / "raw.mp4"),
+                        "-c", "copy", "-bsf:v", "h264_metadata=matrix_coefficients=1:"
+                        "colour_primaries=1:transfer_characteristics=1:video_full_range_flag=0",
+                        str(self.project / "clips" / "scene-01.mp4")], check=True)
         plan = write_plan(self.project, [
             {"kind": "clip", "src": "clips/scene-01.mp4", "in_s": 0.0, "out_s": 2.0,
              "motion": {"kind": "punch-in", "from": 1.0, "to": 1.08}},
@@ -386,8 +394,9 @@ class TransitionValidationTest(unittest.TestCase):
         self.assertEqual(loaded.segments[1]["transition_in"]["dur_s"], 0.5)
 
 
+TAG = "," + color.TAG_FILTER
 FROZEN_ENCODE = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-                 "-c:a", "aac", "-ar", "48000", "-ac", "2"]
+                 *color.ENCODE_FLAGS, "-c:a", "aac", "-ar", "48000", "-ac", "2"]
 
 
 class DissolveCommandsTest(unittest.TestCase):
@@ -416,14 +425,14 @@ class DissolveCommandsTest(unittest.TestCase):
         base = "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2"
         self.assertEqual(cmds, [
             ["ffmpeg", "-y", "-v", "error", "-ss", "0.0", "-t", "2.0", "-i", "/proj/clips/a.mp4",
-             "-vf", base + ",fps=30", "-af", "anull", "-t", "2.0", *FROZEN_ENCODE,
+             "-vf", base + ",fps=30" + TAG, "-af", "anull", "-t", "2.0", *FROZEN_ENCODE,
              "/proj/work/render/part-001.mp4"],
             ["ffmpeg", "-y", "-v", "error", "-ss", "0.5", "-t", "2.0", "-i", "/proj/clips/b.mp4",
              "-vf", base + ",scale=w='ceil(320*(1.0+(0.08)*t/2.0)/2)*2':"
-                    "h='ceil(240*(1.0+(0.08)*t/2.0)/2)*2':eval=frame,crop=320:240,fps=30",
+                    "h='ceil(240*(1.0+(0.08)*t/2.0)/2)*2':eval=frame,crop=320:240,fps=30" + TAG,
              "-af", "anull", "-t", "2.0", *FROZEN_ENCODE, "/proj/work/render/part-002.mp4"],
             ["ffmpeg", "-y", "-v", "error", "-ss", "0.0", "-t", "1.5", "-i", "/proj/shots/c.mp4",
-             "-vf", base + ",fps=30,tpad=stop_mode=clone:stop_duration=0.5",
+             "-vf", base + ",fps=30,tpad=stop_mode=clone:stop_duration=0.5" + TAG,
              "-af", "apad=pad_dur=0.5", "-t", "2.0", *FROZEN_ENCODE,
              "/proj/work/render/part-003.mp4"],
         ])
@@ -550,3 +559,107 @@ class DissolveRenderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColorTagCommandsTest(unittest.TestCase):
+    def setUp(self):
+        self._ffmpeg = edit_render.FFMPEG
+        edit_render.FFMPEG = "ffmpeg"
+
+    def tearDown(self):
+        edit_render.FFMPEG = self._ffmpeg
+
+    def _plan(self, segments):
+        data = {"fps": 30, "width": 320, "height": 240, "segments": segments}
+        return edit_render.Plan(data, "/proj", "/proj/work/edit-plan.json")
+
+    def _dissolved(self):
+        return self._plan([
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 2.0},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.0, "out_s": 2.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.5}},
+        ])
+
+    def test_every_libx264_encode_carries_the_colour_flags(self):
+        cmds = edit_render.build_commands(self._dissolved())[0]
+        self.assertEqual(len(cmds), 3)  # two segments + one merge
+        for cmd in cmds:
+            self.assertIn("libx264", cmd)
+            i = cmd.index("-colorspace")
+            self.assertEqual(cmd[i:i + len(color.ENCODE_FLAGS)], color.ENCODE_FLAGS)
+
+    def test_segment_filter_ends_with_setparams(self):
+        cmds = edit_render.build_commands(self._dissolved())[0]
+        for cmd in cmds[:2]:
+            self.assertTrue(cmd[cmd.index("-vf") + 1].endswith(color.TAG_FILTER))
+
+    def test_merge_graph_tags_the_video_output(self):
+        merge = edit_render.build_commands(self._dissolved())[0][2]
+        graph = merge[merge.index("-filter_complex") + 1]
+        self.assertIn(color.TAG_FILTER, graph)
+        self.assertEqual(merge[merge.index("-map") + 1], "[vout]")
+
+    @requires_ffmpeg
+    def test_rendered_master_is_tagged_bt709_and_passes_the_gate(self):
+        project = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(project, ignore_errors=True))
+        (project / "clips").mkdir()
+        make_clip(project / "clips" / "a.mp4", seconds=1.5)
+        make_clip(project / "clips" / "b.mp4", seconds=1.5)
+        plan = write_plan(project, [
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 1.0},
+            {"kind": "clip", "src": "clips/b.mp4", "in_s": 0.0, "out_s": 1.0,
+             "transition_in": {"kind": "dissolve", "dur_s": 0.4}},
+        ])
+        out = edit_render.render(plan, project)
+        p = color.probe_color(str(out))
+        self.assertEqual((p["color_space"], p["color_primaries"], p["color_transfer"]),
+                         ("bt709", "bt709", "bt709"))
+        ok, msg = edit_render.check_av_gate(out)
+        self.assertTrue(ok, msg)
+
+
+class Bt601SourceTest(unittest.TestCase):
+    def _mean_rgb(self, path, vf):
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vf", vf, "-frames:v", "1",
+                              "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                             capture_output=True, check=True).stdout
+        return [sum(raw[c::3]) / (len(raw) / 3) for c in range(3)]
+
+    @requires_ffmpeg
+    def test_bt601_source_is_converted_not_just_relabelled(self):
+        project = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(project, ignore_errors=True))
+        (project / "clips").mkdir()
+        src = project / "clips" / "sd.mp4"
+        tag601 = "setparams=colorspace=smpte170m:color_primaries=smpte170m:color_trc=smpte170m:range=tv"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                        "testsrc=size=320x240:rate=30:duration=1.5", "-f", "lavfi", "-i",
+                        "sine=frequency=440:duration=1.5", "-vf", tag601, "-c:v", "libx264",
+                        "-pix_fmt", "yuv420p", "-colorspace", "smpte170m", "-color_primaries",
+                        "smpte170m", "-color_trc", "smpte170m", "-c:a", "aac", "-t", "1.5",
+                        str(src)], check=True)
+        self.assertEqual(color.probe_color(str(src))["color_space"], "smpte170m")
+        plan = write_plan(project, [{"kind": "clip", "src": "clips/sd.mp4", "in_s": 0.0, "out_s": 1.5}])
+        out = edit_render.render(plan, project)
+        self.assertEqual(color.probe_color(str(out))["color_space"], "bt709")
+        want = self._mean_rgb(src, "colorspace=all=bt709:iall=bt601-6-525")
+        got = self._mean_rgb(out, "null")
+        for w, g in zip(want, got):
+            self.assertAlmostEqual(w, g, delta=3.0, msg=f"want {want} got {got}")
+
+
+class SourceWarningTest(unittest.TestCase):
+    def test_hdr_source_warns_once_and_is_left_unconverted(self):
+        orig = color.probe_color
+        color.probe_color = lambda path: {"color_space": "bt2020nc", "color_primaries": "bt2020",
+                                          "color_transfer": "arib-std-b67", "color_range": "tv"}
+        self.addCleanup(setattr, color, "probe_color", orig)
+        import contextlib, io
+        err, warned = io.StringIO(), set()
+        with contextlib.redirect_stderr(err):
+            a = edit_render._source_color_filter("h.mp4", warned)
+            b = edit_render._source_color_filter("h.mp4", warned)
+        self.assertEqual((a, b), ("", ""))
+        self.assertEqual(err.getvalue().count("left unconverted"), 1)
+        self.assertEqual(err.getvalue().count("\n"), 1)

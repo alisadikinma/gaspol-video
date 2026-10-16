@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
-from tools.vidkit import beats, cover, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
+from tools.vidkit import beats, color, cover, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
 
 
 class IngestTest(unittest.TestCase):
@@ -114,6 +114,24 @@ class MixdownTest(unittest.TestCase):
                             workdir=d / "w")
             self.assertAlmostEqual(duration_of(str(o)), 4.0, delta=0.15)
             self.assertAlmostEqual(mixdown.measure_lufs(str(d / "w" / "mix.wav")), -14.0, delta=1.0)
+
+    @requires_ffmpeg
+    def test_final_mux_is_tagged_bt709_with_and_without_subtitles(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            v = d / "v.mp4"
+            make_clip(str(v), 1.5)
+            ass = d / "s.ass"
+            ass.write_text("[Script Info]\nScriptType: v4.00+\nPlayResX: 320\nPlayResY: 240\n"
+                           "[V4+ Styles]\nFormat: Name, Fontname, Fontsize\nStyle: Default,Arial,20\n"
+                           "[Events]\nFormat: Layer, Start, End, Style, Text\n"
+                           "Dialogue: 0,0:00:00.00,0:00:01.00,Default,hi\n")
+            for name, extra in (("plain", {}), ("subs", {"ass": str(ass)})):
+                o = d / f"{name}.mp4"
+                mixdown.run({"video": str(v), "out": str(o), **extra}, workdir=d / f"w-{name}")
+                p = color.probe_color(str(o))
+                self.assertEqual((p["color_space"], p["color_primaries"], p["color_transfer"]),
+                                 ("bt709", "bt709", "bt709"), name)
 
 
 class PureLogicTest(unittest.TestCase):
@@ -413,3 +431,68 @@ class BeatsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColorTest(unittest.TestCase):
+    def _encode(self, d, extra_in=(), name="o.mp4"):
+        out = Path(d) / name
+        ff.ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=1", *extra_in,
+                  "-vf", color.TAG_FILTER, "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                  *color.ENCODE_FLAGS, "-an", out)
+        return str(out)
+
+    @requires_ffmpeg
+    def test_encode_flags_tag_stream_as_bt709(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = color.probe_color(self._encode(d))
+            self.assertEqual(p["color_space"], "bt709")
+            self.assertEqual(p["color_primaries"], "bt709")
+            self.assertEqual(p["color_transfer"], "bt709")
+            self.assertEqual(p["color_range"], "tv")
+
+    def test_encode_flags_and_tag_filter_are_pinned(self):
+        self.assertEqual(color.ENCODE_FLAGS, ["-colorspace", "bt709", "-color_primaries", "bt709",
+                                              "-color_trc", "bt709", "-color_range", "tv"])
+        self.assertEqual(color.TAG_FILTER, "setparams=colorspace=bt709:color_primaries=bt709:"
+                                           "color_trc=bt709:range=tv")
+
+    @requires_ffmpeg
+    def test_probe_without_video_stream_raises_clear_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            wav = Path(d) / "a.wav"
+            ff.ffmpeg("-f", "lavfi", "-i", "sine=f=440:d=0.2", wav)
+            with self.assertRaises(ff.FFError) as cm:
+                color.probe_color(str(wav))
+            self.assertIn("no video stream", str(cm.exception))
+
+    def _p(self, space="unknown", prim="unknown", trc="unknown"):
+        return {"color_space": space, "color_primaries": prim, "color_transfer": trc,
+                "color_range": "tv"}
+
+    def test_bt709_needs_no_conversion(self):
+        self.assertEqual(color.convert_filter(self._p("bt709", "bt709", "bt709")), "")
+
+    def test_untagged_is_assumed_bt709(self):
+        w = []
+        self.assertEqual(color.convert_filter(self._p(), w), "")
+        self.assertEqual(w, [])
+
+    def test_explicit_bt601_is_converted(self):
+        self.assertEqual(color.convert_filter(self._p("smpte170m", "smpte170m", "smpte170m")),
+                         "colorspace=all=bt709:iall=bt601-6-525")
+        self.assertEqual(color.convert_filter(self._p("bt470bg", "bt470bg", "bt470bg")),
+                         "colorspace=all=bt709:iall=bt601-6-625")
+
+    def test_unknown_value_is_not_converted_and_warns(self):
+        w = []
+        self.assertEqual(color.convert_filter(self._p("ycgco"), w, "clip.mp4"), "")
+        self.assertEqual(len(w), 1)
+        self.assertIn("clip.mp4", w[0])
+        self.assertIn("ycgco", w[0])
+
+    def test_hdr_transfer_is_left_alone_with_warning(self):
+        for trc in ("smpte2084", "arib-std-b67"):
+            w = []
+            self.assertEqual(color.convert_filter(self._p("bt2020nc", "bt2020", trc), w, "h.mp4"), "")
+            self.assertEqual(len(w), 1)
+            self.assertIn(trc, w[0])

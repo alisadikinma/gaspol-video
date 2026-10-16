@@ -37,6 +37,9 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Thumbnail on the first frames + as mp4 cover (subtitles stay off it) | `python3 -m tools.vidkit cover video thumb out [--ass f.ass]` |
 | Logo on a white box -> mark that blends onto a prop | `python3 -m tools.vidkit unwhite logo.png out.png`, then CSS `mix-blend-mode: multiply` |
 | Final mix in one command (voice + SFX cues + ducked music, -14 LUFS, subs, thumbnail) | `python3 -m tools.vidkit mixdown plan.json` |
+| Tag a final encode as BT.709 (flags + `setparams` filter) | `vidkit.color.ENCODE_FLAGS`, `vidkit.color.TAG_FILTER` (already wired into `edit_render.py` and `mixdown`) |
+| Read a file's colour space / primaries / transfer / range | `vidkit.color.probe_color(path)` |
+| Does a source need a BT.601 to BT.709 conversion? | `vidkit.color.convert_filter(probe, warnings, source)` (`''` = leave alone) |
 | Follow popup with clicking cursor, "Ssst!", "WOW!", thumbnail cover (Remotion) | `templates/remotion/lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover` |
 | Subtitles / captions / keyword highlight | `gen_subs.py`, `burn_subs.py`, `gen_captions.py`, `caption_keywords.py` |
 | Kinetic text overlay behind the speaker | `overlay_plan.py`, `person_mask.py`, Remotion `KineticOverlay` |

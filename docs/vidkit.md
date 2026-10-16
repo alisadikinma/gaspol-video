@@ -71,6 +71,17 @@ Used by `skills/video-repackage`. CLI: `vidkit ingest`, `vidkit scenes`.
 
 Remotion: `templates/remotion/lib/ali-effects.tsx` (copied into every scaffold). Props only, each start frame is a prop.
 
+## Colour (`color`)
+
+Final encodes are tagged BT.709, so players do not guess the matrix. `edit_render.py` (segment and dissolve-merge encodes) and `mixdown` (final mux) add `color.ENCODE_FLAGS` and end the video filter with `color.TAG_FILTER` (`setparams=...`). The `setparams` filter is what writes the tag; the encoder flags alone leave an untagged input untagged. Stream-copy steps are not touched.
+
+| Function | Use |
+|---|---|
+| `probe_color(path)` | `color_space`, `color_primaries`, `color_transfer`, `color_range`; `unknown` when missing; `ff.FFError` "no video stream" when there is none |
+| `convert_filter(probe, warnings=None, source="")` | `""` for bt709 or untagged (assumed bt709); `colorspace=all=bt709:iall=bt601-6-525` / `-625` for smpte170m / bt470bg; `""` plus a line in `warnings` for HDR (`smpte2084`, `arib-std-b67`) or an unknown matrix. It never converts on a guess |
+
+`edit_render.py` probes every source clip and puts `convert_filter` in front of the scale chain, so an explicitly bt601 clip (smpte170m / bt470bg) is converted before it is tagged bt709, and its colours are preserved. Untagged and bt709 sources get no extra filter, so their commands are unchanged. HDR or an unknown matrix is tagged bt709 without conversion and prints one stderr warning per file (`... left unconverted; tagged bt709 anyway`). A source that cannot be probed is not converted. The dissolve merge and `mixdown` only read already-rendered bt709 files, so they need tagging only.
+
 ## Beats (`beats`)
 
 | Function | What |

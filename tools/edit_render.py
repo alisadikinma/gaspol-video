@@ -22,6 +22,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.vidkit import color  # noqa: E402
+
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
 
@@ -285,6 +290,22 @@ def _motion_filter(motion, duration_s, width, height, clamp=False):
     )
 
 
+def _source_color_filter(src, warned):
+    """Conversion filter for one source clip ('' when none is needed or it cannot be
+    probed). A warning is printed once per file, naming the value left unconverted."""
+    try:
+        probe = color.probe_color(str(src))
+    except (color.ff.FFError, OSError, ValueError):
+        return ""
+    found = []
+    flt = color.convert_filter(probe, found, str(src))
+    if str(src) not in warned:
+        warned.add(str(src))
+        for w in found:
+            print(f"warning: {w}; tagged bt709 anyway", file=sys.stderr)
+    return flt
+
+
 def _dissolve_dur(seg):
     """Seconds of dissolve INTO this segment, 0.0 when it has none."""
     transition = seg.get("transition_in")
@@ -304,6 +325,7 @@ def build_commands(plan):
     cmds = []
     seg_parts = []
     segments = plan.segments
+    warned = set()
 
     for i, seg in enumerate(segments, start=1):
         src = plan.project / seg["src"]
@@ -315,7 +337,9 @@ def build_commands(plan):
         ext = _dissolve_dur(segments[i]) if i < len(segments) else 0.0
         render_dur = round(dur + ext, 3) if ext else dur
 
-        vf = f"scale={width}:{height}:force_original_aspect_ratio=decrease," \
+        convert = _source_color_filter(src, warned)
+        vf = (convert + "," if convert else "") + \
+             f"scale={width}:{height}:force_original_aspect_ratio=decrease," \
              f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
         motion_filter = _motion_filter(seg.get("motion"), dur, width, height, clamp=bool(ext))
         if motion_filter:
@@ -326,6 +350,7 @@ def build_commands(plan):
             # silence either way so the two streams stay the same length.
             clone = "clone" if seg.get("pad_mode", "freeze") == "freeze" else "add=black"
             vf += f",tpad=stop_mode={clone}:stop_duration={pad}"
+        vf += "," + color.TAG_FILTER
 
         cmd = [FFMPEG, "-y", "-v", "error",
                "-ss", str(seg["in_s"]), "-t", str(render_dur), "-i", str(src),
@@ -333,6 +358,7 @@ def build_commands(plan):
                "-af", f"apad=pad_dur={pad}" if pad else "anull",
                "-t", str(render_dur + pad),
                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+               *color.ENCODE_FLAGS,
                "-c:a", "aac", "-ar", "48000", "-ac", "2",
                str(part)]
         cmds.append(cmd)
@@ -381,10 +407,13 @@ def _merge_command(plan, members, seg_parts, merged):
     # The last part carries no handle, so `planned` is now the group's exact planned
     # length. Capping at it drops the encoder padding aac appends after the final frame,
     # which the concat would otherwise add to the master.
+    # Tag the merged picture: the last xfade output is renamed so [vout] is the tagged one.
+    video[-1] = video[-1][:-len("[vout]")] + f"[vpre];[vpre]{color.TAG_FILTER}[vout]"
     return [FFMPEG, "-y", "-v", "error", *inputs,
             "-filter_complex", ";".join(video + audio),
             "-map", "[vout]", "-map", "[aout]", "-r", str(plan.fps), "-t", str(round(planned, 3)),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            *color.ENCODE_FLAGS,
             "-c:a", "aac", "-ar", "48000", "-ac", "2",
             str(merged)]
 
