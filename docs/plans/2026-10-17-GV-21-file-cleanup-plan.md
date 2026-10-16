@@ -99,7 +99,7 @@ Python 3 stdlib only (`argparse`, `hashlib`, `json`, `os`, `pathlib`, `re`, `shu
 | Stale ledger entries | `renders.json` via `renders.load()` | `tools/renders.py` | Yes | Import `tools.renders` from `tidy` |
 | Old `.tmp` files | file mtime | `os.stat` | Yes | New `tidy.old_tmp()` |
 | Stray subfolders | real listing of `ref keyframes clips vo sfx _arsip output` | `os.scandir` | Yes | `unknown_subdirs` in `scan()` |
-| MCP copy already home | sha256 of `.tmp/image|video` media vs `DUP_DIRS` index | `hashlib` | Yes | `mcp_already_home` in `scan()` |
+| MCP copy already home | sha256 of `.tmp/image` and `.tmp/video` media vs `DUP_DIRS` index | `hashlib` | Yes | `mcp_already_home` in `scan()` |
 | Routing after GV-20 | `tools/registry.json` | `tools/registry_build.py render` | Only after GV-20 merges | Registry entries, not hand rows |
 | CLI `tidy` | argv | `tools/vidkit/__main__.py` | Yes | Add parser + dispatch |
 | Skill instructions | `skills/*/SKILL.md` | n/a | Yes | Add lines |
