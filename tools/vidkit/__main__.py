@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, track, unwhite
+from . import audiostudy, cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, track, unwhite
 
 
 def _json(p):
@@ -25,6 +25,11 @@ def main(argv=None):
     s.add_argument("out_dir")
     s.add_argument("--threshold", type=float, default=0.3)
     s.add_argument("--min-len", type=float, default=0.6)
+
+    s = sub.add_parser("audiostudy", help="onsets, tempo, loudness, energy and word/cut relation of one clip")
+    s.add_argument("clip")
+    s.add_argument("--words", help="words json [[word,start,end],...]")
+    s.add_argument("--out", help="write the full report as JSON")
 
     s = sub.add_parser("karaoke", help="words json [[word,start,end],...] -> karaoke .ass (+ centre watermark)")
     s.add_argument("words")
@@ -126,6 +131,14 @@ def main(argv=None):
         elif a.cmd == "scenes":
             rows = ingest.split_scenes(a.video, a.out_dir, a.threshold, a.min_len)
             print(f"{len(rows)} scenes -> {a.out_dir}/scenes.json")
+        elif a.cmd == "audiostudy":
+            rep = audiostudy.study(a.clip, _json(a.words) if a.words else None)
+            if a.out:
+                with open(a.out, "w") as fh:
+                    json.dump(rep, fh, indent=1)
+            bpm = rep["tempo_bpm"]
+            print(f"{a.clip} {rep['duration']:.1f}s {rep['loudness_lufs']:.1f} LUFS "
+                  f"{len(rep['onsets'])} onsets {'%.0f BPM' % bpm if bpm else 'no tempo'}")
         elif a.cmd == "karaoke":
             words = [tuple(w) for w in _json(a.words)]
             open(a.out, "w").write(karaoke.build_ass(words, a.total, a.watermark, a.opacity, a.font, margin_v=a.margin_v))
