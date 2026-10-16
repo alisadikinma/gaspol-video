@@ -435,9 +435,9 @@ class RenderTest(FakeRoot):
         rc, out, _ = cli("render", "--check", root=ROOT)
         self.assertEqual(rc, 0, out)
 
-    def test_committed_registry_has_fiftynine_routes_and_validates(self):
+    def test_committed_registry_has_sixtyone_routes_and_validates(self):
         reg = json.loads((ROOT / "tools/registry.json").read_text())
-        self.assertEqual(len(reg["routes"]), 59)
+        self.assertEqual(len(reg["routes"]), 61)
         self.assertEqual(registry_build.validate(reg, ROOT), [])
         deck = [r for r in reg["routes"] if r["task"].startswith("Deck / slide")]
         self.assertEqual(deck[0]["tools"], [])
@@ -463,6 +463,32 @@ class CommittedCoverageTest(unittest.TestCase):
         self.assertIn("tools/gen_vo.mjs", by_id)
         for tid, t in by_id.items():
             self.assertTrue(tid in routed or t["internal_reason"], tid)
+
+
+class CommittedFullToolsCoverageTest(unittest.TestCase):
+    def test_every_tool_directly_under_tools_is_registered_and_routed(self):
+        rc, out, _ = cli("validate", "--coverage", root=ROOT)
+        direct = [
+            i for i in registry_build.discover(ROOT) if i.count("/") == 1
+        ]
+        lines = out.splitlines()
+        for tid in direct:
+            self.assertNotIn(f"{tid}: not in registry", lines)
+            self.assertNotIn(f"{tid}: no route and no internal_reason", lines)
+        leftovers = [ln for ln in lines if ln.startswith("tools/") and not ln.startswith("tools/vidkit/")]
+        self.assertEqual(leftovers, [])
+
+    def test_probe_clips_is_excused_from_vidkit_probe(self):
+        reg = json.loads((ROOT / "tools/registry.json").read_text())
+        by_id = {t["id"]: t for t in reg["tools"]}
+        self.assertEqual(
+            by_id["tools/probe_clips.py"]["distinct_because"],
+            "writes work/clip-manifest.json for a project (inventory + audio presence); "
+            "vidkit probe prints one file's facts",
+        )
+        self.assertEqual(
+            by_id["tools/probe_clips.py"]["tasks"], ["clip-manifest", "inventory", "durations"]
+        )
 
 
 class ScriptTest(unittest.TestCase):

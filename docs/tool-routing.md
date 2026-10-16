@@ -70,6 +70,8 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | YouTube stats | `yt_stats.py` |
 | Deck / slide post-processing (PDF, watermark, numbering) | NOT here: `gaspol-catalog` `tools/deckkit` |
 | Check a Remotion overlay shows only approved on-screen text | `python3 tools/check_overlay_strings.py <shots-dir> --from-markdown av-script.md --heading "<block>"` |
+| Inventory a project's generated clips (durations, audio presence) | `python3 tools/probe_clips.py <project>` writes `work/clip-manifest.json` |
+| Find which tool does a job / check the registry | `python3 tools/registry_build.py suggest --text-file F`, `validate --coverage`, `render` |
 <!-- registry:routes:end -->
 
 ## When no tool fits (inject back)
