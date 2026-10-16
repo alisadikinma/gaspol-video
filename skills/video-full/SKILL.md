@@ -79,19 +79,6 @@ before any NB2 credit is spent, so an app screen never gets drawn twice.
 
 ---
 
-### Step 2.5: Pre-flight cost estimate (before any billed render)
-
-Once `scene-plan.md` is approved, count the planned units (images, VEO seconds, TTS
-thousand-chars, music seconds, SFX clips) and run
-`python3 tools/cost_log.py {output_folder} estimate --plan '{"nb2-image": N, "veo-3.1-fast-clip": S, ...}'`.
-Show the result to the owner. Exit 2 because prices are missing: tell the owner to fill
-`media/pricing.json` (price and source per item); never skip the estimate silently and
-never guess a price. Ask for a budget (`cost_log.py {output_folder} budget --set N`).
-Billed render offers log each call with `cost_log.py add`; run `cost_log.py {output_folder} report`
-in Step 8.
-
----
-
 ### Step 3: Run `/video-image` (Phase 4A, 4B)
 
 Invoke the video-image skill for:
