@@ -1,0 +1,1319 @@
+{
+  "version": 1,
+  "tools": [
+    {
+      "id": "tools/asset_home.py",
+      "purpose": "Locate or adopt the reusable SFX, music and image libraries that live outside the plugin cache.",
+      "tasks": [
+        "library",
+        "locate",
+        "adopt"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/asset_library.py",
+      "purpose": "Find, add, list and reuse generic images across projects, matched on exact prompt and aspect.",
+      "tasks": [
+        "image",
+        "library",
+        "reuse"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/burn_subs.py",
+      "purpose": "Burn subtitles into the master, guarding against missing-glyph fonts and low-contrast colours.",
+      "tasks": [
+        "subtitles",
+        "burn",
+        "font-check"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/caption_keywords.py",
+      "purpose": "Score which run of timed words deserves the highlight on a kinetic caption page.",
+      "tasks": [
+        "caption",
+        "keyword",
+        "scoring"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/check_overlay_strings.py",
+      "purpose": "Fail when a Remotion overlay shows on-screen text that the script never approved.",
+      "tasks": [
+        "overlay",
+        "text",
+        "approved-strings"
+      ],
+      "phase": "4",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/check_vo_duration.py",
+      "purpose": "Fail when a narration line does not fit its cut, or a cut runs on in silence.",
+      "tasks": [
+        "narration",
+        "duration",
+        "fit-check"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/clean_voice.py",
+      "purpose": "Remove background noise from platform-native dialogue before the Voice Changer, keeping duration.",
+      "tasks": [
+        "dialogue",
+        "denoise",
+        "clean"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/composite.py",
+      "purpose": "Put a rendered Remotion shot onto the master as cutaway, overlay, split or insert.",
+      "tasks": [
+        "composite",
+        "cutaway",
+        "overlay",
+        "split"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/composite_logo.py",
+      "purpose": "Paste a real logo file onto a rendered thumbnail as a pixel-exact layer.",
+      "tasks": [
+        "thumbnail",
+        "logo",
+        "composite"
+      ],
+      "phase": "7",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/cost_log.py",
+      "purpose": "Record units of billed renders, failed attempts and re-rolls per scene, with no prices.",
+      "tasks": [
+        "cost",
+        "render",
+        "billing"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/edit_render.py",
+      "purpose": "Assemble the master from work/edit-plan.json with ffmpeg, validating the plan before encoding.",
+      "tasks": [
+        "edit",
+        "render",
+        "master"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_app_screen.py",
+      "purpose": "Make app-screen PNGs for ref/ by capturing a real URL or rendering a Remotion mock.",
+      "tasks": [
+        "app-screen",
+        "capture",
+        "mock"
+      ],
+      "phase": "4",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_captions.py",
+      "purpose": "Build the kinetic caption plan from voice-over or recognizer word timings.",
+      "tasks": [
+        "caption",
+        "plan",
+        "timing"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_music.py",
+      "purpose": "Generate music beds into the shared library from mood recipes, or compose one bed to the master.",
+      "tasks": [
+        "music",
+        "library",
+        "generate"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_sfx.py",
+      "purpose": "Generate SFX clips into the shared library from the palette recipes.",
+      "tasks": [
+        "sfx",
+        "library",
+        "generate"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_subs.py",
+      "purpose": "Build subtitle cues from the script text, with a recognizer used for timing only.",
+      "tasks": [
+        "subtitles",
+        "cues",
+        "script-text"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/gen_vo.mjs",
+      "purpose": "Generate narration audio from work/audio-plan.json with ElevenLabs, with pause tags and caching.",
+      "tasks": [
+        "narration",
+        "tts",
+        "voice-over"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/make_stems.py",
+      "purpose": "Write full-length voice, SFX and music WAV stems for a human editor, gains baked in, no ducking.",
+      "tasks": [
+        "stems",
+        "handoff",
+        "wav"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/mix_music.py",
+      "purpose": "Lay a music bed under the finished voice, ducked, and measure the headroom.",
+      "tasks": [
+        "music",
+        "bed",
+        "duck"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/mix_sfx.py",
+      "purpose": "Mix the SFX cue sheet over a master, then prove each cue is audible.",
+      "tasks": [
+        "sfx",
+        "cues",
+        "audibility"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/music_brief.py",
+      "purpose": "Turn topic, tone and beat arc into one music prompt per segment and a project palette.",
+      "tasks": [
+        "music-prompt",
+        "palette",
+        "segments"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/overlay_plan.py",
+      "purpose": "Resolve kinetic-overlay cues to frames from voice words and stage their media for Remotion.",
+      "tasks": [
+        "kinetic-overlay",
+        "cue-timing",
+        "keywords"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/person_mask.py",
+      "purpose": "Write per-frame person mattes for a clip so overlay graphics can sit behind the speaker.",
+      "tasks": [
+        "person-matte",
+        "mask",
+        "segmentation"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/plan_motion.py",
+      "purpose": "Fill automatic zoom motion into the static segments of work/edit-plan.json.",
+      "tasks": [
+        "motion",
+        "punch-in",
+        "zoom"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/probe_clips.py",
+      "purpose": "Inventory a project's generated clips and write work/clip-manifest.json.",
+      "tasks": [
+        "clip-manifest",
+        "inventory",
+        "durations"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "writes work/clip-manifest.json for a project (inventory + audio presence); vidkit probe prints one file's facts",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/qa_frames.py",
+      "purpose": "Tile five frames per rendered clip and gate on a filled visual verdict sheet.",
+      "tasks": [
+        "clip-qa",
+        "contact-sheet",
+        "visual-verdict"
+      ],
+      "phase": "5",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/registry_build.py",
+      "purpose": "Validate the tool registry, render the routing table, and suggest tools for a text.",
+      "tasks": [
+        "registry",
+        "routing",
+        "duplicates",
+        "hook"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/renders.py",
+      "purpose": "Ledger of in-session image and video renders so an unchanged prompt is not billed twice.",
+      "tasks": [
+        "render-ledger",
+        "prompt-hash",
+        "eligibility"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/retention_gate.py",
+      "purpose": "Report five retention rules on a finished cut and gate b-roll verdicts, never blocking on rules.",
+      "tasks": [
+        "retention",
+        "static-frame",
+        "hook-timing"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/sfx_snap.py",
+      "purpose": "Snap SFX cue times onto the beats of the music bed, writing a separate snapped plan.",
+      "tasks": [
+        "sfx-snap",
+        "beats",
+        "cue-timing"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/thumb_scrim.py",
+      "purpose": "Deepen the dark scrim behind a thumbnail headline to a target contrast, deterministically.",
+      "tasks": [
+        "thumbnail",
+        "scrim",
+        "contrast"
+      ],
+      "phase": "7",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/thumb_verify.py",
+      "purpose": "Verdict sheet and gate so a rendered thumbnail is final only after it was looked at.",
+      "tasks": [
+        "thumbnail-verdict",
+        "gate",
+        "sha256"
+      ],
+      "phase": "7",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/track_screen.py",
+      "purpose": "Track the four corners of a screen in a clip so a Remotion panel lands on the glass.",
+      "tasks": [
+        "screen-tracking",
+        "corners",
+        "panel"
+      ],
+      "phase": "4",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/verdict_page.py",
+      "purpose": "Build an offline keyframe verdict page and gate clip renders on PASS verdicts.",
+      "tasks": [
+        "keyframe-verdict",
+        "approval-page",
+        "gate"
+      ],
+      "phase": "4",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/verify_render.py",
+      "purpose": "Diff the rendered master's second ASR transcript against the script narration (P6).",
+      "tasks": [
+        "asr-diff",
+        "narration-check",
+        "p6"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/audiostudy.py",
+      "purpose": "Measure a clip's SFX and music timing: onsets, tempo, loudness, energy, and how onsets sit against words and cuts.",
+      "tasks": [
+        "onsets",
+        "tempo",
+        "reference-study"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/beats.py",
+      "purpose": "Detect beats in a music file and snap cue times onto the nearest beat.",
+      "tasks": [
+        "beat-detect",
+        "beat-snap",
+        "music-grid"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/bond.py",
+      "purpose": "Bond a transparent print (logo, watermark) onto cloth in a presenter clip so it looks printed (needs cv2).",
+      "tasks": [
+        "cloth-print",
+        "logo-bond",
+        "fabric-mask"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/color.py",
+      "purpose": "BT.709 colour tagging and BT.601 conversion filters for final encodes.",
+      "tasks": [
+        "color-tag",
+        "bt709",
+        "color-convert"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/colormatch.py",
+      "purpose": "Measure each clip's mean RGB and compute or apply a per-channel gain that pulls outliers toward a reference.",
+      "tasks": [
+        "color-match",
+        "clip-grade",
+        "gain-apply"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/cover.py",
+      "purpose": "Burn subtitles, put a thumbnail on the first frames and attach it as the mp4 cover.",
+      "tasks": [
+        "thumbnail-first-frames",
+        "mp4-cover",
+        "burn-ass"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/encoder.py",
+      "purpose": "Choose the video encoder (libx264 default, optional hardware) from GASPOL_VIDEO_ENCODER.",
+      "tasks": [
+        "encoder-choice",
+        "hardware-encode",
+        "env-switch"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/ff.py",
+      "purpose": "ffmpeg and ffprobe plumbing: run commands with a heartbeat and probe a file's duration, size and audio facts.",
+      "tasks": [
+        "ffmpeg-run",
+        "probe-file",
+        "heartbeat"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/gates.py",
+      "purpose": "Hard pre-assembly checks: video and audio length match, clips share sample rate and channels.",
+      "tasks": [
+        "gate-av",
+        "gate-uniform",
+        "pre-concat-check"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/ingest.py",
+      "purpose": "Download a video link with yt-dlp and cut it into scenes with first, mid and last stills.",
+      "tasks": [
+        "download-link",
+        "scene-cut",
+        "reference-stills"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/join.py",
+      "purpose": "Join clips with hard cuts or cross-dissolves and compute the resulting timeline.",
+      "tasks": [
+        "concat",
+        "crossfade",
+        "timeline-math"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/js/cast_voice.mjs",
+      "purpose": "Voice-change a clip's dialogue spans with per-character settings and seed from a cast file.",
+      "tasks": [
+        "cast-voice-change",
+        "speech-to-speech",
+        "per-character-seed"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/js/eleven.mjs",
+      "purpose": "ElevenLabs helpers: one-off TTS with explicit settings and seed, word timings by STT, and sound effects.",
+      "tasks": [
+        "tts-seeded",
+        "stt-words",
+        "sfx-generate"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/js/env.mjs",
+      "purpose": "Load KEY=VALUE .env files and require keys without ever printing them.",
+      "tasks": [
+        "env-loading",
+        "key-check",
+        "secret-safe"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": "Imported by eleven.mjs and cast_voice.mjs; no CLI of its own."
+    },
+    {
+      "id": "tools/vidkit/karaoke.py",
+      "purpose": "Build karaoke ASS subtitles from a word list plus an optional centre watermark line.",
+      "tasks": [
+        "karaoke-ass",
+        "word-groups",
+        "watermark-text"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/loudness.py",
+      "purpose": "Two-pass loudnorm to a target with audio padded and trimmed to the picture length.",
+      "tasks": [
+        "loudnorm",
+        "lufs-target",
+        "loudness-profile"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/mixdown.py",
+      "purpose": "One-command final mix from a plan json: voice, SFX cues, ducked music, loudness, subtitles and thumbnail.",
+      "tasks": [
+        "final-mix",
+        "ducked-music",
+        "plan-json"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/patch.py",
+      "purpose": "Freeze a rectangle of a clip to one frame so a model-animated bar or number stays still.",
+      "tasks": [
+        "freeze-box",
+        "static-region",
+        "frame-patch"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/sheet.py",
+      "purpose": "Tile frames of a clip, or several images, into one contact sheet or montage JPEG.",
+      "tasks": [
+        "contact-sheet",
+        "montage",
+        "frame-tiling"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/speech.py",
+      "purpose": "Word timing from alignments and speech-gap logic for snapping cues out from under narration.",
+      "tasks": [
+        "word-timing",
+        "speech-gaps",
+        "cue-snap"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/stages.py",
+      "purpose": "Per-stage fingerprint cache that skips a step whose inputs, parameters and recipe version are unchanged.",
+      "tasks": [
+        "fingerprint",
+        "stage-cache",
+        "skip-unchanged"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/synth.py",
+      "purpose": "Synthesize short notification and alarm sounds with ffmpeg alone from layered tone and noise data.",
+      "tasks": [
+        "notification-sound",
+        "alarm-sound",
+        "ffmpeg-synth"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/track.py",
+      "purpose": "Median-filter tracked screen boxes and pin one angle for a static target.",
+      "tasks": [
+        "track-smoothing",
+        "box-jitter",
+        "fixed-angle"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/unwhite.py",
+      "purpose": "Key the white box out of a logo so it blends onto a surface.",
+      "tasks": [
+        "logo-unwhite",
+        "white-key",
+        "blend-prep"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/viral_checklist.py",
+      "purpose": "Check the viral checklist block of a short-form script and rate analytics against thresholds.",
+      "tasks": [
+        "viral-checklist",
+        "script-gate",
+        "analytics-rating"
+      ],
+      "phase": "2",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/voice_changer.mjs",
+      "purpose": "Convert platform-generated dialogue spans into a locked character voice, refusing duration drift.",
+      "tasks": [
+        "voice-change",
+        "speech-to-speech",
+        "drift-check"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/yt_stats.py",
+      "purpose": "Pull a published video's metadata and owner analytics into packaging calibration data.",
+      "tasks": [
+        "youtube",
+        "analytics",
+        "calibration"
+      ],
+      "phase": "7",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    }
+  ],
+  "routes": [
+    {
+      "task": "Download someone's video from a link",
+      "use": "`python3 -m tools.vidkit ingest <url> <dir>`",
+      "tools": [
+        "tools/vidkit/ingest.py"
+      ]
+    },
+    {
+      "task": "Cut a video into scenes (clip + first/mid/last stills + scenes.json)",
+      "use": "`python3 -m tools.vidkit scenes <video> <dir>`",
+      "tools": [
+        "tools/vidkit/ingest.py"
+      ]
+    },
+    {
+      "task": "Probe a clip (duration, fps, size, sample rate, channels)",
+      "use": "`python3 -m tools.vidkit probe` / `vidkit.ff.probe`",
+      "tools": [
+        "tools/vidkit/ff.py"
+      ]
+    },
+    {
+      "task": "Check video length = audio length",
+      "use": "`vidkit gate-av`; narration fits its cut: `check_vo_duration.py`",
+      "tools": [
+        "tools/check_vo_duration.py",
+        "tools/vidkit/gates.py"
+      ]
+    },
+    {
+      "task": "Check clips are safe to concat (same sample rate and channels)",
+      "use": "`vidkit gate-uniform`",
+      "tools": [
+        "tools/vidkit/gates.py"
+      ]
+    },
+    {
+      "task": "Join clips with hard cuts",
+      "use": "`vidkit concat`",
+      "tools": [
+        "tools/vidkit/join.py"
+      ]
+    },
+    {
+      "task": "Join clips with dissolves (audio kept whole)",
+      "use": "`vidkit xfade`; clip start times: `vidkit.join.clip_starts`",
+      "tools": [
+        "tools/vidkit/join.py"
+      ]
+    },
+    {
+      "task": "Edit from a plan (cuts, motion, shots, transitions)",
+      "use": "`edit_render.py`, `plan_motion.py`",
+      "tools": [
+        "tools/edit_render.py",
+        "tools/plan_motion.py"
+      ]
+    },
+    {
+      "task": "Insert/overlay/split a shot into a master",
+      "use": "`composite.py`",
+      "tools": [
+        "tools/composite.py"
+      ]
+    },
+    {
+      "task": "Narration (TTS) from a script",
+      "use": "`gen_vo.mjs`",
+      "tools": [
+        "tools/gen_vo.mjs"
+      ]
+    },
+    {
+      "task": "One quick line with explicit voice settings and seed",
+      "use": "`node tools/vidkit/js/eleven.mjs tts`",
+      "tools": [
+        "tools/vidkit/js/eleven.mjs"
+      ]
+    },
+    {
+      "task": "Replace the voice in a clip's dialogue",
+      "use": "`voice_changer.mjs`",
+      "tools": [
+        "tools/voice_changer.mjs"
+      ]
+    },
+    {
+      "task": "...with per-character settings/seed, only the spoken spans",
+      "use": "`node tools/vidkit/js/cast_voice.mjs plan.json`",
+      "tools": [
+        "tools/vidkit/js/cast_voice.mjs"
+      ]
+    },
+    {
+      "task": "Clean platform dialogue before voice change",
+      "use": "`clean_voice.py`",
+      "tools": [
+        "tools/clean_voice.py"
+      ]
+    },
+    {
+      "task": "Word timings of a clip",
+      "use": "`node tools/vidkit/js/eleven.mjs stt`; from an alignment json: `vidkit words`",
+      "tools": [
+        "tools/vidkit/js/eleven.mjs",
+        "tools/vidkit/speech.py"
+      ]
+    },
+    {
+      "task": "Music that follows the topic, tone and beat arc",
+      "use": "`music_brief.py <project>` writes `work/music-palette.json` + plan segments, then `gen_music.py --recipes <project>/work/music-palette.json --only <ids>`",
+      "tools": [
+        "tools/gen_music.py",
+        "tools/music_brief.py"
+      ]
+    },
+    {
+      "task": "Sound effects: generate",
+      "use": "`gen_sfx.py` (palette), `eleven.mjs sfx` (one-off prompt)",
+      "tools": [
+        "tools/gen_sfx.py"
+      ]
+    },
+    {
+      "task": "Sound effects: mix into the cut",
+      "use": "`mix_sfx.py`; move cues out from under narration: `vidkit.speech.snap_to_gaps`",
+      "tools": [
+        "tools/mix_sfx.py",
+        "tools/vidkit/speech.py"
+      ]
+    },
+    {
+      "task": "Clips of one kelompok differ in colour / grade",
+      "use": "`python3 -m tools.vidkit colormatch CLIPS...` (report; add `--apply OUTDIR` only after the owner looked at `vidkit sheet`; `vidkit.colormatch.plan/apply`)",
+      "tools": [
+        "tools/vidkit/colormatch.py"
+      ]
+    },
+    {
+      "task": "Beat times of a music file",
+      "use": "`python3 -m tools.vidkit beats FILE` (`vidkit.beats.detect`)",
+      "tools": [
+        "tools/vidkit/beats.py"
+      ]
+    },
+    {
+      "task": "Land SFX cues on the music beat",
+      "use": "`python3 tools/sfx_snap.py <project> --music-plan work/music-plan.json` (or `--music FILE`; exit 2 bad input, 3 no beats; writes `work/sfx-plan.snapped.json`; `snap` = `vidkit.beats.snap`)",
+      "tools": [
+        "tools/sfx_snap.py",
+        "tools/vidkit/beats.py"
+      ]
+    },
+    {
+      "task": "Skip an expensive step when its inputs did not change",
+      "use": "`vidkit.stages.fingerprint(files, params, version)` + `StageCache(path).is_fresh/record`. `tools/edit_render.py` already uses it: a re-run skips unchanged segments (`--no-cache` forces a full render)",
+      "tools": [
+        "tools/vidkit/stages.py"
+      ]
+    },
+    {
+      "task": "Phone notification / alarm sound without paid files",
+      "use": "`vidkit synth notification|alarm`",
+      "tools": [
+        "tools/vidkit/synth.py"
+      ]
+    },
+    {
+      "task": "Music: generate / mix",
+      "use": "`gen_music.py`, `mix_music.py`",
+      "tools": [
+        "tools/gen_music.py",
+        "tools/mix_music.py"
+      ]
+    },
+    {
+      "task": "Final loudness (-14 LUFS) with A/V kept aligned",
+      "use": "`vidkit normalize`",
+      "tools": [
+        "tools/vidkit/loudness.py"
+      ]
+    },
+    {
+      "task": "Final loudness to a named, sourced target (`--profile NAME`; unknown or unsourced profile exits 2)",
+      "use": "`vidkit normalize --profile`, `loudness.profile()`",
+      "tools": [
+        "tools/vidkit/loudness.py"
+      ]
+    },
+    {
+      "task": "Pick the loudness target of a final mix by name",
+      "use": "mixdown plan key `loudness_profile` (explicit `lufs` wins)",
+      "tools": []
+    },
+    {
+      "task": "Karaoke subtitles from a word list + centre watermark (any opacity)",
+      "use": "`python3 -m tools.vidkit karaoke words.json out.ass --total N --watermark @handle`",
+      "tools": [
+        "tools/vidkit/karaoke.py"
+      ]
+    },
+    {
+      "task": "Thumbnail on the first frames + as mp4 cover (subtitles stay off it)",
+      "use": "`python3 -m tools.vidkit cover video thumb out [--ass f.ass]`",
+      "tools": [
+        "tools/vidkit/cover.py"
+      ]
+    },
+    {
+      "task": "Logo on a white box -> mark that blends onto a prop",
+      "use": "`python3 -m tools.vidkit unwhite logo.png out.png`, then CSS `mix-blend-mode: multiply`",
+      "tools": [
+        "tools/vidkit/unwhite.py"
+      ]
+    },
+    {
+      "task": "Final mix in one command (voice + SFX cues + ducked music, -14 LUFS, subs, thumbnail)",
+      "use": "`python3 -m tools.vidkit mixdown plan.json`",
+      "tools": [
+        "tools/vidkit/mixdown.py"
+      ]
+    },
+    {
+      "task": "Tag a final encode as BT.709 (flags + `setparams` filter)",
+      "use": "`vidkit.color.ENCODE_FLAGS`, `vidkit.color.TAG_FILTER` (already wired into `edit_render.py` and `mixdown`)",
+      "tools": [
+        "tools/vidkit/color.py"
+      ]
+    },
+    {
+      "task": "Read a file's colour space / primaries / transfer / range",
+      "use": "`vidkit.color.probe_color(path)`",
+      "tools": [
+        "tools/vidkit/color.py"
+      ]
+    },
+    {
+      "task": "Does a source need a BT.601 to BT.709 conversion?",
+      "use": "`vidkit.color.convert_filter(probe, warnings, source)` (`''` = leave alone)",
+      "tools": [
+        "tools/vidkit/color.py"
+      ]
+    },
+    {
+      "task": "Follow popup with clicking cursor, \"Ssst!\", \"WOW!\", thumbnail cover (Remotion)",
+      "use": "`templates/remotion/lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover`",
+      "tools": []
+    },
+    {
+      "task": "Subtitles / captions / keyword highlight",
+      "use": "`gen_subs.py`, `burn_subs.py`, `gen_captions.py`, `caption_keywords.py`",
+      "tools": [
+        "tools/gen_subs.py",
+        "tools/burn_subs.py",
+        "tools/gen_captions.py",
+        "tools/caption_keywords.py"
+      ]
+    },
+    {
+      "task": "Kinetic text overlay behind the speaker",
+      "use": "`overlay_plan.py`, `person_mask.py`, Remotion `KineticOverlay`",
+      "tools": [
+        "tools/overlay_plan.py",
+        "tools/person_mask.py"
+      ]
+    },
+    {
+      "task": "Viral overlay extras (sticker icons, step counter, red vignette, falling burst, `viral` caption preset)",
+      "use": "`overlay_plan.py` fields `steps`, `vignette`, `burst`, `preset` + `KineticOverlay` (doc 19 section 8)",
+      "tools": [
+        "tools/overlay_plan.py"
+      ]
+    },
+    {
+      "task": "Measure onsets, tempo, energy and word/cut timing of a reference clip",
+      "use": "`python3 -m tools.vidkit audiostudy <clip> [--words w.json] [--out r.json]`",
+      "tools": [
+        "tools/vidkit/audiostudy.py"
+      ]
+    },
+    {
+      "task": "Retention check on a finished cut (static frame, hook, foreshadow, b-roll, BGM)",
+      "use": "`python3 tools/retention_gate.py report` / `check`",
+      "tools": [
+        "tools/retention_gate.py"
+      ]
+    },
+    {
+      "task": "Fill/check the viral checklist of a short-form script; rate analytics against course thresholds",
+      "use": "`python3 tools/viral_checklist.py check` / `rate`",
+      "tools": [
+        "tools/viral_checklist.py"
+      ]
+    },
+    {
+      "task": "Put an app screen into a phone/monitor in a clip",
+      "use": "`track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx`",
+      "tools": [
+        "tools/track_screen.py",
+        "tools/vidkit/track.py"
+      ]
+    },
+    {
+      "task": "App screen for software that does not exist",
+      "use": "`gen_app_screen.py`",
+      "tools": [
+        "tools/gen_app_screen.py"
+      ]
+    },
+    {
+      "task": "Print a logo/sablon onto a person's clothing",
+      "use": "`vidkit bond`",
+      "tools": [
+        "tools/vidkit/bond.py"
+      ]
+    },
+    {
+      "task": "Freeze one region of a clip (a bar that must not move)",
+      "use": "`vidkit freeze`",
+      "tools": [
+        "tools/vidkit/patch.py"
+      ]
+    },
+    {
+      "task": "Look at a clip without watching it",
+      "use": "`qa_frames.py` (gate), `vidkit sheet`, `vidkit montage`",
+      "tools": [
+        "tools/qa_frames.py",
+        "tools/vidkit/sheet.py"
+      ]
+    },
+    {
+      "task": "Check rendered thumbnails by looking before they are final",
+      "use": "`thumb_verify.py init`, then `thumb_verify.py check` (gate); prompt pieces in `reference/post-production/21-thumbnail-style-elements.md`",
+      "tools": [
+        "tools/thumb_verify.py"
+      ]
+    },
+    {
+      "task": "Let the owner approve keyframes before clips are rendered",
+      "use": "`verdict_page.py page`, then `verdict_page.py check` (gate)",
+      "tools": [
+        "tools/verdict_page.py"
+      ]
+    },
+    {
+      "task": "Remotion shot: scaffold / render / stills",
+      "use": "`templates/remotion/scaffold.mjs`, `scripts/render-all.mjs`, `render-stills.mjs`",
+      "tools": []
+    },
+    {
+      "task": "Remotion shot: several frames or the end state for QA",
+      "use": "`scripts/frames.mjs`, `scripts/qa-end.mjs`",
+      "tools": []
+    },
+    {
+      "task": "Compare the rendered master with the script",
+      "use": "`verify_render.py`",
+      "tools": [
+        "tools/verify_render.py"
+      ]
+    },
+    {
+      "task": "Stems for a human editor",
+      "use": "`make_stems.py`",
+      "tools": [
+        "tools/make_stems.py"
+      ]
+    },
+    {
+      "task": "Thumbnail logo / headline scrim",
+      "use": "`composite_logo.py`, `thumb_scrim.py`",
+      "tools": [
+        "tools/composite_logo.py",
+        "tools/thumb_scrim.py"
+      ]
+    },
+    {
+      "task": "Choose the video encoder for edit renders, or see a long encode is alive",
+      "use": "env `GASPOL_VIDEO_ENCODER` = `libx264` (default) / `auto` / `h264_videotoolbox` (`vidkit.encoder`); `ff.run(cmd, heartbeat_s=30)`",
+      "tools": [
+        "tools/vidkit/encoder.py",
+        "tools/vidkit/ff.py"
+      ]
+    },
+    {
+      "task": "Render ledger, reusable asset library",
+      "use": "`renders.py`, `asset_library.py`, `asset_home.py`",
+      "tools": [
+        "tools/asset_library.py",
+        "tools/asset_home.py",
+        "tools/renders.py"
+      ]
+    },
+    {
+      "task": "Units of billed renders, failed attempts, re-rolls per scene (no prices)",
+      "use": "`cost_log.py`",
+      "tools": [
+        "tools/cost_log.py"
+      ]
+    },
+    {
+      "task": "YouTube stats",
+      "use": "`yt_stats.py`",
+      "tools": [
+        "tools/yt_stats.py"
+      ]
+    },
+    {
+      "task": "Deck / slide post-processing (PDF, watermark, numbering)",
+      "use": "NOT here: `gaspol-catalog` `tools/deckkit`",
+      "tools": []
+    },
+    {
+      "task": "Check a Remotion overlay shows only approved on-screen text",
+      "use": "`python3 tools/check_overlay_strings.py <shots-dir> --from-markdown av-script.md --heading \"<block>\"`",
+      "tools": [
+        "tools/check_overlay_strings.py"
+      ]
+    },
+    {
+      "task": "Inventory a project's generated clips (durations, audio presence)",
+      "use": "`python3 tools/probe_clips.py <project>` writes `work/clip-manifest.json`",
+      "tools": [
+        "tools/probe_clips.py"
+      ]
+    },
+    {
+      "task": "Find which tool does a job / check the registry",
+      "use": "`python3 tools/registry_build.py suggest --text-file F`, `validate --coverage`, `render`",
+      "tools": [
+        "tools/registry_build.py"
+      ]
+    }
+  ],
+  "ffprobe_allow": [
+    {
+      "id": "tools/burn_subs.py",
+      "reason": "needs -select_streams v:0 stream=height to scale subtitle size; migrate under follow-up"
+    },
+    {
+      "id": "tools/clean_voice.py",
+      "reason": "needs format=duration and -select_streams a stream=index (audio-track check) per call; migrate under follow-up"
+    },
+    {
+      "id": "tools/composite.py",
+      "reason": "needs -select_streams per call; migrate under follow-up"
+    },
+    {
+      "id": "tools/edit_render.py",
+      "reason": "format duration plus per-stream duration (-select_streams stream=duration) for the A/V gate; migrate under follow-up"
+    },
+    {
+      "id": "tools/gen_music.py",
+      "reason": "format=duration probe with its own missing-binary fallback; migrate under follow-up"
+    },
+    {
+      "id": "tools/gen_vo.mjs",
+      "reason": "Node tool; format=duration probe via execFile that returns null when ffprobe is absent; vidkit.ff is Python-only"
+    },
+    {
+      "id": "tools/make_stems.py",
+      "reason": "format=duration probe raising StemError when ffprobe is absent; migrate under follow-up"
+    },
+    {
+      "id": "tools/mix_music.py",
+      "reason": "format=duration probe returning None when ffprobe is absent; migrate under follow-up"
+    },
+    {
+      "id": "tools/mix_sfx.py",
+      "reason": "format=duration probe returning None when ffprobe is absent; migrate under follow-up"
+    },
+    {
+      "id": "tools/overlay_plan.py",
+      "reason": "format=duration probe of overlay clips; docstring says needs ffprobe; migrate under follow-up"
+    },
+    {
+      "id": "tools/person_mask.py",
+      "reason": "needs -count_packets with nb_read_packets and r_frame_rate as JSON, which ff.probe does not return"
+    },
+    {
+      "id": "tools/probe_clips.py",
+      "reason": "full -show_streams JSON for the manifest; degrades loudly without ffprobe"
+    },
+    {
+      "id": "tools/qa_frames.py",
+      "reason": "needs stream=duration,r_frame_rate plus format=duration in one call; migrate under follow-up"
+    },
+    {
+      "id": "tools/registry_build.py",
+      "reason": "mentions ffprobe in the scan rule, its regex and its error text only; it never calls ffprobe"
+    },
+    {
+      "id": "tools/retention_gate.py",
+      "reason": "checks shutil.which('ffprobe') up front and mentions it in docs/error text; probing itself is delegated to mix_music and qa_frames"
+    },
+    {
+      "id": "tools/vidkit/color.py",
+      "reason": "needs color_space/primaries/transfer/range fields ff.probe does not return"
+    },
+    {
+      "id": "tools/voice_changer.mjs",
+      "reason": "Node tool; format=duration probe via execFile that returns null on failure; vidkit.ff is Python-only"
+    }
+  ]
+}

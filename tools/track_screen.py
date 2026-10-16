@@ -59,24 +59,24 @@ import tempfile
 from collections import deque
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.vidkit import ff  # noqa: E402
+
 Corner = tuple[float, float]
 
 
 # ---------------------------------------------------------------- frame access
 def probe_size(clip: Path) -> tuple[int, int]:
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-         "stream=width,height", "-of", "csv=p=0:s=x", str(clip)],
-        capture_output=True, text=True, check=True).stdout.strip().split("\n")[0]
-    w, h = out.split("x")[:2]
-    return int(w), int(h)
+    video = ff.probe(clip)["video"]
+    if video is None:
+        raise ff.FFError(f"no video stream in {clip}")
+    return int(video["width"]), int(video["height"])
 
 
 def probe_duration(clip: Path) -> float:
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
-         str(clip)], capture_output=True, text=True, check=True).stdout.strip()
-    return float(out) if out else 0.0
+    return ff.probe(clip)["duration"] or 0.0
 
 
 def gray_frame(clip: Path, t: float, tmp: Path) -> tuple[int, int, bytes]:

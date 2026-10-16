@@ -82,6 +82,10 @@ Every release of gaspol-video, newest first. The README carries the product over
 
 > **v2.2.0 hardening:** 4 enforcement rules close gaps that previously allowed mid-production restructures — BODY 1 narrative completeness, NB2 reference uniqueness filter, max 5 inline refs per prompt, and environment-gated cross-scene references. See [v2.2.0 Hard Rules](#v220-hard-rules) below.
 
+## v3.18.0 Changelog
+
+- **Tool registry (GV-20).** `tools/registry.json` holds every tool and every task-to-tool route; the table in `docs/tool-routing.md` is generated from it (`python3 tools/registry_build.py render`). Gates fail on an unregistered tool, an unexplained duplicate, or a new direct `ffprobe` caller. A write-time hook (`hooks/tool-reminder.sh`) reminds you of the existing tool when a script outside `tools/` touches ffmpeg, ffprobe or Remotion; it never blocks. `check_vo_duration.py` and `track_screen.py` moved to `vidkit.ff`. Not done: 17 other ffprobe callers stay on an allowlist with written reasons; duplicate detection is exact (phase + task set) only.
+
 ## v3.17.0 Changelog
 
 - **Cleanup.** Removed the Antigravity manifest (`plugin.json`, `rules/AGENTS.md`), the superseded `tools/keyword_cards.py`, the unused `docs/seedance_2_new_rag/`, and the Windows-only `scripts/bootstrap-kling-notebooklm.ps1`.

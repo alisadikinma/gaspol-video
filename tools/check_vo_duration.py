@@ -28,16 +28,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.vidkit import ff  # noqa: E402
+
 
 def duration(path: Path) -> float:
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
-         str(path)], capture_output=True, text=True, check=True).stdout.strip()
-    return float(out) if out else 0.0
+    return ff.probe(path)["duration"] or 0.0
 
 
 def main() -> int:
