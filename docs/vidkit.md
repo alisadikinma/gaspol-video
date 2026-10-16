@@ -77,7 +77,7 @@ Used by `skills/video-repackage`. CLI: `vidkit ingest`, `vidkit scenes`.
 - Every profile needs a non-empty `source` (URL or document title). An unsourced number is refused with `ProfileError`.
 - `lufs` must be in [-24, -6], `true_peak` in [-9, 0]. Duplicate names and malformed JSON are refused. A missing file falls back to the built-in -14 / -1.0 with a warning.
 - Only `default` ships (-14 LUFS, -1.0 dBTP). Add another only with a real source.
-- `vidkit normalize SRC OUT --profile NAME` prints the profile and targets used; unknown or invalid profile exits 2. An explicit `--lufs` wins over the profile's loudness. Mixdown: plan key `loudness_profile`; absent means today's -14; an explicit `lufs` key wins.
+- `vidkit normalize SRC OUT --profile NAME` prints the profile and targets used; unknown or invalid profile exits 2. An explicit `--lufs` wins over the profile's loudness. Mixdown: plan key `loudness_profile`; absent means today's -14; an explicit `lufs` key wins. Mixdown applies only the profile's `lufs`: its `true_peak` is ignored, because mixdown keeps its own limiter (`limit`, default 0.78). Only `vidkit normalize` uses the profile's `true_peak`.
 - Tests can point at another file with the `GASPOL_LOUDNESS_PROFILES` env var.
 
 Remotion: `templates/remotion/lib/ali-effects.tsx` (copied into every scaffold). Props only, each start frame is a prop.
@@ -114,13 +114,13 @@ CLI: `vidkit colormatch CLIPS... [--reference F] [--max-gain 0.15] [--min-delta 
 | `beats.detect(path, hop_s, min_gap_s, threshold)` | ffmpeg decodes to mono 16 kHz PCM; short-time energy, positive differences, local maxima above `threshold` x the median onset (and a small absolute floor); beats closer than `min_gap_s` collapse to the stronger. `[]` for silence. `BeatError` when ffmpeg is missing or the file cannot be decoded |
 | `beats.snap(times, beats, window_s)` | each time goes to the nearest beat within `window_s`, else stays |
 
-CLI: `vidkit beats FILE` prints the times as JSON. `tools/sfx_snap.py` applies `snap` to a cue sheet and writes a new file. Onset energy suits percussive music; a pad-only bed may return `[]`, and then `sfx_snap.py` exits 2 and leaves the plan alone.
+CLI: `vidkit beats FILE` prints the times as JSON. `tools/sfx_snap.py` applies `snap` to a cue sheet and writes a new file. Onset energy suits percussive music; a pad-only bed may return `[]`, and then `sfx_snap.py` exits 3 (2 is bad input) and leaves the plan alone. `sfx_snap.py --music-plan` collects the beats of every music-plan segment (`library:<id>` or project path), cut to the segment, repeated for a looped short track, shifted by `from_s`.
 
 ## Stage cache (`stages`)
 
 | Function | What |
 |---|---|
-| `stages.fingerprint(files=(), params=None, version="1")` | sha256 over each file's content sha256 (1 MiB chunks, in order, names ignored), the canonical json of `params` and `version`. `StageError` names a missing file |
+| `stages.fingerprint(files=(), params=None, version="1")` | sha256 over each file's content sha256 (1 MiB chunks, in order, names ignored), the canonical json of `params` and `version`. Optional `sha_memo` dict hashes a file used by many stages once (key: path, mtime_ns, size). `StageError` names a missing file |
 | `stages.StageCache(path).is_fresh(stage, fp, outputs)` | true only when the recorded fingerprint equals `fp` AND every output file exists |
 | `stages.StageCache(path).record(stage, fp, outputs)` | writes atomically (temp file + `os.replace`). A corrupt or absent cache file reads as empty. An unwritable place prints one stderr warning and turns caching off for the run, never a crash |
 
@@ -129,7 +129,7 @@ A part is encoded to `part-NNN.tmp.mp4` and renamed into place only when ffmpeg 
 
 ## Encoder choice (`encoder`)
 
-`GASPOL_VIDEO_ENCODER` selects the video encoder of `tools/edit_render.py` encodes. Default (unset) is `libx264`: the commands are byte-identical to before. `auto` uses `h264_videotoolbox` when `ffmpeg -hide_banner -encoders` lists it, else libx264. An explicit `h264_videotoolbox` that is not available falls back to libx264 with a warning. Any other value is an error.
+`GASPOL_VIDEO_ENCODER` selects the video encoder of `tools/edit_render.py` encodes. Default (unset) is `libx264`: the encoder arguments are the same libx264 recipe as before; the colour tag (`setparams` plus the bt709 flags) is added to every encode. `auto` uses `h264_videotoolbox` when `ffmpeg -hide_banner -encoders` lists it, else libx264. An explicit `h264_videotoolbox` that is not available falls back to libx264 with a warning. Any other value is an error.
 
 Hardware is opt-in because its quality per bitrate differs from CRF 20. It takes a bitrate by short side (1080: 12M, 720: 6M, other: 8M). A failed hardware encode is retried once with libx264 and logs `encoder X failed, retried with libx264`. The cache fingerprint covers the final command, so a changed encoder re-encodes the parts. `edit_render` also prints `still running: <part> <s>s` every 30 seconds during an encode.
 

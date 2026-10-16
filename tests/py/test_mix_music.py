@@ -130,5 +130,51 @@ class ResolveTrackTest(unittest.TestCase):
         self.assertTrue(any("library:broken" in w for w in result["warnings"]))
 
 
+class MixMusicMainPathsTest(unittest.TestCase):
+    """A relative --plan / --out is the project's, never the cwd's."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name) / "proj"
+        (self.project / "work").mkdir(parents=True)
+        self.decoy = Path(self.tmp.name) / "decoy"
+        (self.decoy / "work").mkdir(parents=True)
+        (self.decoy / "work" / "m.json").write_text("{}")
+        (self.project / "work" / "m.json").write_text("{}")
+
+    def _main(self, *args):
+        before = os.getcwd()
+        os.chdir(self.decoy)
+        try:
+            with mock.patch.object(mix_music, "apply", return_value={
+                    "warnings": [], "exit_code": 0}) as m:
+                rc = mix_music.main([str(self.project), *args])
+        finally:
+            os.chdir(before)
+        return rc, m
+
+    def test_relative_plan_and_out_resolve_against_project(self):
+        rc, m = self._main("--plan", "work/m.json", "--out", "output/o.mp4")
+        self.assertEqual(rc, 0)
+        self.assertEqual(m.call_args.args[0], self.project / "work" / "m.json")
+        self.assertEqual(m.call_args.kwargs["out"], self.project / "output" / "o.mp4")
+
+    def test_absolute_stays_absolute(self):
+        abs_plan = Path(self.tmp.name) / "elsewhere.json"
+        abs_plan.write_text("{}")
+        _, m = self._main("--plan", str(abs_plan))
+        self.assertEqual(m.call_args.args[0], abs_plan)
+
+    def test_missing_plan_warns_and_exits_nonzero_without_traceback(self):
+        import contextlib
+        import io
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = mix_music.main([str(self.project), "--plan", "work/none.json"])
+        self.assertNotEqual(rc, 0)
+        self.assertIn("no music plan at", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

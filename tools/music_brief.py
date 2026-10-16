@@ -6,7 +6,7 @@
 Reads `work/music-brief.json` (written by the post skill from `strategic-brief.md` and
 `av-script.md`) and writes `work/music-palette.json` plus the segments of
 `work/music-plan.json`. Generate the tracks with
-`gen_music.py --recipes work/music-palette.json --only <ids>`; that step bills, this one does not.
+`gen_music.py --recipes <project>/work/music-palette.json --only <ids>`; that step bills, this one does not.
 
 The prompt text comes from the brief, not from a fixed mood list, so a port film and a hospital
 film no longer share one bed. The id is a hash of prompt and length: an unchanged segment keeps
@@ -158,7 +158,7 @@ def build_outputs(brief):
         segments.append({"from_s": seg["from_s"], "to_s": seg["to_s"], "track": f"library:{mid}"})
     palette = {
         "_comment": "Written by tools/music_brief.py from work/music-brief.json. "
-                    "Generate with gen_music.py --recipes work/music-palette.json --only <ids>.",
+                    "Generate with gen_music.py --recipes <project>/work/music-palette.json --only <ids>.",
         "defaults": defaults,
         "moods": moods,
     }

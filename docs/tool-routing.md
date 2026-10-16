@@ -25,12 +25,12 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | ...with per-character settings/seed, only the spoken spans | `node tools/vidkit/js/cast_voice.mjs plan.json` |
 | Clean platform dialogue before voice change | `clean_voice.py` |
 | Word timings of a clip | `node tools/vidkit/js/eleven.mjs stt`; from an alignment json: `vidkit words` |
-| Music that follows the topic, tone and beat arc | `music_brief.py <project>` writes `work/music-palette.json` + plan segments, then `gen_music.py --recipes work/music-palette.json --only <ids>` |
+| Music that follows the topic, tone and beat arc | `music_brief.py <project>` writes `work/music-palette.json` + plan segments, then `gen_music.py --recipes <project>/work/music-palette.json --only <ids>` |
 | Sound effects: generate | `gen_sfx.py` (palette), `eleven.mjs sfx` (one-off prompt) |
 | Sound effects: mix into the cut | `mix_sfx.py`; move cues out from under narration: `vidkit.speech.snap_to_gaps` |
 | Clips of one kelompok differ in colour / grade | `python3 -m tools.vidkit colormatch CLIPS...` (report; add `--apply OUTDIR` only after the owner looked at `vidkit sheet`; `vidkit.colormatch.plan/apply`) |
 | Beat times of a music file | `python3 -m tools.vidkit beats FILE` (`vidkit.beats.detect`) |
-| Land SFX cues on the music beat | `python3 tools/sfx_snap.py <project> --music FILE` (writes `work/sfx-plan.snapped.json`; `snap` = `vidkit.beats.snap`) |
+| Land SFX cues on the music beat | `python3 tools/sfx_snap.py <project> --music-plan work/music-plan.json` (or `--music FILE`; exit 2 bad input, 3 no beats; writes `work/sfx-plan.snapped.json`; `snap` = `vidkit.beats.snap`) |
 | Skip an expensive step when its inputs did not change | `vidkit.stages.fingerprint(files, params, version)` + `StageCache(path).is_fresh/record`. `tools/edit_render.py` already uses it: a re-run skips unchanged segments (`--no-cache` forces a full render) |
 | Phone notification / alarm sound without paid files | `vidkit synth notification|alarm` |
 | Music: generate / mix | `gen_music.py`, `mix_music.py` |

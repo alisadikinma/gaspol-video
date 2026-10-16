@@ -294,10 +294,20 @@ def _motion_filter(motion, duration_s, width, height, clamp=False):
     )
 
 
-def _source_color_filter(src, warned):
+def _source_color_filter(src, warned, memo=None):
     """Comma-joined colour filters for one source clip ('' when none is needed or it cannot
-    be probed). Each problem is printed once per file, naming the value left unconverted."""
+    be probed). Each problem is printed once per file, naming the value left unconverted.
+    `memo` (a dict, one per render call) remembers the answer per source file."""
     key = str(src)
+    mkey = None
+    if memo is not None:
+        try:
+            st = os.stat(key)
+            mkey = ("color", key, st.st_mtime_ns, st.st_size)
+        except OSError:
+            mkey = None
+        if mkey in memo:
+            return memo[mkey]
 
     def warn(msg):
         if key not in warned:
@@ -305,7 +315,10 @@ def _source_color_filter(src, warned):
 
     filters = color.source_filters(key, warn=warn)
     warned.add(key)
-    return ",".join(filters)
+    result = ",".join(filters)
+    if mkey is not None:
+        memo[mkey] = result
+    return result
 
 
 def _dissolve_dur(seg):
@@ -324,9 +337,19 @@ def _available_encoders():
     return encoder.available(proc.stdout)
 
 
-def _resolve_encoder():
+def _resolve_encoder(memo=None):
     """Encoder name from GASPOL_VIDEO_ENCODER. ffmpeg is only asked what it has when the
-    value could pick a hardware encoder; unset and `libx264` never probe."""
+    value could pick a hardware encoder; unset and `libx264` never probe. `memo` (one per
+    render call) keeps the answer, and its warning, to a single time."""
+    if memo is not None and "encoder" in memo:
+        return memo["encoder"]
+    name = _choose_encoder()
+    if memo is not None:
+        memo["encoder"] = name
+    return name
+
+
+def _choose_encoder():
     value = (os.environ.get("GASPOL_VIDEO_ENCODER") or encoder.DEFAULT).strip()
     avail = _available_encoders() if value in ("auto", encoder.HARDWARE) else {encoder.DEFAULT}
     try:
@@ -355,7 +378,7 @@ def _run_encode(cmd):
     return ff.run(cmd, heartbeat_s=30)
 
 
-def build_commands(plan):
+def build_commands(plan, memo=None):
     """One ffmpeg invocation per segment, one merge per run of dissolved segments, then a
     concat. Returned so --print can show them; `parts` are the files the concat joins.
 
@@ -369,7 +392,7 @@ def build_commands(plan):
     seg_parts = []
     segments = plan.segments
     warned = set()
-    enc = _resolve_encoder()
+    enc = _resolve_encoder(memo)
     enc_height = _encode_height(width, height)
 
     for i, seg in enumerate(segments, start=1):
@@ -382,7 +405,7 @@ def build_commands(plan):
         ext = _dissolve_dur(segments[i]) if i < len(segments) else 0.0
         render_dur = round(dur + ext, 3) if ext else dur
 
-        convert = _source_color_filter(src, warned)
+        convert = _source_color_filter(src, warned, memo)
         vf = (convert + "," if convert else "") + \
              f"scale={width}:{height}:force_original_aspect_ratio=decrease," \
              f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
@@ -530,7 +553,7 @@ def _stage_of(cmd):
     return f"{'seg' if kind == 'part' else kind}-{int(num)}"
 
 
-def _stage_fingerprint(plan, cmd, stage, parts_dir):
+def _stage_fingerprint(plan, cmd, stage, parts_dir, memo=None):
     """What decides whether an encoded part is still good: the bytes it is made from, the
     plan fields behind it and the FINAL command (so any encoder or colour flag change
     invalidates it), with its own output path and the project location normalised away."""
@@ -549,7 +572,8 @@ def _stage_fingerprint(plan, cmd, stage, parts_dir):
     else:
         files = [Path(cmd[i + 1]) for i, a in enumerate(cmd) if a == "-i"]
         params = {"cmd": [norm(a) for a in cmd]}
-    return stages.fingerprint(files, params, RENDERER_VERSION)
+    return stages.fingerprint(files, params, RENDERER_VERSION,
+                              sha_memo=None if memo is None else memo.setdefault("sha", {}))
 
 
 def _prepare_parts_dir(plan, use_cache):
@@ -568,7 +592,8 @@ def _prepare_parts_dir(plan, use_cache):
 
 def stage_status(plan):
     """[(stage, 'cached' | 'rendered')] as a render now would find them. Read-only."""
-    cmds, parts, work = build_commands(plan)
+    memo = {}
+    cmds, parts, work = build_commands(plan, memo)
     parts_dir = plan.project / ".tmp" / "edit-parts"
     cmds, _ = _relocate(cmds, parts, work, parts_dir)
     part_cache = stages.StageCache(parts_dir / "stages.json")
@@ -576,7 +601,7 @@ def stage_status(plan):
     for cmd in cmds:
         stage = _stage_of(cmd)
         try:
-            fresh = part_cache.is_fresh(stage, _stage_fingerprint(plan, cmd, stage, parts_dir),
+            fresh = part_cache.is_fresh(stage, _stage_fingerprint(plan, cmd, stage, parts_dir, memo),
                                         [Path(cmd[-1])])
         except stages.StageError:
             fresh = False
@@ -602,7 +627,8 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False,
     if out:
         plan.data["out"] = str(out)
 
-    cmds, parts, work = build_commands(plan)
+    memo = {}
+    cmds, parts, work = build_commands(plan, memo)
     parts_dir, part_cache = _prepare_parts_dir(plan, cache)
     caching = part_cache is not None
     if parts_dir != work:
@@ -611,7 +637,7 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False,
     work.mkdir(parents=True, exist_ok=True)
     plan.out.parent.mkdir(parents=True, exist_ok=True)
 
-    enc = _resolve_encoder()
+    enc = _resolve_encoder(memo)
     enc_height = _encode_height(*plan.size)
     skipped = {"seg": 0, "group": 0}
     totals = {"seg": 0, "group": 0}
@@ -623,7 +649,7 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False,
         fp = None
         if caching:
             try:
-                fp = _stage_fingerprint(plan, cmd, stage, parts_dir)
+                fp = _stage_fingerprint(plan, cmd, stage, parts_dir, memo)
             except stages.StageError:
                 fp = None
             if fp and part_cache.is_fresh(stage, fp, [output]):
@@ -649,11 +675,9 @@ def render(plan_path, project, out=None, allow_degraded=False, keep_parts=False,
             raise PlanError(f"ffmpeg failed on {what}:\n{str(exc)[-800:]}") from exc
         finally:
             tmp_output.unlink(missing_ok=True)
-        if caching and used[0] != cmd:
-            try:
-                fp = _stage_fingerprint(plan, used[0], stage, parts_dir)
-            except stages.StageError:
-                fp = None
+        # Recorded under the fingerprint that was CHECKED (the planned command), also after a
+        # hardware-encoder fallback, so the next run with the same env hits; a different
+        # GASPOL_VIDEO_ENCODER changes the planned command and so misses.
         if caching and fp:
             part_cache.record(stage, fp, [output])
 

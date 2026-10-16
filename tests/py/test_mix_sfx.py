@@ -356,5 +356,59 @@ class HomeCatalogTest(unittest.TestCase):
         self.assertEqual(plan.clip_path(plan.events[0]["clip"]), Path("lib/clips/x.mp3"))
 
 
+class MixSfxMainPathsTest(unittest.TestCase):
+    """A relative --plan / --out is the project's, never the cwd's."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name) / "proj"
+        (self.project / "work").mkdir(parents=True)
+        (self.project / "lib").mkdir()
+        (self.project / "lib" / "catalog.json").write_text(json.dumps({"clips": [
+            {"id": "pop-a", "file": "a.wav"}, {"id": "pop-decoy", "file": "d.wav"}]}))
+        self.decoy = Path(self.tmp.name) / "decoy"
+        (self.decoy / "work").mkdir(parents=True)
+
+    def _plan(self, base, sfx_id):
+        path = base / "work" / "sfx-plan.snapped.json"
+        path.write_text(json.dumps({"catalog": str(self.project / "lib" / "catalog.json"),
+                                    "events": [{"sfx_id": sfx_id, "at_s": 1.0}]}))
+
+    def _main(self, *args):
+        import contextlib
+        import io
+        out, err = io.StringIO(), io.StringIO()
+        before = os.getcwd()
+        os.chdir(self.decoy)
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = mix_sfx.main([str(self.project), *args])
+        finally:
+            os.chdir(before)
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_relative_plan_resolves_against_project(self):
+        self._plan(self.project, "pop-a")
+        self._plan(self.decoy, "pop-decoy")
+        rc, out, err = self._main("--plan", "work/sfx-plan.snapped.json", "--print")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("pop-a", out)
+        self.assertNotIn("pop-decoy", out)
+
+    def test_missing_plan_is_a_clean_failure_not_a_traceback(self):
+        self._plan(self.decoy, "pop-decoy")      # only the cwd has one: it must not be found
+        rc, out, err = self._main("--plan", "work/sfx-plan.snapped.json", "--print")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("no cue sheet at", err)
+        self.assertIn("proj", err)
+
+    def test_relative_out_resolves_against_project(self):
+        self._plan(self.project, "pop-a")
+        with mock.patch.object(mix_sfx, "mix", return_value=None) as m:
+            self._main("--plan", "work/sfx-plan.snapped.json", "--out", "output/x.mp4")
+        self.assertEqual(str(m.call_args.kwargs["out"]), str(self.project / "output" / "x.mp4"))
+
+
 if __name__ == "__main__":
     unittest.main()

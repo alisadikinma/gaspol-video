@@ -985,6 +985,91 @@ class EncoderCacheAndFallbackTest(unittest.TestCase):
             self.assertEqual(edit_render._available_encoders(), set())
 
 
+    @requires_ffmpeg
+    def test_second_run_after_a_hardware_fallback_hits_the_cache(self):
+        from unittest import mock
+        import os
+        real = edit_render._run_encode
+
+        def fake(cmd):
+            if "h264_videotoolbox" in cmd:
+                raise edit_render.ff.FFError("videotoolbox exploded")
+            return real(cmd)
+        with mock.patch.dict(os.environ, {"GASPOL_VIDEO_ENCODER": "h264_videotoolbox"}), \
+                mock.patch.object(edit_render, "_available_encoders",
+                                  return_value={"libx264", "h264_videotoolbox"}), \
+                mock.patch.object(edit_render, "_run_encode", side_effect=fake):
+            first = self._quiet_render()
+            second = self._quiet_render()
+        self.assertIn("retried with libx264", first)
+        self.assertIn("skipped 2 of 2 segments (cached)", second)
+        self.assertNotIn("retried with libx264", second)
+
+    @requires_ffmpeg
+    def test_fallback_cache_still_misses_when_the_encoder_env_changes(self):
+        from unittest import mock
+        import os
+        real = edit_render._run_encode
+
+        def fake(cmd):
+            if "h264_videotoolbox" in cmd:
+                raise edit_render.ff.FFError("videotoolbox exploded")
+            return real(cmd)
+        with mock.patch.dict(os.environ, {"GASPOL_VIDEO_ENCODER": "h264_videotoolbox"}), \
+                mock.patch.object(edit_render, "_available_encoders",
+                                  return_value={"libx264", "h264_videotoolbox"}), \
+                mock.patch.object(edit_render, "_run_encode", side_effect=fake):
+            self._quiet_render()
+        with mock.patch.dict(os.environ, {"GASPOL_VIDEO_ENCODER": "libx264"}):
+            text = self._quiet_render()
+        self.assertIn("skipped 0 of 2 segments (cached)", text)
+
+
+class RenderMemoTest(unittest.TestCase):
+    """One source used by many segments is probed and hashed once per render call."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name)
+        (self.project / "clips").mkdir()
+        make_clip(self.project / "clips" / "a.mp4", seconds=3.0)
+        self.src = str(self.project / "clips" / "a.mp4")
+        self.plan = write_plan(self.project, [
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.0, "out_s": 0.5},
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 0.5, "out_s": 1.0},
+            {"kind": "clip", "src": "clips/a.mp4", "in_s": 1.0, "out_s": 1.5},
+        ])
+
+    def _render(self):
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            edit_render.render(self.plan, self.project)
+
+    @requires_ffmpeg
+    def test_colour_probe_and_source_hash_once_per_source_even_when_fully_cached(self):
+        from unittest import mock
+        from tools.vidkit import stages
+        self._render()                                    # warm the cache
+        probe = mock.patch.object(edit_render.color, "source_filters",
+                                  wraps=edit_render.color.source_filters)
+        sha = mock.patch.object(stages, "_file_sha", wraps=stages._file_sha)
+        with probe as p, sha as h:
+            self._render()
+        self.assertEqual(p.call_count, 1)
+        self.assertEqual([str(c.args[0]) for c in h.call_args_list].count(self.src), 1)
+
+    @requires_ffmpeg
+    def test_encoder_listing_is_asked_once_under_auto(self):
+        from unittest import mock
+        import os
+        with mock.patch.dict(os.environ, {"GASPOL_VIDEO_ENCODER": "auto"}), \
+                mock.patch.object(edit_render, "_available_encoders",
+                                  return_value={"libx264"}) as avail:
+            self._render()
+        self.assertEqual(avail.call_count, 1)
+
+
 def _make_fullrange_clip(path, seconds=1.0):
     """Left half full-range black (plan size, so no resampling ringing) (Y=0), right half full-range white (Y=255), yuvj420p."""
     subprocess.run(

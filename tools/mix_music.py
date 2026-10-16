@@ -62,6 +62,12 @@ def resolve_track(project, track):
     return Path(project) / track
 
 
+def _resolve(project, value):
+    """Absolute stays absolute; a relative path is resolved against the project folder, never the cwd."""
+    p = Path(value)
+    return p if p.is_absolute() else Path(project) / p
+
+
 def mood_for_tone(tone):
     return TONE_TO_MOOD.get((tone or "").strip().lower())
 
@@ -259,8 +265,12 @@ def main(argv=None):
     ap.add_argument("--out")
     args = ap.parse_args(argv)
     project = Path(args.project)
-    plan_path = Path(args.plan) if args.plan else project / "work" / "music-plan.json"
-    result = apply(plan_path, project, master=args.master, out=args.out)
+    plan_path = _resolve(project, args.plan) if args.plan else project / "work" / "music-plan.json"
+    if not plan_path.is_file():
+        print(f"FAIL: no music plan at {plan_path}", file=sys.stderr)
+        return 1
+    out = _resolve(project, args.out) if args.out else None
+    result = apply(plan_path, project, master=args.master, out=out)
     for w in result["warnings"]:
         print(f"! {w}", file=sys.stderr)
     return result["exit_code"]

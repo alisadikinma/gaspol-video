@@ -70,6 +70,12 @@ class PlanError(Exception):
     """The cue sheet cannot be mixed as written."""
 
 
+def _resolve(project, value):
+    """Absolute stays absolute; a relative path is resolved against the project folder, never the cwd."""
+    p = Path(value)
+    return p if p.is_absolute() else Path(project) / p
+
+
 class SfxPlan:
     def __init__(self, data, events, catalog, project, path, catalog_ref=None, cues=None):
         self.data = data
@@ -393,7 +399,7 @@ def report_audibility(plan, voice_only, mixed):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("project")
-    ap.add_argument("--plan", help="default: <project>/work/sfx-plan.json")
+    ap.add_argument("--plan", help="default: <project>/work/sfx-plan.json; relative = inside the project")
     ap.add_argument("--print", dest="show", action="store_true", help="print the cue sheet only")
     ap.add_argument("--no-optional", action="store_true", help="drop cues marked optional")
     ap.add_argument("--no-duck", action="store_true", help="skip the sidechain duck")
@@ -401,9 +407,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     project = Path(args.project)
-    plan_path = Path(args.plan) if args.plan else project / "work" / "sfx-plan.json"
+    plan_path = _resolve(project, args.plan) if args.plan else project / "work" / "sfx-plan.json"
+    out_arg = str(_resolve(project, args.out)) if args.out else None
 
     try:
+        if not plan_path.is_file():
+            raise PlanError(f"no cue sheet at {plan_path}")
         probe_master = project / json.loads(plan_path.read_text()).get("master", "output/master.mp4")
         duration = master_duration(probe_master)
         plan = load_plan(plan_path, project, master_duration_s=duration,
@@ -411,7 +420,7 @@ def main(argv=None):
         print(format_sheet(plan))
         if args.show:
             return 0
-        mixed = mix(plan, out=args.out, duck=not args.no_duck)
+        mixed = mix(plan, out=out_arg, duck=not args.no_duck)
         if mixed:
             print()
             print(report_audibility(plan, probe_master, mixed))

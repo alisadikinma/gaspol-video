@@ -28,12 +28,28 @@ def _file_sha(path):
     return h.hexdigest()
 
 
-def fingerprint(files=(), params=None, version="1"):
+def _memo_sha(path, memo):
+    """`_file_sha`, remembered in `memo` under (path, mtime_ns, size) so a file that changes
+    between two calls is hashed again."""
+    if memo is None:
+        return _file_sha(path)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return _file_sha(path)          # raises StageError with the real reason
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    if key not in memo:
+        memo[key] = _file_sha(path)
+    return memo[key]
+
+
+def fingerprint(files=(), params=None, version="1", sha_memo=None):
     """sha256 over each file's content sha256 (in order), the canonical json of `params`
-    and `version`. File names do not count, only bytes."""
+    and `version`. File names do not count, only bytes. `sha_memo` (a dict) lets one run
+    hash a file used by many stages once."""
     h = hashlib.sha256()
     for f in files:
-        h.update(_file_sha(f).encode())
+        h.update(_memo_sha(f, sha_memo).encode())
         h.update(b"\n")
     h.update(json.dumps(params, sort_keys=True, separators=(",", ":")).encode())
     h.update(b"\n")

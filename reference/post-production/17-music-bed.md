@@ -40,9 +40,9 @@ Domain Knowledge section as `sound_world`) and `av-script.md` (scene timings and
 ```bash
 python3 tools/music_brief.py {output_folder} --print     # 1. show the segment table, writes nothing
 python3 tools/music_brief.py {output_folder}             # 2. writes work/music-palette.json and the segments of work/music-plan.json
-python3 tools/gen_music.py --recipes work/music-palette.json --only <ids> --dry-run   # 3. name what will bill
+python3 tools/gen_music.py --recipes {output_folder}/work/music-palette.json --only <ids> --dry-run   # 3. name what will bill
 # 4. confirm the ids with the user: this bills ElevenLabs Music
-python3 tools/gen_music.py --recipes work/music-palette.json --only <ids>             # 5. generate
+python3 tools/gen_music.py --recipes {output_folder}/work/music-palette.json --only <ids>             # 5. generate
 python3 tools/mix_music.py {output_folder}                                            # 6. mix
 ```
 

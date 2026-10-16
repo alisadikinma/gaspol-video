@@ -66,7 +66,8 @@ def build_music(music, total, out):
 def run(plan, workdir=None):
     """plan keys: video, out, total (optional), ass (optional), thumb (optional), hold (0.12),
     cues [{at, sfx, gain}], music {file, start, gain, fade_in, fade_out} (optional),
-    lufs (-14), loudness_profile (name in media/loudness-profiles.json; an explicit lufs wins), limit (0.78). Returns {'out', 'lufs_before', 'gain_db'}."""
+    lufs (-14), loudness_profile (name in media/loudness-profiles.json; an explicit lufs wins), limit (0.78).
+    Only the profile's lufs is applied; its true_peak is ignored, mixdown keeps its own limiter (`limit`). Returns {'out', 'lufs_before', 'gain_db'}."""
     video, out = plan["video"], plan["out"]
     target = plan["lufs"] if "lufs" in plan else (
         loudness.profile(plan["loudness_profile"])["lufs"] if "loudness_profile" in plan else -14.0)

@@ -25,7 +25,7 @@ if ! grep -qiE "fallback" "$DOC" || ! grep -qiE "only the fallback|is the fallba
   echo "FAIL $DOC does not say the tone table is the fallback"
   fail=1
 fi
-need "$SKILL" "gen_music.py --recipes work/music-palette.json --only" "$SKILL does not pass --recipes and --only to gen_music.py"
+need "$SKILL" "gen_music.py --recipes {output_folder}/work/music-palette.json --only" "$SKILL does not pass --recipes and --only to gen_music.py"
 need "$SKILL" "--dry-run" "$SKILL does not dry-run before billing"
 if ! grep -qiE "confirm" "$SKILL"; then echo "FAIL $SKILL has no user confirmation before billing"; fail=1; fi
 a=$(grep -n "music_brief.py" "$SKILL" | head -1 | cut -d: -f1)

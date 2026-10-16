@@ -147,17 +147,24 @@ Rules:
   any gain.
 - Use a stack only on the two or three biggest moments.
 
-**Beat snap.** After the owner has audited the cue sheet, snap cues onto the music beats:
+**Beat snap.** After the owner has audited the cue sheet and the music tracks are generated (pass 4.2
+up to `gen_music.py`; the bed is mixed later), snap cues onto the music beats:
 
 ```bash
-python3 tools/sfx_snap.py {output_folder} --music output/music.mp3
+python3 tools/sfx_snap.py {output_folder} --music-plan work/music-plan.json
 python3 tools/mix_sfx.py {output_folder} --plan work/sfx-plan.snapped.json
 ```
 
+`--music-plan` takes the beats of each segment's track (`library:<id>` or a project path), keeps
+those inside the segment (a track shorter than the segment repeats its beats, as the bed loops) and
+shifts them by the segment's `from_s`. One bed file: `--music output/music.mp3` instead. Give exactly
+one. Relative paths are the project's, never the cwd's.
+
 Defaults: `--plan work/sfx-plan.json`, `--window 0.12` seconds. Cues within 0.12s of a beat move to it;
 others stay. A stack moves as one (only the parent `at_s` snaps). The output is
-`work/sfx-plan.snapped.json`; the original plan is never changed. Exit 2 means no beats were found in
-the music: nothing is written, mix the original plan.
+`work/sfx-plan.snapped.json`; the original plan is never changed. Exit 2 is bad input (missing plan,
+track or music, malformed plan). Exit 3 means no beats were found in the music: nothing is
+written, mix the original plan.
 
 **The audit stays a hard gate.** The owner approves the cue sheet (`mix_sfx.py --print`) before the
 snap, and snapping moves cues by at most the window, so it does not reopen the audit.

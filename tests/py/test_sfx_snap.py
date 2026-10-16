@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.py.media import requires_ffmpeg
 from tests.py.test_vidkit import click_wav
@@ -82,11 +83,11 @@ class SfxSnapTest(unittest.TestCase):
         self._run()
         self.assertEqual(self.plan.read_bytes(), before)
 
-    def test_silent_music_exits_2_and_writes_nothing(self):
+    def test_silent_music_exits_3_and_writes_nothing(self):
         silent = click_wav(self.project / "silent.wav", [], noise=0.0)
         self._write([{"sfx_id": "hit", "at_s": 1.55}])
         rc, text = self._run(music=silent)
-        self.assertEqual(rc, 2)
+        self.assertEqual(rc, 3)
         self.assertIn("no beats", text.lower())
         self.assertFalse(self.out.exists())
 
@@ -124,25 +125,144 @@ class SfxSnapTest(unittest.TestCase):
         self._write([{"sfx_id": "hit", "at_s": 1.55}])
         before = self.plan.read_bytes()
         rc, _ = self._run("--out", str(self.plan))
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 2)
         self.assertEqual(self.plan.read_bytes(), before)
 
     def test_missing_plan_fails(self):
         rc, text = self._run()
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 2)
         self.assertIn("sfx-plan.json", text)
 
     def test_empty_plan_fails_without_output(self):
         self._write([])
         rc, _ = self._run()
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 2)
         self.assertFalse(self.out.exists())
 
     def test_missing_music_fails(self):
         self._write([{"sfx_id": "hit", "at_s": 1.55}])
         rc, _ = self._run(music=str(self.project / "gone.wav"))
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 2)
         self.assertFalse(self.out.exists())
+
+    def test_malformed_stack_exits_2_with_message(self):
+        self._write([{"stack": "bad", "at_s": 1.55}])
+        rc, text = self._run()
+        self.assertEqual(rc, 2)
+        self.assertIn("stack", text)
+        self.assertNotIn("Traceback", text)
+        self.assertFalse(self.out.exists())
+
+    def test_stack_entry_not_an_object_exits_2(self):
+        self._write([{"stack": ["x"], "at_s": 1.55}])
+        rc, text = self._run()
+        self.assertEqual(rc, 2)
+        self.assertIn("stack", text)
+
+
+@requires_ffmpeg
+class SfxSnapMusicPlanTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name) / "proj"
+        (self.project / "work").mkdir(parents=True)
+        (self.project / "tracks").mkdir()
+        self.home = Path(self.tmp.name) / "home"
+        patcher = mock.patch.dict(os.environ, {"GASPOL_VIDEO_HOME": str(self.home)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.plan = self.project / "work" / "sfx-plan.json"
+        self.out = self.project / "work" / "sfx-plan.snapped.json"
+        self.music_plan = self.project / "work" / "music-plan.json"
+
+    def _library_track(self, name, clicks, seconds):
+        d = self.home / "library" / "music" / "tracks"
+        d.mkdir(parents=True, exist_ok=True)
+        return click_wav(d / f"{name}.mp3", clicks, seconds=seconds)
+
+    def _run(self, *extra):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            rc = sfx_snap.main([str(self.project), *extra])
+        return rc, buf.getvalue()
+
+    def _events(self, times):
+        self.plan.write_text(json.dumps({"events": [{"sfx_id": f"e{i}", "at_s": t}
+                                                    for i, t in enumerate(times)]}))
+
+    def _got(self):
+        return [e["at_s"] for e in json.loads(self.out.read_text())["events"]]
+
+    def test_two_segments_offset_and_cut_at_segment_length(self):
+        self._library_track("a", [0.5, 1.5, 4.5], 6.0)     # 4.5 is past the 3 s segment
+        self._library_track("b", [0.2, 1.0, 2.0], 4.0)
+        self.music_plan.write_text(json.dumps({"segments": [
+            {"from_s": 0, "to_s": 3, "track": "library:a"},
+            {"from_s": 10, "to_s": 13, "track": "library:b"}]}))
+        # 10.25 -> 10.2, 12.03 -> 12.0, 4.5 would only snap if a beat leaked past the cut, 1.55 -> 1.5
+        self._events([1.55, 4.5, 10.25, 12.03])
+        rc, text = self._run("--music-plan")
+        self.assertEqual(rc, 0, text)
+        got = self._got()
+        self.assertAlmostEqual(got[0], 1.5, delta=0.03)
+        self.assertEqual(got[1], 4.5)
+        self.assertAlmostEqual(got[2], 10.2, delta=0.03)
+        self.assertAlmostEqual(got[3], 12.0, delta=0.03)
+
+    def test_short_track_repeats_its_beats_for_a_looped_segment(self):
+        self._library_track("short", [0.5, 1.5], 2.0)
+        self.music_plan.write_text(json.dumps({"segments": [
+            {"from_s": 1, "to_s": 6, "track": "library:short"}]}))
+        # looped beats land at 1.5, 2.5, 3.5, 4.5, 5.5
+        self._events([3.55, 5.45])
+        rc, text = self._run("--music-plan")
+        self.assertEqual(rc, 0, text)
+        got = self._got()
+        self.assertAlmostEqual(got[0], 3.5, delta=0.03)
+        self.assertAlmostEqual(got[1], 5.5, delta=0.03)
+
+    def test_path_track_is_relative_to_project(self):
+        click_wav(self.project / "tracks" / "t.wav", [0.5, 1.5], seconds=3.0)
+        self.music_plan.write_text(json.dumps({"segments": [
+            {"from_s": 2, "to_s": 5, "track": "tracks/t.wav"}]}))
+        self._events([2.55])
+        rc, text = self._run("--music-plan", "work/music-plan.json")
+        self.assertEqual(rc, 0, text)
+        self.assertAlmostEqual(self._got()[0], 2.5, delta=0.03)
+
+    def test_missing_track_exits_2_naming_segment_and_track(self):
+        self.music_plan.write_text(json.dumps({"segments": [
+            {"from_s": 0, "to_s": 3, "track": "library:ghost"}]}))
+        self._events([1.0])
+        rc, text = self._run("--music-plan")
+        self.assertEqual(rc, 2)
+        self.assertIn("segment 1", text)
+        self.assertIn("library:ghost", text)
+        self.assertFalse(self.out.exists())
+
+    def test_no_beats_in_any_track_exits_3(self):
+        self._library_track("quiet", [], 4.0)
+        self.music_plan.write_text(json.dumps({"segments": [
+            {"from_s": 0, "to_s": 3, "track": "library:quiet"}]}))
+        self._events([1.0])
+        rc, _ = self._run("--music-plan")
+        self.assertEqual(rc, 3)
+        self.assertFalse(self.out.exists())
+
+    def test_music_and_music_plan_are_exclusive_and_one_is_required(self):
+        self._events([1.0])
+        rc, text = self._run()
+        self.assertEqual(rc, 2)
+        self.assertIn("--music", text)
+        rc, _ = self._run("--music", "x.wav", "--music-plan")
+        self.assertEqual(rc, 2)
+
+    def test_missing_music_plan_file_exits_2(self):
+        self._events([1.0])
+        rc, text = self._run("--music-plan")
+        self.assertEqual(rc, 2)
+        self.assertIn("music-plan.json", text)
 
 
 if __name__ == "__main__":
