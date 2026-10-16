@@ -213,3 +213,51 @@ export function cueStyle(cue, f, fps) {
     icon: { progress: strokeProgress(f, iconStart, fps, 0.4) },
   };
 }
+
+// Step counter (GV-19). marks = [{n, f}] in any order. active = highest n whose frame is
+// <= f (0 before the first). litProgress eases 0..1 over 0.25 s from that mark's frame.
+// The plan gives (f, marks, total); fps is a 4th argument, default 30, because the window
+// is measured in seconds. total is only needed by the drawing, so it is not read here.
+export function stepState(f, marks, total, fps = 30) {
+  let hit = null;
+  for (const m of marks || []) {
+    if (f >= m.f && (hit === null || m.n > hit.n)) hit = m;
+  }
+  if (!hit) return { active: 0, litProgress: 0 };
+  return { active: hit.n, litProgress: easeOut(progressOf(f, hit.f, fps, 0.25)) };
+}
+
+// Red edge vignette strength 0..1 of its maximum (the drawing multiplies by 0.55). Fades in
+// 0.15 s, blinks at 3 Hz between 0.55 and 1.0, fades out over the 0.20 s ending at outF, and
+// is exactly 0 at inF and from outF on.
+export function vignetteAlpha(f, inF, outF, fps) {
+  if (!Number.isFinite(f) || !(f > inF) || !(f < outF)) return 0;
+  const fadeIn = progressOf(f, inF, fps, 0.15);
+  const fadeOut = 1 - progressOf(f, outF - winFrames(0.2, fps), fps, 0.2);
+  const blink = 0.775 + 0.225 * Math.sin((2 * Math.PI * 3 * (f - inF)) / fps);
+  return clamp01(fadeIn * fadeOut * blink);
+}
+
+// Falling-object burst: `count` particles with x (0..1 across the width) from a seeded
+// mulberry32, y falling -0.1 -> 1.1 (fractions of the height) over 1.6 s after a per-particle
+// delay of up to 0.5 s, constant rotation speed. Same arguments, same array.
+export function burstParticles(f, startF, fps, seed, count) {
+  const n = Number.isFinite(count) ? Math.min(Math.max(Math.floor(count), 0), 30) : 0;
+  const rand = mulberry32(seed);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const x = rand();
+    const delay = rand() * 0.5;
+    const rot0 = rand() * 360;
+    const spin = (rand() * 2 - 1) * 360;
+    const elapsed = Math.max(0, (f - startF) / fps - delay);
+    const t = clamp01(elapsed / 1.6);
+    out.push({
+      x,
+      y: lerp(-0.1, 1.1, t),
+      rot: rot0 + spin * elapsed,
+      opacity: elapsed <= 0 || t >= 1 ? 0 : clamp01(elapsed / 0.1),
+    });
+  }
+  return out;
+}

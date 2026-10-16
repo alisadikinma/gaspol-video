@@ -42,7 +42,7 @@ print(' '.join(sorted(re.findall(r'^\s{2}(\w+)\s*:', m.group(1), re.M))) if m el
 py=$(python3 -c "
 import re
 src = open('tools/overlay_plan.py').read()
-m = re.search(r'^ICONS\s*=\s*\((.*?)\)', src, re.M)
+m = re.search(r'^ICONS\s*=\s*\((.*?)\)', src, re.M | re.S)
 print(' '.join(sorted(re.findall(r'\"(\w+)\"', m.group(1)))) if m else '')
 ")
 if [ -z "$js" ] || [ "$js" != "$py" ]; then
@@ -52,6 +52,15 @@ fi
 B=templates/remotion/brand.json
 grep -qF '"highlight"' "$B" || { echo "FAIL $B lacks highlight"; fail=1; }
 grep -qF '"scriptFont"' "$B" || { echo "FAIL $B lacks scriptFont"; fail=1; }
+grep -qF '"alarm"' "$B" || { echo "FAIL $B lacks alarm (GV-19)"; fail=1; }
 grep -qE 'export const FONT_SCRIPT' templates/remotion/lib/brand.ts || { echo "FAIL brand.ts does not export FONT_SCRIPT"; fail=1; }
+
+# GV-19: the two-tier preset is course advice and says so wherever it is defined or documented.
+for f in tools/overlay_plan.py reference/post-production/19-keyword-text-overlay.md; do
+  grep -qF 'source: course' "$f" || { echo "FAIL $f lacks 'source: course' (GV-19 preset)"; fail=1; }
+done
+for k in stepState vignetteAlpha burstParticles; do
+  grep -qF "$k" "$F" || { echo "FAIL $F does not draw $k (GV-19)"; fail=1; }
+done
 
 exit $fail

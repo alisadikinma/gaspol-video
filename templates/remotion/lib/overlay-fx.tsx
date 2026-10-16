@@ -17,6 +17,7 @@ import { Img, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig } from
 
 import { COLORS, FONT_BODY, FONT_DISPLAY, FONT_SCRIPT } from './brand';
 import {
+  burstParticles,
   carouselX,
   cueStyle,
   cueVisible,
@@ -24,6 +25,8 @@ import {
   exitFx,
   leadIn,
   springIn,
+  stepState,
+  vignetteAlpha,
 } from './overlayFx.mjs';
 
 // =============================================================================
@@ -73,7 +76,16 @@ export type CueSpec = {
   bubbles: BubbleSpec[];
   carousel: CarouselCard[];
   source: string;
+  // GV-19. Optional so a plan written before them still type-checks.
+  vignette?: boolean;
+  burst?: { icon: string; count: number } | null;
 };
+
+export type StepsSpec = { total: number; marks: { n: number; f: number }[] };
+
+// Two-tier caption preset written by tools/overlay_plan.py. source is always "course": the sizes
+// are course advice, not platform data.
+export type PresetSpec = { name: string; source: string; lead_px: number; key_px: number };
 
 export type OverlayPlan = {
   scene: string;
@@ -84,6 +96,8 @@ export type OverlayPlan = {
   clip: string;
   mask: string | null;
   cues: CueSpec[];
+  steps?: StepsSpec;
+  preset?: PresetSpec;
 };
 
 // A {remotion: Name} panel is drawn by a component the user registers in the scene file.
@@ -122,11 +136,40 @@ export const ICONS: Record<string, string[]> = {
   circle: [
     'M50 8 C76 8 94 26 92 52 C90 78 70 94 46 92 C22 90 6 70 10 44 C13 24 30 10 56 12',
   ],
+  warning: [
+    'M50 10 L92 86 L8 86 Z',
+    'M50 38 L50 62',
+    'M50 74 L50 75',
+  ],
+  money: [
+    'M8 26 L92 26 L92 74 L8 74 Z',
+    'M50 36 C57 36 62 42 62 50 C62 58 57 64 50 64 C43 64 38 58 38 50 C38 42 43 36 50 36 Z',
+    'M18 50 L24 50',
+    'M76 50 L82 50',
+  ],
+  check: [
+    'M50 8 C74 8 92 26 92 50 C92 74 74 92 50 92 C26 92 8 74 8 50 C8 26 26 8 50 8 Z',
+    'M28 52 L44 68 L72 34',
+  ],
+  cross: [
+    'M50 8 C74 8 92 26 92 50 C92 74 74 92 50 92 C26 92 8 74 8 50 C8 26 26 8 50 8 Z',
+    'M34 34 L66 66',
+    'M66 34 L34 66',
+  ],
+  clock: [
+    'M50 8 C74 8 92 26 92 50 C92 74 74 92 50 92 C26 92 8 74 8 50 C8 26 26 8 50 8 Z',
+    'M50 24 L50 50 L68 62',
+  ],
+  lock: [
+    'M22 44 L78 44 L78 90 L22 90 Z',
+    'M32 44 L32 30 C32 18 40 10 50 10 C60 10 68 18 68 30 L68 44',
+    'M50 62 L50 74',
+  ],
 };
 
-type IconProps = { name: string; progress: number; size: number; opacity: number };
+type IconProps = { name: string; progress: number; size: number; opacity: number; stroke?: string };
 
-export const Icon: React.FC<IconProps> = ({ name, progress, size, opacity }) => {
+export const Icon: React.FC<IconProps> = ({ name, progress, size, opacity, stroke = COLORS.ink }) => {
   const paths = ICONS[name];
   if (!paths) {
     throw new Error(`Overlay icon "${name}" is not one of: ${Object.keys(ICONS).join(', ')}`);
@@ -143,7 +186,7 @@ export const Icon: React.FC<IconProps> = ({ name, progress, size, opacity }) => 
           key={d}
           d={d}
           fill="none"
-          stroke={COLORS.ink}
+          stroke={stroke}
           strokeWidth={4}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -233,6 +276,11 @@ const anchorBox = (pos: CuePos, width: number): React.CSSProperties => {
       textAlign: 'center',
     };
   }
+  if (pos.anchor === 'center') {
+    // centred across, 64% down: in a talking-head frame the exact middle is the face, and text
+    // must stay off the face (first GV-19 render: the warning icon sat on the speaker's nose)
+    return { left: width / 2, top: '64%', transform: 'translate(-50%, -50%)', alignItems: 'center', textAlign: 'center' };
+  }
   if (pos.anchor === 'left') {
     return { left: SAFE_PX, top: '50%', transform: 'translateY(-50%)', alignItems: 'flex-start', textAlign: 'left' };
   }
@@ -243,7 +291,7 @@ const anchorBox = (pos: CuePos, width: number): React.CSSProperties => {
   return { left: width / 2, top: SAFE_PX, transform: 'translateX(-50%)', alignItems: 'center', textAlign: 'center' };
 };
 
-export const CueText: React.FC<{ cue: CueSpec }> = ({ cue }) => {
+export const CueText: React.FC<{ cue: CueSpec; preset?: PresetSpec }> = ({ cue, preset }) => {
   const frame = useCurrentFrame();
   const { fps, width } = useVideoConfig();
   if (!cueVisible(frame, cue.inF, cue.outF)) return null;
@@ -253,11 +301,13 @@ export const CueText: React.FC<{ cue: CueSpec }> = ({ cue }) => {
   const kw = style.keyword;
   const color = cue.color === 'yellow' ? COLORS.highlight : COLORS.ink;
   const keywordFont = cue.script ? FONT_SCRIPT : FONT_DISPLAY;
+  const leadPx = preset ? preset.lead_px : LEAD_PX;
+  const keyPx = preset ? preset.key_px : KEYWORD_PX;
 
   const keywordBase: React.CSSProperties = {
     fontFamily: keywordFont,
     fontWeight: cue.script ? 700 : 800,
-    fontSize: cue.script ? KEYWORD_PX * 1.15 : KEYWORD_PX,
+    fontSize: cue.script ? keyPx * 1.15 : keyPx,
     lineHeight: 1.0,
     color,
     textShadow: TEXT_SHADOW,
@@ -314,7 +364,7 @@ export const CueText: React.FC<{ cue: CueSpec }> = ({ cue }) => {
           style={{
             fontFamily: FONT_BODY,
             fontWeight: 400,
-            fontSize: LEAD_PX,
+            fontSize: leadPx,
             lineHeight: 1.15,
             color: COLORS.ink,
             textShadow: TEXT_SHADOW,
@@ -524,5 +574,127 @@ export const SourceBox: React.FC<{ cue: CueSpec }> = ({ cue }) => {
     >
       {cue.source}
     </div>
+  );
+};
+
+// =============================================================================
+// StepBar — numbered circles along the top, the current step lit (GV-19)
+// =============================================================================
+const STEP_D = 56;
+
+export const StepBar: React.FC<{ steps: StepsSpec }> = ({ steps }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const state = stepState(frame, steps.marks, steps.total, fps);
+  if (state.active === 0) return null;
+  const circles = Array.from({ length: steps.total }, (_, i) => i + 1);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 36,
+        display: 'flex',
+        justifyContent: 'center',
+        gap: 14,
+      }}
+    >
+      {circles.map((n) => {
+        const past = n < state.active;
+        const lit = n === state.active;
+        return (
+          <div
+            key={n}
+            style={{
+              position: 'relative',
+              width: STEP_D,
+              height: STEP_D,
+              borderRadius: '50%',
+              boxSizing: 'border-box',
+              border: `4px solid ${past || lit ? COLORS.ink : COLORS.muted}`,
+              background: past ? COLORS.ink : 'transparent',
+              opacity: past || lit ? 1 : 0.5,
+              boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+              overflow: 'hidden',
+            }}
+          >
+            {lit ? (
+              <div style={{ position: 'absolute', inset: 0, background: COLORS.highlight, opacity: state.litProgress }} />
+            ) : null}
+            <div
+              style={{
+                position: 'relative',
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: FONT_DISPLAY,
+                fontWeight: 800,
+                fontSize: 30,
+                color: past || (lit && state.litProgress > 0.5) ? COLORS.paper : COLORS.muted,
+              }}
+            >
+              {n}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// =============================================================================
+// Vignette — blinking red edge glow, centre (the face) left clear (GV-19)
+// =============================================================================
+const VIGNETTE_MAX = 0.55;
+
+export const Vignette: React.FC<{ cue: CueSpec }> = ({ cue }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  if (!cue.vignette) return null;
+  const alpha = vignetteAlpha(frame, cue.inF, cue.outF, fps) * VIGNETTE_MAX;
+  if (alpha <= 0) return null;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: `radial-gradient(ellipse at center, transparent 55%, ${COLORS.alarm} 100%)`,
+        opacity: alpha,
+      }}
+    />
+  );
+};
+
+// =============================================================================
+// Burst — icons falling over the frame from the keyword on (GV-19)
+// =============================================================================
+const BURST_PX = 96;
+
+export const Burst: React.FC<{ cue: CueSpec; seed: number }> = ({ cue, seed }) => {
+  const frame = useCurrentFrame();
+  const { fps, width, height } = useVideoConfig();
+  if (!cue.burst) return null;
+  const parts = burstParticles(frame, cue.keyF, fps, seed, cue.burst.count);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.opacity > 0 ? (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: p.x * width - BURST_PX / 2,
+              top: p.y * height - BURST_PX / 2,
+              transform: `rotate(${p.rot}deg)`,
+            }}
+          >
+            <Icon name={cue.burst!.icon} progress={1} size={BURST_PX} opacity={p.opacity} stroke={COLORS.highlight} />
+          </div>
+        ) : null,
+      )}
+    </>
   );
 };

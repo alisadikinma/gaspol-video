@@ -18,17 +18,21 @@
 //     palette.
 //
 // Effect arithmetic lives in ../lib/overlayFx.mjs (zero imports, unit-tested); the pieces
-// that draw it live in ../lib/overlay-fx.tsx. This file only stacks the five layers.
+// that draw it live in ../lib/overlay-fx.tsx. This file only stacks the five layers. GV-19 adds the step bar, red vignette and falling
+// burst inside L4 front, so the layer order is unchanged.
 
 import React from 'react';
 import { AbsoluteFill, OffthreadVideo, staticFile, useCurrentFrame } from 'remotion';
 
 import {
   Bubble,
+  Burst,
   Carousel,
   CueText,
   Panel,
   SourceBox,
+  StepBar,
+  Vignette,
   type CueSpec,
   type OverlayPlan,
   type PanelRegistry,
@@ -104,7 +108,7 @@ export const KineticOverlay: React.FC = () => {
               <Bubble key={`b-${bi}`} cue={cue} bubble={bubble} seed={ci * 31 + 17 + bi} registry={PANELS} />
             ))}
             <Carousel cue={cue} registry={PANELS} />
-            {cue.layer === 'behind' ? <CueText cue={cue} /> : null}
+            {cue.layer === 'behind' ? <CueText cue={cue} preset={plan.preset} /> : null}
           </React.Fragment>
         ))}
       </AbsoluteFill>
@@ -120,14 +124,17 @@ export const KineticOverlay: React.FC = () => {
       <AbsoluteFill>
         {plan.cues.map((cue, ci) => (
           <React.Fragment key={`front-${cue.id}`}>
+            <Vignette cue={cue} />
             {cue.panels
               .filter((panel) => panel.layer === 'front')
               .map((panel, pi) => (
                 <Panel key={`p-${pi}`} cue={cue} panel={panel} seed={ci * 31 + 9 + pi} registry={PANELS} />
               ))}
-            {cue.layer === 'front' ? <CueText cue={cue} /> : null}
+            {cue.layer === 'front' ? <CueText cue={cue} preset={plan.preset} /> : null}
+            <Burst cue={cue} seed={ci * 131 + 5} />
           </React.Fragment>
         ))}
+        {plan.steps ? <StepBar steps={plan.steps} /> : null}
       </AbsoluteFill>
 
       {/* L5 source */}

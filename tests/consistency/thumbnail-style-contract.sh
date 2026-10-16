@@ -6,7 +6,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 fail=0
-DOC=reference/post-production/20-thumbnail-style-elements.md
+DOC=reference/post-production/21-thumbnail-style-elements.md
 SKILL=skills/video-package/SKILL.md
 need() { if ! grep -qF -- "$2" "$1"; then echo "FAIL $3"; fail=1; fi; }
 
@@ -29,7 +29,7 @@ PY
   need "$DOC" "ai-image-carousel-prompt-gen" "doc does not name the render hand-off"
 fi
 
-need "$SKILL" "20-thumbnail-style-elements.md" "skill does not link the style doc"
+need "$SKILL" "21-thumbnail-style-elements.md" "skill does not link the style doc"
 need "$SKILL" "thumb_verify.py init" "skill does not run thumb_verify.py init"
 need "$SKILL" "thumb_verify.py check" "skill does not require thumb_verify.py check"
 need "$SKILL" "exit 0" "skill does not say check must exit 0 before a thumbnail is final"

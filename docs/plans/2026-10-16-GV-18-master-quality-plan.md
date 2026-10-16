@@ -405,7 +405,7 @@ Phase labels: Phase 0 pre-flight, then A–O. Every phase's step 1 is the failin
 **Estimated time:** 15 minutes
 
 **Files:**
-- Create: `reference/post-production/20-thumbnail-style-elements.md`, `tools/thumb_verify.py`, `tests/consistency/thumbnail-style-contract.sh`
+- Create: `reference/post-production/21-thumbnail-style-elements.md`, `tools/thumb_verify.py`, `tests/consistency/thumbnail-style-contract.sh`
 - Modify: `skills/video-package/SKILL.md`, `NOTICE`, `CLAUDE.md`
 - Test: `tests/py/test_thumb_verify.py`
 
