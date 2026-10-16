@@ -33,6 +33,10 @@ Adapted:
     verifying each render by looking before it is shown (reference/post-production/
     20-thumbnail-style-elements.md, tools/thumb_verify.py). Written in this plugin's own
     words; no text or code vendored.
+  * The stills-first idea: a human verdict page over the keyframes before any clip
+    is paid for (tools/verdict_page.py), and a per-project cost log
+    (tools/cost_log.py). The cost log kept only unit logging; no estimate and no
+    prices. Method only, nothing vendored.
   * AssemblyAI as the transcription provider, and the idea of biasing the
     recognizer with per-video keyterms.
   * capture_web — the step-runner shape for driving a browser against a spec file
@@ -122,6 +126,10 @@ Adapted:
     (qa_frames.py).
   * Transitions (app/services/utils/video_effects.py), adapted to ffmpeg xfade with
     source handles so the timeline does not move.
+  * BT.709 colour tagging at the final encode (tools/vidkit/color.py), the hardware
+    encoder probe with libx264 fallback (tools/vidkit/encoder.py), the per-stage
+    fingerprint idea (tools/vidkit/stages.py) and the ffmpeg liveness heartbeat
+    (tools/vidkit/ff.py). Method only, nothing vendored.
 
 Not adopted from MoneyPrinterTurbo: stock-footage matching, the LLM script
 writer, the Streamlit web interface, the FastAPI service and its redis task

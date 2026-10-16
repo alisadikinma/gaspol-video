@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 31 CLI tools (29 Python + 2 Node, 6 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `keyword_cards.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 37 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 36 CLI tools (34 Python + 2 Node, 6 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `keyword_cards.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 39 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -634,8 +634,21 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.14.0
+**Version:** 3.15.0
 **Last Updated:** 2026-10-16
+
+### v3.15.0 Changelog
+
+- **Master quality (GV-18).** Music, SFX, colour, gates and speed of the finished master.
+  - **Music follows the topic.** `tools/music_brief.py` reads `work/music-brief.json` (written by the post skill from `strategic-brief.md` and `av-script.md`), builds per-topic, per-arc prompts and a project palette, and writes `library:<id>` segments. `gen_music.generate` takes `--recipes work/music-palette.json`.
+  - **Layered SFX.** A cue in `work/sfx-plan.json` may carry `stack` (several clips mixed as one cue), expanded by `mix_sfx.load_plan`. Eight new recipes in `media/sfx/library/palette.json` (recipes only, the clips are not generated). `tools/sfx_snap.py` with `vidkit/beats.py` snaps cue times to detected music beats.
+  - **Colour.** Final encodes (`edit_render`, `vidkit mixdown`) are tagged BT.709; `bt601` sources are converted first (`vidkit/color.py`). `vidkit/colormatch.py` measures per-clip mean colour and matches clips across a cut.
+  - **Stills-first gate.** `tools/verdict_page.py` builds an HTML page of the keyframes and reads `work/verdict.json`; clips are not rendered for a still without a pass.
+  - **Cost log.** `tools/cost_log.py` records units of billed renders in `work/cost-log.json`. No estimate, no prices.
+  - **Thumbnails.** Style-element menu (`reference/post-production/20-thumbnail-style-elements.md`) and `tools/thumb_verify.py`.
+  - **Speed.** `edit_render` keeps a per-stage fingerprint cache (`vidkit/stages.py`, `.tmp/stages.json`). `vidkit/encoder.py` probes hardware encoders, opt-in by env; measured slower on this machine, so the default stays `libx264`. `vidkit/ff.py` prints an ffmpeg heartbeat.
+  - **Loudness.** `media/loudness-profiles.json` entries need a `source`; only `default` ships. See `docs/evals/short-form-loudness-measurement.md`.
+  - **Not done.** No billed listening test (the owner tests on a real video). No real-clip colour check. No short-vertical loudness profile (no source for its numbers). GV-19 items stay out of scope. Tests: `tests/py/test_{music_brief,sfx_snap,cost_log,thumb_verify,verdict_page,vidkit,edit_render}.py`, `tests/consistency/{music-brief,sfx-stack,thumbnail-style}-contract.sh`.
 
 ### v3.14.0 Changelog
 

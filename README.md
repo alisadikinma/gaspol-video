@@ -1,6 +1,6 @@
 # gaspol-video
 
-**v3.11.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
+**v3.15.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
 
 Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
 
@@ -236,6 +236,10 @@ Run any phase independently:
 > Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.
 
 The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
+
+## v3.15.0 Changelog
+
+- **Master quality (GV-18).** Music prompts follow the topic and arc (`tools/music_brief.py`); SFX cues can be layered (`stack`), with eight new recipes and beat snapping (`tools/sfx_snap.py`); final encodes are BT.709 tagged and clips can be colour matched; a stills-first verdict page (`tools/verdict_page.py`) gates clip spend; `tools/cost_log.py` logs billed units only; thumbnail style menu and `tools/thumb_verify.py`; per-stage cache, encoder probe (opt-in, `libx264` stays default) and ffmpeg heartbeat in the edit render; sourced loudness profiles (only `default` ships). Not done: billed listening test, real-clip colour check, short-vertical profile.
 
 ## v3.11.0 Changelog
 
