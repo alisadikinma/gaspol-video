@@ -10,7 +10,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from . import color, cover, ff
+from . import color, cover, ff, loudness
 
 
 def sfx_path(name):
@@ -66,8 +66,10 @@ def build_music(music, total, out):
 def run(plan, workdir=None):
     """plan keys: video, out, total (optional), ass (optional), thumb (optional), hold (0.12),
     cues [{at, sfx, gain}], music {file, start, gain, fade_in, fade_out} (optional),
-    lufs (-14), limit (0.78). Returns {'out', 'lufs_before', 'gain_db'}."""
+    lufs (-14), loudness_profile (name in media/loudness-profiles.json; an explicit lufs wins), limit (0.78). Returns {'out', 'lufs_before', 'gain_db'}."""
     video, out = plan["video"], plan["out"]
+    target = plan["lufs"] if "lufs" in plan else (
+        loudness.profile(plan["loudness_profile"])["lufs"] if "loudness_profile" in plan else -14.0)
     total = plan.get("total") or ff.probe(video)["duration"]
     work = Path(workdir or tempfile.mkdtemp(prefix="vidkit-mix-"))
     work.mkdir(parents=True, exist_ok=True)
@@ -83,7 +85,7 @@ def run(plan, workdir=None):
         ff.ffmpeg("-i", voice, "-i", sfx, "-filter_complex",
                   "[0:a][1:a]amix=inputs=2:normalize=0:duration=first,aresample=44100[m]", "-map", "[m]", raw)
     before = measure_lufs(raw)
-    gain = plan.get("lufs", -14.0) - before
+    gain = target - before
     # two steps: gain first, then a limiter, because AAC encoding overshoots a one-step peak
     ff.ffmpeg("-i", raw, "-af", f"volume={gain}dB,alimiter=limit={plan.get('limit', 0.78)}:level=false", fin)
     muxed = str(work / "muxed.mp4")

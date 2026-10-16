@@ -33,7 +33,7 @@ Review of `claude-youtube-editor` and `MoneyPrinterTurbo` (NOTICE already lists 
 
 ## Open items (must be resolved in the plan, not guessed)
 
-1. Per-platform loudness targets. The expert pass claimed TikTok/Reels want -11 to -13 LUFS; no source was given. The GV-19 study measured 13 Shorts at -7.8 to -13 LUFS (single channel, a data point, not a rule). Decide the numbers from a real source before phase 5.
+1. Per-platform loudness targets. The expert pass claimed TikTok/Reels want -11 to -13 LUFS; no source was given. The GV-19 study measured 12 Shorts from one channel at -24.1 to -7.8 LUFS (11 of 12 between -13.6 and -7.8, median -11.8 over all 12); see docs/evals/short-form-loudness-measurement.md. A data point from one channel, not a rule. Decide the numbers from a real source before phase 5.
 2. How topic/domain reaches the music prompt: reuse `strategic-brief.md` Domain Knowledge, or ask once at Phase 1 brainstorm.
 3. Cost estimate needs real per-clip prices; read them from the render MCP responses, do not hardcode.
 

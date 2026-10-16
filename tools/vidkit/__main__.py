@@ -115,7 +115,10 @@ def main(argv=None):
     s = sub.add_parser("normalize", help="two-pass loudnorm, audio trimmed to picture")
     s.add_argument("src")
     s.add_argument("out")
-    s.add_argument("--lufs", type=float, default=loudness.LUFS)
+    s.add_argument("--profile", default="default",
+                   help="named target from media/loudness-profiles.json (default: default); exit 2 if unknown or unsourced")
+    s.add_argument("--lufs", type=float, default=None,
+                   help="explicit target; wins over --profile for the loudness (true peak still comes from the profile)")
 
     s = sub.add_parser("smooth-track", help="median-filter a tracked-box json in place")
     s.add_argument("track_json")
@@ -180,7 +183,11 @@ def main(argv=None):
         elif a.cmd == "energy":
             print(" ".join(f"{t:.2f}:{db:g}" for t, db in speech.energy_db(a.file, a.start, a.end)))
         elif a.cmd == "normalize":
-            print(json.dumps(loudness.normalize(a.src, a.out, a.lufs), indent=1))
+            prof = loudness.profile(a.profile)
+            lufs = prof["lufs"] if a.lufs is None else a.lufs
+            print(f"profile {a.profile}: {lufs:g} LUFS, {prof['true_peak']:g} dBTP"
+                  + (" (--lufs overrides the profile)" if a.lufs is not None else ""))
+            print(json.dumps(loudness.normalize(a.src, a.out, lufs, prof["true_peak"]), indent=1))
         elif a.cmd == "smooth-track":
             pts = _json(a.track_json)
             with open(a.track_json, "w") as fh:
@@ -189,6 +196,9 @@ def main(argv=None):
         elif a.cmd == "bond":
             from . import bond
             print(json.dumps(bond.bond_print(a.clip, a.out, a.print_png, a.cx, a.top, a.width, a.rot)))
+    except loudness.ProfileError as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 2
     except (gates.GateError, ff.FFError, beats.BeatError, ValueError, RuntimeError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1

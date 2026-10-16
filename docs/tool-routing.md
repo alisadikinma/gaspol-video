@@ -35,6 +35,8 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 | Phone notification / alarm sound without paid files | `vidkit synth notification|alarm` |
 | Music: generate / mix | `gen_music.py`, `mix_music.py` |
 | Final loudness (-14 LUFS) with A/V kept aligned | `vidkit normalize` |
+| Final loudness to a named, sourced target (`--profile NAME`; unknown or unsourced profile exits 2) | `vidkit normalize --profile`, `loudness.profile()` |
+| Pick the loudness target of a final mix by name | mixdown plan key `loudness_profile` (explicit `lufs` wins) |
 | Karaoke subtitles from a word list + centre watermark (any opacity) | `python3 -m tools.vidkit karaoke words.json out.ass --total N --watermark @handle` |
 | Thumbnail on the first frames + as mp4 cover (subtitles stay off it) | `python3 -m tools.vidkit cover video thumb out [--ass f.ass]` |
 | Logo on a white box -> mark that blends onto a prop | `python3 -m tools.vidkit unwhite logo.png out.png`, then CSS `mix-blend-mode: multiply` |

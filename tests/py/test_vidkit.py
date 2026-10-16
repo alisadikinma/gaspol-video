@@ -948,3 +948,201 @@ class HeartbeatTest(unittest.TestCase):
     def test_default_has_no_heartbeat(self):
         _, _, text = self._run("import time; time.sleep(0.3)")
         self.assertEqual(text, "")
+
+
+class LoudnessProfileTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = Path(self.tmp.name)
+
+    def write(self, text):
+        p = self.d / "profiles.json"
+        p.write_text(text)
+        return p
+
+    def prof(self, name="x", **fields):
+        base = {"lufs": -14, "true_peak": -1.0, "source": "Some Document, 2026"}
+        base.update(fields)
+        return self.write(json.dumps({"profiles": {name: base}}))
+
+    def test_default_is_minus_14_and_minus_1(self):
+        self.assertEqual(loudness.profile("default"), {"lufs": -14.0, "true_peak": -1.0})
+
+    def test_shipped_file_has_only_sourced_default(self):
+        data = json.loads(Path(loudness.PROFILES_PATH).read_text())
+        self.assertEqual(list(data["profiles"]), ["default"])
+        self.assertTrue(data["profiles"]["default"]["source"].strip())
+
+    def test_unknown_name_raises(self):
+        with self.assertRaises(loudness.ProfileError):
+            loudness.profile("nope")
+
+    def test_valid_temp_profile_loads(self):
+        self.assertEqual(loudness.profile("x", path=self.prof(lufs=-11)), {"lufs": -11.0, "true_peak": -1.0})
+
+    def test_missing_source_raises(self):
+        p = self.write(json.dumps({"profiles": {"x": {"lufs": -14, "true_peak": -1.0}}}))
+        with self.assertRaisesRegex(loudness.ProfileError, "source"):
+            loudness.profile("x", path=p)
+
+    def test_empty_or_blank_source_raises(self):
+        for src in ("", "   ", None, 5):
+            with self.assertRaises(loudness.ProfileError, msg=repr(src)):
+                loudness.profile("x", path=self.prof(source=src))
+
+    def test_lufs_out_of_range_raises(self):
+        for v in (-3, -30, -5.99, -24.01):
+            with self.assertRaises(loudness.ProfileError, msg=str(v)):
+                loudness.profile("x", path=self.prof(lufs=v))
+
+    def test_lufs_range_edges_accepted(self):
+        for v in (-24, -6):
+            self.assertEqual(loudness.profile("x", path=self.prof(lufs=v))["lufs"], float(v))
+
+    def test_true_peak_out_of_range_raises(self):
+        for v in (1.0, 0.1, -9.5, -20):
+            with self.assertRaises(loudness.ProfileError, msg=str(v)):
+                loudness.profile("x", path=self.prof(true_peak=v))
+
+    def test_non_numeric_values_raise(self):
+        for field in ("lufs", "true_peak"):
+            for v in ("-14", None, True):
+                with self.assertRaises(loudness.ProfileError, msg=f"{field}={v!r}"):
+                    loudness.profile("x", path=self.prof(**{field: v}))
+
+    def test_duplicate_profile_names_raise(self):
+        one = '{"lufs": -14, "true_peak": -1.0, "source": "doc"}'
+        two = '{"lufs": -12, "true_peak": -1.0, "source": "doc"}'
+        p = self.write('{"profiles": {"x": %s, "x": %s}}' % (one, two))
+        with self.assertRaisesRegex(loudness.ProfileError, "duplicate"):
+            loudness.profile("x", path=p)
+
+    def test_malformed_json_raises(self):
+        with self.assertRaises(loudness.ProfileError):
+            loudness.profile("x", path=self.write("{not json"))
+
+    def test_wrong_shape_raises(self):
+        for text in ("[]", '{"profiles": []}', '{"nope": 1}', '{"profiles": {"x": 3}}'):
+            with self.assertRaises(loudness.ProfileError, msg=text):
+                loudness.profile("x", path=self.write(text))
+
+    def test_missing_file_falls_back_to_default_with_warning(self):
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            got = loudness.profile("default", path=self.d / "absent.json")
+        self.assertEqual(got, {"lufs": -14.0, "true_peak": -1.0})
+        self.assertEqual(len(w), 1)
+        self.assertIn("absent.json", str(w[0].message))
+
+    def test_missing_file_other_name_still_raises(self):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with self.assertRaises(loudness.ProfileError):
+                loudness.profile("short", path=self.d / "absent.json")
+
+    def test_env_override_selects_file(self):
+        import os
+        p = self.prof(lufs=-12)
+        old = os.environ.get("GASPOL_LOUDNESS_PROFILES")
+        os.environ["GASPOL_LOUDNESS_PROFILES"] = str(p)
+        try:
+            self.assertEqual(loudness.profile("x")["lufs"], -12.0)
+        finally:
+            if old is None:
+                del os.environ["GASPOL_LOUDNESS_PROFILES"]
+            else:
+                os.environ["GASPOL_LOUDNESS_PROFILES"] = old
+
+
+class NormalizeProfileCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = Path(self.tmp.name)
+
+    def run_cli(self, *argv):
+        import contextlib
+        from tools.vidkit.__main__ import main
+        buf, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            rc = main(["normalize", *argv])
+        return rc, buf.getvalue(), err.getvalue()
+
+    @requires_ffmpeg
+    def test_profile_default_matches_no_profile_and_hits_minus_14(self):
+        src = make_clip(self.d / "a.mp4", seconds=3.0)
+        rc, out, _ = self.run_cli(str(src), str(self.d / "p.mp4"), "--profile", "default")
+        self.assertEqual(rc, 0)
+        self.assertIn("default", out)
+        self.assertIn("-14", out)
+        rc2, _, _ = self.run_cli(str(src), str(self.d / "q.mp4"))
+        self.assertEqual(rc2, 0)
+        a = mixdown.measure_lufs(str(self.d / "p.mp4"))
+        b = mixdown.measure_lufs(str(self.d / "q.mp4"))
+        self.assertAlmostEqual(a, -14.0, delta=0.5)
+        self.assertAlmostEqual(a, b, delta=0.05)
+
+    @requires_ffmpeg
+    def test_explicit_lufs_wins_over_profile(self):
+        src = make_clip(self.d / "a.mp4", seconds=3.0)
+        rc, _, _ = self.run_cli(str(src), str(self.d / "w.mp4"), "--profile", "default", "--lufs", "-18")
+        self.assertEqual(rc, 0)
+        self.assertAlmostEqual(mixdown.measure_lufs(str(self.d / "w.mp4")), -18.0, delta=0.7)
+
+    def test_unknown_profile_exits_2_with_message_and_writes_nothing(self):
+        src = self.d / "a.mp4"
+        src.write_bytes(b"x")
+        rc, out, err = self.run_cli(str(src), str(self.d / "o.mp4"), "--profile", "nope")
+        self.assertEqual(rc, 2)
+        self.assertIn("nope", err)
+        self.assertFalse((self.d / "o.mp4").exists())
+
+    def test_invalid_profile_file_exits_2(self):
+        import os
+        bad = self.d / "bad.json"
+        bad.write_text(json.dumps({"profiles": {"x": {"lufs": -14, "true_peak": -1.0}}}))
+        src = self.d / "a.mp4"
+        src.write_bytes(b"x")
+        old = os.environ.get("GASPOL_LOUDNESS_PROFILES")
+        os.environ["GASPOL_LOUDNESS_PROFILES"] = str(bad)
+        try:
+            rc, _, err = self.run_cli(str(src), str(self.d / "o.mp4"), "--profile", "x")
+        finally:
+            if old is None:
+                del os.environ["GASPOL_LOUDNESS_PROFILES"]
+            else:
+                os.environ["GASPOL_LOUDNESS_PROFILES"] = old
+        self.assertEqual(rc, 2)
+        self.assertIn("source", err)
+
+
+class MixdownProfileTest(unittest.TestCase):
+    @requires_ffmpeg
+    def test_default_profile_same_loudness_as_absent(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            v = d / "v.mp4"
+            make_clip(str(v), 3.0)
+            res = {}
+            for name, extra in (("none", {}), ("def", {"loudness_profile": "default"})):
+                r = mixdown.run({"video": str(v), "out": str(d / f"{name}.mp4"), **extra}, workdir=d / f"w-{name}")
+                res[name] = r["gain_db"]
+            self.assertAlmostEqual(res["none"], res["def"], places=6)
+
+    def test_unknown_loudness_profile_raises_before_work(self):
+        with self.assertRaises(loudness.ProfileError):
+            mixdown.run({"video": "/nonexistent.mp4", "out": "/tmp/x.mp4", "loudness_profile": "nope"})
+
+    @requires_ffmpeg
+    def test_explicit_lufs_wins_over_profile_key(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            v = d / "v.mp4"
+            make_clip(str(v), 3.0)
+            r0 = mixdown.run({"video": str(v), "out": str(d / "a.mp4"), "lufs": -18.0}, workdir=d / "wa")
+            r1 = mixdown.run({"video": str(v), "out": str(d / "b.mp4"), "lufs": -18.0,
+                              "loudness_profile": "default"}, workdir=d / "wb")
+            self.assertAlmostEqual(r0["gain_db"], r1["gain_db"], places=6)

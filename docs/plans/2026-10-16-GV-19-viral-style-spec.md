@@ -8,12 +8,12 @@
 
 The owner likes the animation, SFX and music of a creator's Shorts and wants the same style, plus a viral-video framework. Two NotebookLM notebooks feed this: the course notebook (`Seefluencer AI Mentor`, framework) and a notebook built from 24 transcripts of the reference channel (`SAMUEL-STYLE 2026-10`). Imitating a style, not copying content: no footage, voice, face or script is reused.
 
-## Measured facts (13 Shorts downloaded and measured)
+## Measured facts (12 Shorts downloaded and measured; 1 further download failed)
 
 - The "animation" is mostly **overlay on a single take**. The 272k-view short has 0 camera cuts; the others 2–42.
 - Overlay vocabulary seen: top step counter ①–⑤ with the active number lit; sticker icons beside the spoken phrase; red warning triangles + red vignette on danger words; falling money on "wealth"; two-tier captions (small white, big neon-green keyword); red circle on screen recordings; blur transitions; a corner "full video" chip.
 - Experiment format (ant story): close-ups of hands and props, centred serif captions, short cutaways to the speaker.
-- Integrated loudness -7.8 to -13 LUFS (mean about -11), louder than this plugin's -14 target.
+- Integrated loudness -24.1 to -7.8 LUFS over 12 clips (median -11.8, mean -12.2; the 11 clips other than one quiet outlier lie between -13.6 and -7.8, mean -11.1). Mostly louder than this plugin's -14 target. Figures in `docs/evals/short-form-loudness-measurement.md`.
 - Script patterns (transcripts, per NotebookLM, `[DATA]` vs `[TAFSIRAN]` separated): direct hook, title = emotion + public figure + large amount, open-ended ending "Dan itulah..." that loops into the hook.
 
 ## Not yet measured (phase 1 exists for this)

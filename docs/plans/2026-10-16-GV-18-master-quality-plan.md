@@ -512,7 +512,7 @@ Phase labels: Phase 0 pre-flight, then A–O. Every phase's step 1 is the failin
 **Contract:**
 - `media/loudness-profiles.json`: `{"profiles": {"default": {"lufs": -14, "true_peak": -1.0, "source": "plugin default since v3.12.0, YouTube normalisation reference"}}}`. Any other profile (e.g. `short-vertical`) may be added ONLY with a non-empty `source` URL or document title; `loudness.profile(name)` raises `ProfileError` for a profile without `source`, an unknown name, or a `lufs` outside `[-24, -6]`.
 - `vidkit normalize --profile NAME` and mixdown plan key `"loudness_profile"` select it; absent → `default` (today's -14 behaviour, no change).
-- The Samuel Christ measurement (13 Shorts, -7.8 to -13 LUFS, mean about -11) is recorded as EVIDENCE in `docs/evals/short-form-loudness-measurement.md` (descriptors only, no client assets), clearly labelled "one channel, not a platform rule". It does NOT create a profile by itself.
+- The Samuel Christ measurement (12 Shorts, -24.1 to -7.8 LUFS, median -11.8; 11 of 12 between -13.6 and -7.8) is recorded as EVIDENCE in `docs/evals/short-form-loudness-measurement.md` (descriptors only, no client assets), clearly labelled "one channel, not a platform rule". It does NOT create a profile by itself.
 
 **Steps:**
 1. Write failing test: `loudness.profile("default")` returns `-14.0` and `-1.0`; `profile("nope")` raises `ProfileError`; a temp profile file with a profile lacking `source` raises `ProfileError`; `lufs` of -3 raises. Expected error: `AttributeError: module 'tools.vidkit.loudness' has no attribute 'profile'`.

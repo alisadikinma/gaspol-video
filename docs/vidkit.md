@@ -68,7 +68,17 @@ Used by `skills/video-repackage`. CLI: `vidkit ingest`, `vidkit scenes`.
 | `unwhite.unwhite(src, out)` | keys the white box out of a logo (ffmpeg only, no numpy) |
 | `mixdown.run(plan)` | voice + SFX cues + sidechain-ducked music, two-step loudness (gain to target, then limiter), subs, thumbnail |
 
-`mixdown` plan keys: `video out total ass thumb hold cues[{at,sfx,gain}] music{file,start,gain,fade_in,fade_out} lufs limit`. Cue `at` is absolute seconds; `sfx` is a path or a library clip name. Use absolute paths in the plan. Checked against the REA film: same loudness and peak as the project's own mix script (-14.8 LUFS before gain, peak -1.3 dBFS).
+`mixdown` plan keys: `video out total ass thumb hold cues[{at,sfx,gain}] music{file,start,gain,fade_in,fade_out} lufs loudness_profile limit`. Cue `at` is absolute seconds; `sfx` is a path or a library clip name. Use absolute paths in the plan. Checked against the REA film: same loudness and peak as the project's own mix script (-14.8 LUFS before gain, peak -1.3 dBFS).
+
+### Loudness profiles
+
+`media/loudness-profiles.json` holds named targets (`lufs`, `true_peak`, `source`). `loudness.profile(name)` returns the two numbers. Rules:
+
+- Every profile needs a non-empty `source` (URL or document title). An unsourced number is refused with `ProfileError`.
+- `lufs` must be in [-24, -6], `true_peak` in [-9, 0]. Duplicate names and malformed JSON are refused. A missing file falls back to the built-in -14 / -1.0 with a warning.
+- Only `default` ships (-14 LUFS, -1.0 dBTP). Add another only with a real source.
+- `vidkit normalize SRC OUT --profile NAME` prints the profile and targets used; unknown or invalid profile exits 2. An explicit `--lufs` wins over the profile's loudness. Mixdown: plan key `loudness_profile`; absent means today's -14; an explicit `lufs` key wins.
+- Tests can point at another file with the `GASPOL_LOUDNESS_PROFILES` env var.
 
 Remotion: `templates/remotion/lib/ali-effects.tsx` (copied into every scaffold). Props only, each start frame is a prop.
 
