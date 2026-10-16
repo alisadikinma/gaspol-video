@@ -29,6 +29,10 @@ Adapted:
   * ffmpeg assembly discipline: the A/V duration equality gate, and re-stamping
     constant frame rate by placing -r before -i.
   * ElevenLabs text-to-speech prosody stitching across consecutive requests.
+  * The idea of a slot-based thumbnail prompt menu paired with a failure table, and of
+    verifying each render by looking before it is shown (reference/post-production/
+    20-thumbnail-style-elements.md, tools/thumb_verify.py). Written in this plugin's own
+    words; no text or code vendored.
   * AssemblyAI as the transcription provider, and the idea of biasing the
     recognizer with per-video keyterms.
   * capture_web — the step-runner shape for driving a browser against a spec file

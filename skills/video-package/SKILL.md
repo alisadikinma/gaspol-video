@@ -35,9 +35,10 @@ It decides what to bet on. It does not render the image: that belongs to
 | Packaging rules | `reference/post-production/15-packaging.md` |
 | Platform shape | `reference/storytelling_script_gen/F9_Platform_Adaptation_Matrix.md` |
 | Hook language | `reference/storytelling_script_gen/F5_Hook_Vault.md` |
+| Thumbnail prompt pieces and failure table | `reference/post-production/20-thumbnail-style-elements.md` |
 
 ### CONTEXT LOADING — Phase 7
-READ these files ONLY: `global-promo-config.md`, `15-packaging.md`, `F9`, and `F5`.
+READ these files ONLY: `global-promo-config.md`, `15-packaging.md`, `20-thumbnail-style-elements.md`, `F9`, and `F5`.
 Plus `av-script.md` and the strategic brief's target-market section. Nothing from the image or video
 guides applies here.
 
@@ -123,6 +124,25 @@ Pass the three concept briefs to `ai-image-carousel-prompt-gen`. If it is not in
 
 Then print them.
 
+### Step 7.7b: Verify every render by looking
+
+After each thumbnail render lands in `{output_folder}/packaging/thumb-*.png`:
+
+```bash
+python3 tools/thumb_verify.py init {output_folder}
+```
+
+Open each image and fill every verdict cell in `packaging/thumb-verify.md` (`PASS`,
+`FAIL: <what is visible>`, or `UNSURE: <why>`). Then:
+
+```bash
+python3 tools/thumb_verify.py check {output_folder}
+```
+
+`check` must exit 0 before a thumbnail is offered as final. A `FAIL:` cell means re-roll with the
+matching fix from the failure table in `20-thumbnail-style-elements.md`, at most 2 re-rolls per
+thumbnail, then ask the owner. Never edit a cell without looking at the image.
+
 ### Step 7.8: Optional deterministic post-process (v3.1.0)
 
 Once the image plugin returns thumbnail plates, these two tools render nothing new — they finish
@@ -150,6 +170,7 @@ scrim falls short. Both are optional; skip them when the plate already reads cle
 - [ ] Calibration mode stated in the output; uncalibrated defaults labelled as such
 - [ ] No target CTR quoted that the user has not measured
 - [ ] No image generated in this plugin
+- [ ] `thumb_verify.py check` exited 0 before any thumbnail was offered as final
 - [ ] Platform shape respected — no bets produced for a platform with no cover
 
 ## Output
