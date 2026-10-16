@@ -7,6 +7,11 @@ A plan with no `catalog` key reads the shared library at
 `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/sfx/catalog.json`; a plan that names a catalog
 uses that one, exactly as before.
 
+An event may carry `"stack": [{"sfx_id", "offset_s", "gain_db"}]` instead of `sfx_id`: one
+layered cue (sub boom + hit + tail). Each layer is mixed at `at_s + offset_s` (offset down to
+-0.5s so a riser can lead), inherits `optional` and `note`, and takes the parent's gain unless
+it sets its own. A stack is ONE cue for the density ceiling, `--no-optional` and the cue sheet.
+
 Two halves, and the second is the one that matters. Mixing is ffmpeg work. The
 audibility check is what stops a cue sheet that reads beautifully and cannot be heard:
 after mixing, each cue window is compared against the voice-only reference in dB.
@@ -54,6 +59,9 @@ TEXTURE_MIN_DB = 1.0
 # Brand density ceiling: past this, everything should be marked optional.
 DENSITY_PER_MIN = 12
 
+# How far before the parent time a layer may lead, so a riser can build into the hit.
+MIN_STACK_OFFSET_S = -0.5
+
 TRANSIENT_HINTS = ("pop", "click", "snap", "stamp", "knock", "impact", "zap", "tick", "key")
 RISER_HINTS = ("riser", "build", "swell", "rise")
 
@@ -63,10 +71,11 @@ class PlanError(Exception):
 
 
 class SfxPlan:
-    def __init__(self, data, events, catalog, project, path, catalog_ref=None):
+    def __init__(self, data, events, catalog, project, path, catalog_ref=None, cues=None):
         self.data = data
         self.catalog_ref = catalog_ref or data.get("catalog", "")
         self.events = events
+        self.cues = len(events) if cues is None else cues
         self.catalog = catalog
         self.project = Path(project)
         self.path = Path(path)
@@ -158,6 +167,45 @@ def load_catalog(path):
     return {c["id"]: c for c in data.get("clips", [])}
 
 
+def _expand_stack(i, ev, at_s, catalog, master_duration_s):
+    """One mix event per layer of a stacked cue, each at the parent time plus its offset."""
+    if "sfx_id" in ev:
+        raise PlanError(f"event {i}: has both sfx_id and stack — use one")
+    layers = ev["stack"]
+    if not isinstance(layers, list) or not layers:
+        raise PlanError(f"event {i}: stack is empty — list at least one layer")
+    expanded = []
+    for n, layer in enumerate(layers, start=1):
+        layer_id = layer.get("sfx_id")
+        if layer_id not in catalog:
+            raise PlanError(f"event {i}, layer {n}: sfx_id {layer_id!r} is not in the catalog")
+        try:
+            offset = float(layer.get("offset_s", 0))
+        except (TypeError, ValueError) as exc:
+            raise PlanError(f"event {i}, layer {n}: offset_s is not a number") from exc
+        if offset < MIN_STACK_OFFSET_S:
+            raise PlanError(
+                f"event {i}, layer {n}: offset_s {offset} is earlier than {MIN_STACK_OFFSET_S}s"
+            )
+        layer_at = at_s + offset
+        if layer_at < 0:
+            raise PlanError(f"event {i}, layer {n}: lands at {layer_at:.2f}s, before the start")
+        if master_duration_s is not None and layer_at > master_duration_s:
+            raise PlanError(
+                f"event {i}, layer {n}: lands at {layer_at:.2f}s, past the end of the master "
+                f"({master_duration_s:.2f}s)"
+            )
+        expanded.append({
+            **{k: v for k, v in ev.items() if k != "stack"},
+            "sfx_id": layer_id,
+            "at_s": layer_at,
+            "gain_db": layer.get("gain_db", ev.get("gain_db", 0)),
+            "clip": catalog[layer_id],
+            "stack_ref": {"event": i, "size": len(layers), "parent_at_s": at_s},
+        })
+    return expanded
+
+
 def load_plan(plan_path, project, master_duration_s=None, include_optional=True):
     plan_path = Path(plan_path)
     try:
@@ -172,15 +220,10 @@ def load_plan(plan_path, project, master_duration_s=None, include_optional=True)
                            else Path(project) / catalog_ref)
 
     events = []
+    cues = 0
     for i, ev in enumerate(data.get("events", []), start=1):
         if not include_optional and ev.get("optional"):
             continue
-        sfx_id = ev.get("sfx_id")
-        if sfx_id not in catalog:
-            raise PlanError(
-                f"event {i}: sfx_id {sfx_id!r} is not in the catalog — "
-                "add a recipe to palette.json and run gen_sfx.py, or reuse an existing clip"
-            )
         try:
             at_s = float(ev["at_s"])
         except (KeyError, TypeError, ValueError) as exc:
@@ -191,14 +234,25 @@ def load_plan(plan_path, project, master_duration_s=None, include_optional=True)
             raise PlanError(
                 f"event {i}: at_s {at_s} is past the end of the master ({master_duration_s:.2f}s)"
             )
+        if "stack" in ev:
+            events.extend(_expand_stack(i, ev, at_s, catalog, master_duration_s))
+            cues += 1
+            continue
+        sfx_id = ev.get("sfx_id")
+        if sfx_id not in catalog:
+            raise PlanError(
+                f"event {i}: sfx_id {sfx_id!r} is not in the catalog — "
+                "add a recipe to palette.json and run gen_sfx.py, or reuse an existing clip"
+            )
         events.append({**ev, "at_s": at_s, "clip": catalog[sfx_id]})
+        cues += 1
 
-    plan = SfxPlan(data, events, catalog, project, plan_path, catalog_ref=catalog_ref)
+    plan = SfxPlan(data, events, catalog, project, plan_path, catalog_ref=catalog_ref, cues=cues)
 
-    if not events:
+    if not cues:
         plan.notes.append("no cues in this plan — nothing will be mixed")
     if master_duration_s:
-        per_min = len(events) / (master_duration_s / 60.0)
+        per_min = cues / (master_duration_s / 60.0)
         if per_min > DENSITY_PER_MIN:
             plan.notes.append(
                 f"density {per_min:.1f} cues/min is over the {DENSITY_PER_MIN}/min ceiling — "
@@ -207,15 +261,30 @@ def load_plan(plan_path, project, master_duration_s=None, include_optional=True)
     return plan
 
 
+def _event_line(number, at_s, label, ev):
+    flag = " (optional)" if ev.get("optional") else ""
+    scene = f"scene {ev['scene']}" if ev.get("scene") else ""
+    return (f"  {number:>3}. {at_s:>8.2f}s  {label:<22} {ev.get('gain_db', 0):>+5} dB  "
+            f"{scene:<9} {ev.get('cue', '')}{flag}")
+
+
 def format_sheet(plan):
-    lines = [f"{plan.path.name}: {len(plan.events)} cue(s)"]
-    for i, ev in enumerate(plan.events, start=1):
-        flag = " (optional)" if ev.get("optional") else ""
-        scene = f"scene {ev['scene']}" if ev.get("scene") else ""
-        lines.append(
-            f"  {i:>3}. {ev['at_s']:>8.2f}s  {ev['sfx_id']:<22} {ev.get('gain_db', 0):>+5} dB  "
-            f"{scene:<9} {ev.get('cue', '')}{flag}"
-        )
+    lines = [f"{plan.path.name}: {plan.cues} cue(s)"]
+    number = 0
+    seen_stacks = set()
+    for ev in plan.events:
+        ref = ev.get("stack_ref")
+        if ref is None:
+            number += 1
+            lines.append(_event_line(number, ev["at_s"], ev["sfx_id"], ev))
+            continue
+        if ref["event"] not in seen_stacks:
+            seen_stacks.add(ref["event"])
+            number += 1
+            names = "+".join(e["sfx_id"] for e in plan.events
+                             if e.get("stack_ref", {}).get("event") == ref["event"])
+            lines.append(_event_line(number, ref["parent_at_s"], f"stack({ref['size']}): {names}", ev))
+        lines.append(f"         {ev['at_s']:>8.2f}s  {ev['sfx_id']:<22} {ev.get('gain_db', 0):>+5} dB")
     for note in plan.notes:
         lines.append(f"  ! {note}")
     return "\n".join(lines)

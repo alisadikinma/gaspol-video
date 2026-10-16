@@ -162,6 +162,109 @@ class PlanTest(unittest.TestCase):
         self.assertIn("production line", sheet)
 
 
+class StackTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name)
+        (self.project / "work").mkdir()
+        catalog = self.project / "catalog.json"
+        catalog.write_text(json.dumps({"clips": [
+            {"id": cid, "file": f"clips/{cid}.wav", "duration_s": 1.0}
+            for cid in ("sub-boom", "hit-heavy", "tail-air")]}))
+        self.catalog = catalog
+
+    def _plan(self, events):
+        path = self.project / "work" / "sfx-plan.json"
+        path.write_text(json.dumps({"catalog": str(self.catalog), "events": events}))
+        return path
+
+    def _layers(self, *offsets):
+        ids = ("sub-boom", "hit-heavy", "tail-air")
+        return [{"sfx_id": ids[i], "offset_s": o} for i, o in enumerate(offsets)]
+
+    def test_stack_expands_to_one_event_per_layer_at_offset_times(self):
+        plan = mix_sfx.load_plan(self._plan([
+            {"at_s": 5.0, "stack": self._layers(-0.2, 0, 0.1)}]), self.project,
+            master_duration_s=30.0)
+        self.assertEqual([e["sfx_id"] for e in plan.events],
+                         ["sub-boom", "hit-heavy", "tail-air"])
+        self.assertEqual([round(e["at_s"], 2) for e in plan.events], [4.8, 5.0, 5.1])
+
+    def test_sfx_id_together_with_stack_is_rejected(self):
+        with self.assertRaises(mix_sfx.PlanError) as ctx:
+            mix_sfx.load_plan(self._plan([
+                {"at_s": 5.0, "sfx_id": "sub-boom", "stack": self._layers(0)}]), self.project)
+        self.assertIn("event 1", str(ctx.exception))
+
+    def test_empty_stack_is_rejected(self):
+        for empty in ([], None):
+            with self.subTest(stack=empty), self.assertRaises(mix_sfx.PlanError) as ctx:
+                mix_sfx.load_plan(self._plan([{"at_s": 5.0, "stack": empty}]), self.project)
+            self.assertIn("event 1", str(ctx.exception))
+
+    def test_offset_giving_negative_time_is_rejected(self):
+        with self.assertRaises(mix_sfx.PlanError) as ctx:
+            mix_sfx.load_plan(self._plan([
+                {"at_s": 0.0, "stack": self._layers(-0.2)}]), self.project)
+        self.assertIn("event 1", str(ctx.exception))
+        self.assertIn("layer 1", str(ctx.exception))
+
+    def test_offset_below_minus_half_second_is_rejected(self):
+        with self.assertRaises(mix_sfx.PlanError) as ctx:
+            mix_sfx.load_plan(self._plan([
+                {"at_s": 5.0, "stack": self._layers(-0.6)}]), self.project)
+        self.assertIn("layer 1", str(ctx.exception))
+
+    def test_layer_past_the_master_end_is_rejected(self):
+        with self.assertRaises(mix_sfx.PlanError) as ctx:
+            mix_sfx.load_plan(self._plan([
+                {"at_s": 29.9, "stack": self._layers(0, 0.5)}]), self.project,
+                master_duration_s=30.0)
+        self.assertIn("layer 2", str(ctx.exception))
+
+    def test_unknown_layer_id_names_event_and_layer(self):
+        layers = self._layers(0, 0.1)
+        layers[1]["sfx_id"] = "no-such-clip"
+        with self.assertRaises(mix_sfx.PlanError) as ctx:
+            mix_sfx.load_plan(self._plan([{"at_s": 5.0, "stack": layers}]), self.project)
+        self.assertIn("event 1", str(ctx.exception))
+        self.assertIn("layer 2", str(ctx.exception))
+        self.assertIn("no-such-clip", str(ctx.exception))
+
+    def test_layers_inherit_optional_note_and_parent_gain(self):
+        layers = self._layers(0, 0.1)
+        layers[1]["gain_db"] = -9
+        plan = mix_sfx.load_plan(self._plan([
+            {"at_s": 5.0, "gain_db": -4, "optional": True, "note": "logo hit", "stack": layers}]),
+            self.project)
+        self.assertTrue(all(e["optional"] and e["note"] == "logo hit" for e in plan.events))
+        self.assertEqual([e["gain_db"] for e in plan.events], [-4, -9])
+
+    def test_no_optional_drops_the_whole_stack(self):
+        plan = mix_sfx.load_plan(self._plan([
+            {"at_s": 5.0, "optional": True, "stack": self._layers(0, 0.1, 0.2)},
+            {"at_s": 8.0, "stack": self._layers(0)}]), self.project, include_optional=False)
+        self.assertEqual([e["at_s"] for e in plan.events], [8.0])
+
+    def test_stack_counts_as_one_cue_for_density(self):
+        events = [{"at_s": i * 5.0, "stack": self._layers(0, 0.1, 0.2)} for i in range(10)]
+        plan = mix_sfx.load_plan(self._plan(events), self.project, master_duration_s=60.0)
+        self.assertEqual(len(plan.events), 30)
+        self.assertFalse(any("density" in n.lower() for n in plan.notes))
+
+    def test_sheet_prints_one_stack_line_and_layer_times(self):
+        plan = mix_sfx.load_plan(self._plan([
+            {"at_s": 5.0, "cue": "logo reveal", "stack": self._layers(-0.2, 0, 0.1)},
+            {"at_s": 9.0, "sfx_id": "tail-air", "gain_db": -6}]), self.project)
+        sheet = mix_sfx.format_sheet(plan)
+        self.assertIn("2 cue(s)", sheet)
+        self.assertEqual(sheet.count("stack(3): sub-boom+hit-heavy+tail-air"), 1)
+        self.assertIn("logo reveal", sheet)
+        for t in ("4.80s", "5.00s", "5.10s"):
+            self.assertIn(t, sheet)
+
+
 class HomeCatalogTest(unittest.TestCase):
     """A plan with no `catalog` key reads the home library; a named catalog is unchanged."""
 
