@@ -89,3 +89,10 @@ rewriting tools beyond swapping the `ffprobe` call.
 
 - Filling about 60 `purpose` lines is manual and one-time.
 - Hook keyword match can suggest a weak tool; mitigated because it only reminds.
+
+## Amendments (planning, 2026-10-17)
+
+- Routes live in `tools/registry.json` (`tools[]` + `routes[]` + `ffprobe_allow[]`), not in the markdown table; the table is generated.
+- The ffprobe migration is scoped to 2 callers (`check_vo_duration.py`, `track_screen.py`). The remaining callers are allowlisted in `ffprobe_allow` with written reasons (17 entries at release).
+- `probe_clips.py` is kept as its own tool with a `distinct_because` entry.
+- The reminder hook is the `suggest` and `hook` subcommands of `registry_build.py`, wrapped by `hooks/tool-reminder.sh`.

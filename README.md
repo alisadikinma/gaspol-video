@@ -1,6 +1,6 @@
 # gaspol-video
 
-**v3.17.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
+**v3.18.0** — Claude Code plugin that carries a promotional video from an idea to a finished, mixed file: brainstorm, script, image prompts (NB2, with an in-session render offer), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, with a VEO 3.1 fast render offer), believable app screens and screencasts for software that does not exist yet, Remotion shots for anything that must be readable, then post-production — word-by-word kinetic captions and title cards, automatic shot motion — and packaging. Delivery is per kelompok — a batch of at most 5 scenes is carried to a reviewable cut before the next batch starts — and every prompt passes a physical plausibility gate before a credit is spent.
 
 Anyone — video agencies, freelancers, brand owners — can produce a professional 2-3 minute promotional video by following the generated plan and running the tools it calls.
 
@@ -241,6 +241,10 @@ Run any phase independently:
 > Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.
 
 The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
+
+## v3.18.0 Changelog
+
+- **Tool registry (GV-20).** `tools/registry.json` holds every tool and every task-to-tool route; the table in `docs/tool-routing.md` is generated from it (`python3 tools/registry_build.py render`). Gates fail on an unregistered tool, an unexplained duplicate, or a new direct `ffprobe` caller. A write-time hook (`hooks/tool-reminder.sh`) reminds you of the existing tool when a script outside `tools/` touches ffmpeg, ffprobe or Remotion; it never blocks. `check_vo_duration.py` and `track_screen.py` moved to `vidkit.ff`. Not done: 17 other ffprobe callers stay on an allowlist with written reasons; duplicate detection is exact (phase + task set) only.
 
 ## v3.17.0 Changelog
 

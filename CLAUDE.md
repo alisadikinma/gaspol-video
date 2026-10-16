@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 38 CLI tools (36 Python + 2 Node, 6 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `keyword_cards.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 41 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 39 CLI tools (37 Python + 2 Node, 6 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `keyword_cards.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 41 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -40,6 +40,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `.claude-plugin/plugin.json` | Plugin metadata (name, version, author) |
 | `hooks/hooks.json` | SessionStart hook definition |
 | `hooks/session-start.sh` | Session start script — announces available skills |
+| `hooks/tool-reminder.sh` | PreToolUse hook on Write/Edit (GV-20). Calls `registry_build.py hook`; when a `.py`/`.mjs`/`.sh` file outside `tools/`, `tests/`, `templates/` contains `ffmpeg`, `ffprobe` or `remotion`, adds a reminder naming the matching registry tools. Reminds, never blocks. Test: `tests/consistency/tool-reminder-hook.sh` |
 | `skills/video-brainstorm/SKILL.md` | Phase 1 — brainstorm, cast, product, location, domain research |
 | `skills/video-script/SKILL.md` | Phase 2-3.5 — script, scene breakdown, reference collection |
 | `skills/video-image/SKILL.md` | Phase 4 — NB2 asset library + scene keyframes |
@@ -76,7 +77,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/qa_frames.py` | Visual clip QA — a 5-frame contact sheet per rendered clip in `.tmp/qa-scene-NN.jpg` (ids may carry a letter suffix, e.g. `01b`) and a `work/visual-qa.md` verdict sheet with each scene's PLAUSIBILITY block, for Claude to judge in-session; `--check` is the V15 gate (reads verdict cells only, exit 1 on a missing, empty or `FAIL:` cell or a clip changed since judged) |
 | `tools/thumb_verify.py` | GV-18 thumbnail verify gate. `init <project>` writes `packaging/thumb-verify.md` (one section per `packaging/thumb-*.png`, sha256, five-row verdict table; re-run keeps verdicts of unchanged images); `check <project>` reads only the verdict cells and exits 1 on a missing, empty, malformed or `FAIL:` cell or a changed or removed image, 2 when the sheet is missing; `UNSURE:` is a note. A thumbnail is final only after `check` exits 0. Test: `tests/py/test_thumb_verify.py` |
 | `tools/verdict_page.py` | Stills-first gate (GV-18 Phase I). `page` builds one offline `output/verdict.html` from `keyframes/scene-*.png` (JPEG data URIs via ffmpeg, PASS/MAYBE/NO, notes, Download verdict.json); the owner saves it to `work/verdict.json`; `check` exits 0 only when every keyframe is PASS (`--allow-maybe` accepts MAYBE), 1 listing missing/NO/MAYBE scenes, 2 on a missing or malformed file. stdlib + ffmpeg. Test: `tests/py/test_verdict_page.py` |
-| `tools/registry.json`, `tools/registry_build.py` | Tool registry (GV-20): every tool and every task-to-tool route in one file. `validate [--coverage]` checks schema, coverage, duplicates and ffprobe ownership; later `render` writes the table in `docs/tool-routing.md` and `suggest` feeds the write-time reminder hook. Test: `tests/py/test_registry.py` |
+| `tools/registry.json`, `tools/registry_build.py` | Tool registry (GV-20): every tool and every task-to-tool route in one file. `validate [--coverage]` checks schema, coverage, duplicates and ffprobe ownership; `render [--check]` writes the table in `docs/tool-routing.md`; `suggest`/`hook` feed the write-time reminder hook. Tests: `tests/py/test_registry.py`, `tests/py/test_probe_migration.py`, `tests/consistency/tool-registry-contract.sh` (coverage, duplicate and ffprobe-ratchet gates, generated table in sync) |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
 | `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, beat detection (`beats`, `vidkit.beats.detect/snap`), two-pass loudnorm, track smoothing, motion-tracked print bond (cv2). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
 | `tools/retention_gate.py` | Retention report on a finished cut (`report`) and in-session b-roll verdict gate (`check`): static frame, first word, Foreshadow beat, b-roll vs spoken words, BGM headroom. Course defaults tagged `source: course`, overridable; a rule FAIL never exits 1 in report mode. Test: `tests/py/test_retention_gate.py` |
@@ -641,8 +642,16 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.17.0
+**Version:** 3.18.0
 **Last Updated:** 2026-10-17
+
+### v3.18.0 Changelog
+
+- **Tool registry (GV-20).** `tools/registry.json` is the single source for tools and routes (63 tool entries, 61 routes, 17 `ffprobe_allow` entries). `docs/tool-routing.md` table is generated from it (`python3 tools/registry_build.py render`, `render --check` in the gate); only the intro and the "When no tool fits" section are hand-written.
+  - **Gates.** Coverage: every `tools/*.py`, `tools/*.mjs`, `tools/vidkit/*.py`, `tools/vidkit/js/*.mjs` is registered or marked internal with a reason. Duplicate: two tools with the same phase and the same task set need `distinct_because` or `replaces`. ffprobe ratchet: a tool that calls `ffprobe` directly must be on `ffprobe_allow` with a written reason, so the list can only shrink. Tests: `tests/py/test_registry.py`, `tests/consistency/tool-registry-contract.sh`.
+  - **Reminder hook.** `hooks/tool-reminder.sh` (PreToolUse, Write|Edit) reminds, never blocks. It fires on a `.py`/`.mjs`/`.sh` file outside `tools/`, `tests/`, `templates/` whose content has `ffmpeg`, `ffprobe` or `remotion`, and names the matching registry tools. Test: `tests/consistency/tool-reminder-hook.sh`.
+  - **Migrated.** `check_vo_duration.py` and `track_screen.py` now use `vidkit.ff` instead of their own ffprobe code (`tests/py/test_probe_migration.py`).
+  - **Not done.** 17 ffprobe callers remain on `ffprobe_allow`, each with a written reason; moving them to `vidkit.ff` is a follow-up. Duplicate detection is exact (phase + task set) only; near-duplicates are caught by the hook reminder and by review. The `gaspol-one` marketplace version is set at release, outside this repo.
 
 ### v3.17.0 Changelog
 
@@ -970,4 +979,4 @@ Last ticket: GV-20
 
 ## Tool-first rule (library)
 
-Before writing any script for video, audio, animation or assembly, read `docs/tool-routing.md` and use the listed tool. If nothing fits, extend `tools/vidkit/` (Python) or `tools/vidkit/js/` (Node) in this plugin, with a test and a row in `docs/tool-routing.md`, in the same session. Never leave a reusable script in a project folder.
+Before writing any script for video, audio, animation or assembly, read `docs/tool-routing.md` and use the listed tool. If nothing fits, extend `tools/vidkit/` (Python) or `tools/vidkit/js/` (Node) in this plugin, with a test, in the same session. Register it by adding its entry (tool + route) to `tools/registry.json`, then run `python3 tools/registry_build.py render`; do not edit the table in `docs/tool-routing.md` by hand. Never leave a reusable script in a project folder.

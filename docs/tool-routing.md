@@ -8,6 +8,9 @@ Run Python tools from the plugin root (`python3 tools/<name>.py`, `python3 -m to
 Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.sh`
 (`~/.gaspol-video/venv/bin/python`). Node tools: `node tools/<name>.mjs`.
 
+The table below is generated. Edit `tools/registry.json`, then run
+`python3 tools/registry_build.py render`. Never edit the table by hand: `render --check` fails on drift.
+
 <!-- registry:routes:begin -->
 | I want to... | Use |
 |---|---|
@@ -80,7 +83,7 @@ Tools that need Pillow/cv2/Playwright/MediaPipe use the venv from `tools/setup.s
 2. Close but not quite: extend the existing tool or module (parameter, option), add a test.
 3. Truly new and reusable: add a module to `tools/vidkit/` (Python) or `tools/vidkit/js/` (Node),
    register it in `tools/vidkit/__main__.py` if it has a CLI, add a test in `tests/py/test_vidkit.py`
-   or `tests/node/vidkit-js.test.mjs`, add its row HERE and in `docs/vidkit.md`.
+   or `tests/node/vidkit-js.test.mjs`, add its row to `tools/registry.json` (tool entry + route) and render, and add it to `docs/vidkit.md`.
 4. Do it in the same session you needed it. A script left in a project folder is a script the next
    project rewrites.
 5. Hard-coded scene ids, timings, file names, client names or absolute paths do NOT go in the

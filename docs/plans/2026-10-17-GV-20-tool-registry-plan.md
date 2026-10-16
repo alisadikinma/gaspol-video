@@ -374,13 +374,13 @@ Scope decision (made at plan time, deviates from the spec's "all 16"): the spec 
 - Modify: `tests/consistency/tools-index.sh` (version needle `3.17.0` → `3.18.0`; also change its message)
 - Modify: `docs/tool-routing.md` (intro: "this table is generated; edit `tools/registry.json`, then run `python3 tools/registry_build.py render`")
 - Modify: any other test that hardcodes `3.17.0` (find with `grep -rn "3\.17\.0" tests .claude-plugin`)
-- Modify: `docs/plans/2026-10-17-GV-20-tool-registry-spec.md` (amend: routes live in the registry; ffprobe migration scoped to 2 callers + 14 allowlisted; decisions made in planning)
+- Modify: `docs/plans/2026-10-17-GV-20-tool-registry-spec.md` (amend: routes live in the registry; ffprobe migration scoped to 2 callers + 17 allowlisted; decisions made in planning)
 
 **Completeness:**
 - Happy path: all docs name the registry; version consistent in plugin.json, tests, README, CLAUDE.md.
 - Error paths: a missed hardcoded version makes `bash tests/run.sh` fail; the grep in Verification catches it.
 - Edge cases: `tools-index.sh` requires each new `tools/*.py` basename in CLAUDE.md (so `registry_build.py` must appear); marketplace manifest in the sibling `gaspol-one` repo is out of scope for this repo and is listed under open debt.
-- Observability: changelog states what was NOT done (14 ffprobe callers remain allowlisted).
+- Observability: changelog states what was NOT done (17 ffprobe callers remain allowlisted).
 
 **Steps:**
 1. Write failing test: update `tests/consistency/tools-index.sh` first to require `3.18.0`. Expected error: `FAIL plugin.json version is not 3.18.0`.
@@ -399,7 +399,7 @@ Scope decision (made at plan time, deviates from the spec's "all 16"): the spec 
 
 ## Open debt (named, not hidden)
 
-- 14 ffprobe call sites remain on `ffprobe_allow` (listed with reasons in `tools/registry.json`): `burn_subs, clean_voice, composite, edit_render, gen_music, make_stems, mix_music, mix_sfx, overlay_plan, person_mask, probe_clips, qa_frames, retention_gate` and `vidkit/color.py`. Follow-up ticket should migrate them one tool at a time with behaviour tests.
+- 17 ffprobe call sites remain on `ffprobe_allow` (listed with reasons in `tools/registry.json`): `burn_subs`, `clean_voice`, `composite`, `edit_render`, `gen_music`, `gen_vo`, `make_stems`, `mix_music`, `mix_sfx`, `overlay_plan`, `person_mask`, `probe_clips`, `qa_frames`, `registry_build`, `retention_gate`, `vidkit/color`, `voice_changer`. Follow-up ticket should migrate them one tool at a time with behaviour tests.
 - Sibling repo `gaspol-one` marketplace.json version must be set to 3.18.0 at release (not in this repo).
 - Duplicate detection is exact-match on (phase, task set). Near-duplicates (different tags, same job) are caught only by the hook's reminder and by review.
 
