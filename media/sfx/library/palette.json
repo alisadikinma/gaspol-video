@@ -7,6 +7,15 @@
     { "id": "riser-short", "prompt": "short tonal riser building to a stop, no cymbal", "duration_s": 1.8, "category": "tension", "tags": ["riser", "build"] },
     { "id": "ui-click-soft", "prompt": "quiet mechanical interface click, single", "duration_s": 0.2, "category": "snap", "tags": ["ui", "click"] },
 
+    { "id": "sub-boom", "prompt": "deep sub bass boom, single, tight, clean decay", "duration_s": 1.2, "category": "emphasis", "tags": ["impact", "bass"] },
+    { "id": "hit-heavy", "prompt": "heavy cinematic impact hit, short, dry", "duration_s": 0.5, "category": "emphasis", "tags": ["impact", "generic"] },
+    { "id": "tail-air", "prompt": "airy reverb tail after an impact, fading", "duration_s": 1.6, "category": "emphasis", "tags": ["impact", "tail"] },
+    { "id": "whoosh-fast", "prompt": "fast sharp whoosh, tight, no reverb tail", "duration_s": 0.5, "category": "motion", "tags": ["transition", "generic"] },
+    { "id": "riser-long", "prompt": "rising tension riser, clean build, abrupt end", "duration_s": 3.0, "category": "tension", "tags": ["riser", "build"] },
+    { "id": "glitch-hit", "prompt": "digital glitch stutter hit, short", "duration_s": 0.4, "category": "emphasis", "tags": ["glitch", "digital"] },
+    { "id": "stinger-up", "prompt": "short bright positive stinger, uplifting", "duration_s": 1.0, "category": "emphasis", "tags": ["stinger", "positive"] },
+    { "id": "stinger-warn", "prompt": "short dark warning stinger, ominous", "duration_s": 1.0, "category": "tension", "tags": ["stinger", "warning"] },
+
     { "id": "amb-factory-floor", "prompt": "industrial hall ambience, distant conveyor hum, occasional metal contact, no music, no voices", "duration_s": 15.0, "category": "ambience", "tags": ["industrial", "domain"] },
     { "id": "amb-port-yard", "prompt": "container yard ambience, distant reach stacker, wind, faint radio chatter, no music", "duration_s": 15.0, "category": "ambience", "tags": ["port", "logistics", "domain"] },
     { "id": "amb-control-room", "prompt": "quiet control room, server fan hum, soft keyboard, no voices", "duration_s": 15.0, "category": "ambience", "tags": ["control-room", "domain"] },

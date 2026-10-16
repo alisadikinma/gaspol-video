@@ -160,5 +160,40 @@ class HomeLibraryTest(unittest.TestCase):
             self.assertEqual(adopt.call_args.args[0], "sfx")
 
 
+class PluginPaletteTest(unittest.TestCase):
+    NEW_IDS = ["sub-boom", "hit-heavy", "tail-air", "whoosh-fast",
+               "riser-long", "glitch-hit", "stinger-up", "stinger-warn"]
+    CATEGORIES = {"ambience", "emphasis", "machine", "motion", "snap", "tension", "vehicle"}
+
+    @classmethod
+    def setUpClass(cls):
+        path = Path(__file__).resolve().parents[2] / "media" / "sfx" / "library" / "palette.json"
+        cls.recipes = json.loads(path.read_text())["recipes"]
+        cls.by_id = {r["id"]: r for r in cls.recipes}
+
+    def test_new_recipes_present(self):
+        for rid in self.NEW_IDS:
+            self.assertIn(rid, self.by_id, f"missing recipe {rid}")
+
+    def test_ids_unique(self):
+        ids = [r["id"] for r in self.recipes]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_recipe_shape_and_bounds(self):
+        for r in self.recipes:
+            for key in ("id", "prompt", "duration_s", "category"):
+                self.assertIn(key, r, f"{r.get('id')} lacks {key}")
+            self.assertIn(r["category"], self.CATEGORIES, r["id"])
+            self.assertTrue(0.2 <= r["duration_s"] <= 15.0 if r["category"] in ("ambience", "machine") else 0.2 <= r["duration_s"] <= 5, r["id"])
+
+    def test_new_recipes_duration_within_5s(self):
+        for rid in self.NEW_IDS:
+            self.assertTrue(0.2 <= self.by_id[rid]["duration_s"] <= 5, rid)
+
+    def test_docs_example_stack_layers_exist(self):
+        for rid in ("sub-boom", "hit-heavy", "tail-air", "riser-long"):
+            self.assertIn(rid, self.by_id)
+
+
 if __name__ == "__main__":
     unittest.main()
