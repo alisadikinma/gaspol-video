@@ -5,6 +5,8 @@ import json
 import os
 import random
 import struct
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -14,7 +16,7 @@ from unittest import mock
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
 from tools.vidkit import __main__ as vcli
 from tools.vidkit import layout, title
-from tools.vidkit import beats, color, colormatch, cover, encoder, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, tidy, track
+from tools.vidkit import beats, color, colormatch, cover, encoder, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, tidy
 
 
 class IngestTest(unittest.TestCase):
@@ -303,21 +305,14 @@ class PureLogicTest(unittest.TestCase):
         self.assertEqual(moved[0]["at_s"], 2.0)
         self.assertEqual(report, [])
 
-    def test_smooth_track_removes_angle_jitter_and_spike(self):
-        pts = [{"t": i * .25, "x": 100.0, "y": 50.0, "w": 200.0, "h": 100.0, "deg": d}
-               for i, d in enumerate([8, -6, 7, -5, 8, -6, 7, -5, 8])]
-        pts[4]["x"] = 400.0  # one-frame spike
-        out = track.smooth_track(pts, window=5)
-        self.assertEqual({p["x"] for p in out}, {100.0})
-        self.assertEqual(len({p["deg"] for p in out}), 1)
-
-    def test_smooth_track_shrink_keeps_centre(self):
-        out = track.smooth_track([{"t": 0, "x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0, "deg": 0}], shrink=0.9)
-        self.assertEqual((out[0]["x"], out[0]["w"]), (5.0, 90.0))
-
-    def test_smooth_track_rejects_even_window(self):
-        with self.assertRaises(ValueError):
-            track.smooth_track([], window=4)
+    def test_smooth_track_is_retired(self):
+        # GV-25: One-Euro smoothing inside screen.py replaced the box-track median filter.
+        root = Path(__file__).resolve().parents[2]
+        proc = subprocess.run([sys.executable, "-m", "tools.vidkit", "smooth-track", "x.json"],
+                              cwd=root, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertIn("invalid choice", proc.stderr)
+        self.assertFalse((root / "tools" / "vidkit" / "track.py").exists())
 
 
 @requires_ffmpeg

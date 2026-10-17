@@ -865,19 +865,6 @@
       "internal_reason": ""
     },
     {
-      "id": "tools/vidkit/track.py",
-      "purpose": "Median-filter tracked screen boxes and pin one angle for a static target.",
-      "tasks": [
-        "track-smoothing",
-        "box-jitter",
-        "fixed-angle"
-      ],
-      "phase": "shared",
-      "replaces": [],
-      "distinct_because": "",
-      "internal_reason": ""
-    },
-    {
       "id": "tools/vidkit/unwhite.py",
       "purpose": "Key the white box out of a logo so it blends onto a surface.",
       "tasks": [
@@ -1394,11 +1381,10 @@
     },
     {
       "task": "Put an app screen into a phone/monitor in a clip",
-      "use": "`python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green\\|track` (green: exact corners from a green screen, `--mode track --corners ...` for a clip without green); legacy or seed: `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx`",
+      "use": "`python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green\\|track` (green: exact corners from a green screen, `--mode track --corners ...` for a clip without green); `track_screen.py` only reads the four `--corners` numbers for `--mode track`. Remotion `quad-screen.tsx` is legacy, no skill uses it",
       "tools": [
         "tools/vidkit/screen.py",
-        "tools/track_screen.py",
-        "tools/vidkit/track.py"
+        "tools/track_screen.py"
       ]
     },
     {

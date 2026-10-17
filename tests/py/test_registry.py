@@ -533,7 +533,7 @@ class CommittedVidkitCoverageTest(unittest.TestCase):
         reg = json.loads((ROOT / "tools/registry.json").read_text())
         ids = {t["id"] for t in reg["tools"]}
         for name in ("audiostudy beats bond color colormatch cover encoder ff gates ingest "
-                     "join karaoke loudness mixdown patch sheet speech stages synth track "
+                     "join karaoke loudness mixdown patch sheet speech stages synth "
                      "unwhite").split():
             self.assertIn(f"tools/vidkit/{name}.py", ids)
         for name in ("cast_voice", "eleven", "env"):

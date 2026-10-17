@@ -17,7 +17,6 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 | `synth` | `notification`, `alarm`, `render` (layered ffmpeg tones) | `bunyi-notif.py`, `bunyi-alarm.py` |
 | `speech` | `words_from_alignment`, `speech_spans`, `gaps`, `snap_to_gaps`, `energy_db` | `kata.py`, `energi.py`, `geser_cue.py` |
 | `loudness` | `normalize`: two-pass loudnorm, audio trimmed to picture | `mix_akhir.py` |
-| `track` | `smooth_track`: median-filter a tracked screen box, pin one angle | `haluskan-lacak.py` |
 | `bond` | `bond_print`: motion-tracked print on cloth (needs cv2) | `shirt_bond.py` |
 | `tidy` | `vidkit tidy <project>`: scan, `--apply` moves unknown folders to `_arsip/`, `--empty-tmp` empties `.tmp/` but keeps every file in `.tmp/image` and `.tmp/video` unless re-verified as a copy of a home file, and keeps `.tmp/vocache-*`; failures are listed and exit 1 | hand-made cleanup `rm`/`mv` in a project |
 
