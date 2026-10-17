@@ -77,6 +77,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Find which tool does a job / check the registry | `python3 tools/registry_build.py suggest --text-file F`, `validate --coverage`, `render` |
 | Re-render a paid asset without losing the old one | `python3 tools/renders.py <project> archive --file F --reason R` (moves the old file into `_arsip/` before the new render) |
 | Keep the project folder clean / find stray folders and duplicates | `python3 -m tools.vidkit tidy <project>` (report only; `--apply` moves strays to `_arsip/`, `--empty-tmp` empties `.tmp/`) |
+| Face box per frame, for the layout gate | `face_box.py` |
 <!-- registry:routes:end -->
 
 ## When no tool fits (inject back)

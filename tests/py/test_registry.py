@@ -455,7 +455,7 @@ class RenderTest(FakeRoot):
 
     def test_committed_registry_route_count_and_validates(self):
         reg = json.loads((ROOT / "tools/registry.json").read_text())
-        self.assertEqual(len(reg["routes"]), 63)
+        self.assertEqual(len(reg["routes"]), 64)
         self.assertEqual(registry_build.validate(reg, ROOT), [])
         deck = [r for r in reg["routes"] if r["task"].startswith("Deck / slide")]
         self.assertEqual(deck[0]["tools"], [])
@@ -515,11 +515,11 @@ class CommittedVidkitCoverageTest(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertEqual([ln for ln in out.splitlines() if "not in registry" in ln], [])
 
-    def test_ffprobe_allow_is_the_five_that_need_raw_fields(self):
+    def test_ffprobe_allow_is_the_six_that_need_raw_fields(self):
         # GV-22: everything else probes through vidkit/ff.py or vidkit/js/ff.mjs.
         reg = json.loads((ROOT / "tools/registry.json").read_text())
         self.assertEqual(sorted(a["id"] for a in reg["ffprobe_allow"]), [
-            "tools/person_mask.py", "tools/probe_clips.py", "tools/registry_build.py",
+            "tools/face_box.py", "tools/person_mask.py", "tools/probe_clips.py", "tools/registry_build.py",
             "tools/retention_gate.py", "tools/vidkit/color.py"])
 
     def test_every_route_tool_id_exists(self):

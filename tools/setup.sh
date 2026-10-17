@@ -73,4 +73,27 @@ else
   echo "model downloaded $MODEL"
 fi
 
+# Face detector model for tools/face_box.py (GV-23). Same rule as above: versioned URL, pinned hash.
+FACE_MODEL="$MODEL_DIR/blaze_face_short_range.tflite"
+FACE_MODEL_URL="https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite"
+FACE_MODEL_SHA256="b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f"
+if [ -f "$FACE_MODEL" ] && [ "$(shasum -a 256 "$FACE_MODEL" | cut -d' ' -f1)" = "$FACE_MODEL_SHA256" ]; then
+  echo "model ok $FACE_MODEL"
+else
+  tmp="$(mktemp "$MODEL_DIR/.face.XXXXXX")"
+  if ! curl -fsSL -o "$tmp" "$FACE_MODEL_URL"; then
+    rm -f "$tmp"
+    echo "model download failed: $FACE_MODEL_URL" >&2
+    exit 1
+  fi
+  got="$(shasum -a 256 "$tmp" | cut -d' ' -f1)"
+  if [ "$got" != "$FACE_MODEL_SHA256" ]; then
+    rm -f "$tmp"
+    echo "model sha256 mismatch: expected $FACE_MODEL_SHA256 got $got" >&2
+    exit 1
+  fi
+  mv "$tmp" "$FACE_MODEL"
+  echo "model downloaded $FACE_MODEL"
+fi
+
 echo "interpreter: $VENV_DIR/bin/python"

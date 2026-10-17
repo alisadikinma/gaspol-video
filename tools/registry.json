@@ -858,6 +858,19 @@
       "replaces": [],
       "distinct_because": "",
       "internal_reason": "Reached through `python3 -m tools.vidkit title`. Public route added in the wiring phase."
+    },
+    {
+      "id": "tools/face_box.py",
+      "purpose": "Face box per sampled frame of a clip (MediaPipe face detector) for the layout gate.",
+      "tasks": [
+        "face-box",
+        "face-detect",
+        "safe-area-check"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
     }
   ],
   "routes": [
@@ -1308,6 +1321,13 @@
       "tools": [
         "tools/vidkit/tidy.py"
       ]
+    },
+    {
+      "task": "Face box per frame, for the layout gate",
+      "use": "`face_box.py`",
+      "tools": [
+        "tools/face_box.py"
+      ]
     }
   ],
   "ffprobe_allow": [
@@ -1330,6 +1350,10 @@
     {
       "id": "tools/vidkit/color.py",
       "reason": "needs color_space/primaries/transfer/range fields ff.probe does not return"
+    },
+    {
+      "id": "tools/face_box.py",
+      "reason": "needs -count_packets with nb_read_packets and r_frame_rate as JSON, which ff.probe does not return"
     }
   ]
 }
