@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tools import (burn_subs, check_vo_duration, clean_voice, edit_render, gen_music, make_stems, mix_music, mix_sfx, overlay_plan,
+from tools import (burn_subs, check_vo_duration, clean_voice, composite, edit_render, gen_music, make_stems, mix_music, mix_sfx, overlay_plan,
                    qa_frames, track_screen)
 from tools.vidkit import ff
 
@@ -176,8 +176,8 @@ class DurationToolsReal(unittest.TestCase):
 
 
 STREAM_TOOLS = {
-    "burn_subs": burn_subs, "clean_voice": clean_voice, "edit_render": edit_render,
-    "qa_frames": qa_frames,
+    "burn_subs": burn_subs, "clean_voice": clean_voice, "composite": composite,
+    "edit_render": edit_render, "qa_frames": qa_frames,
 }
 
 
@@ -277,6 +277,109 @@ class StreamToolsReal(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(err.getvalue().strip(),
                          "qa_frames: ffmpeg and ffprobe are required and were not found on PATH")
+
+
+@unittest.skipUnless(HAVE_FF, "ffmpeg/ffprobe not installed")
+class CompositeProbes(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = Path(self._tmp.name)
+        self.clip = self.dir / "c.mp4"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "color=c=white:s=160x90:d=1:r=25", "-f", "lavfi", "-i", "sine=d=1",
+                        "-shortest", "-pix_fmt", "yuv420p", str(self.clip)], check=True)
+        self.silent = self.dir / "silent.mp4"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "color=c=white:s=160x90:d=1:r=25", "-pix_fmt", "yuv420p",
+                        str(self.silent)], check=True)
+        self.audio = self.dir / "a.wav"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=d=1",
+                        str(self.audio)], check=True)
+        self.alpha_qtrle = self.dir / "alpha.mov"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "color=c=red@0.5:s=64x64:d=1:r=25,format=rgba", "-c:v", "qtrle",
+                        str(self.alpha_qtrle)], check=True)
+        self.alpha_prores = self.dir / "alpha-prores.mov"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "color=c=red@0.5:s=64x64:d=1:r=25,format=yuva444p10le", "-c:v",
+                        "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le",
+                        str(self.alpha_prores)], check=True)
+        self.bad = self.dir / "bad.mp4"
+        self.bad.write_text("not media")
+        self.empty_path = self.dir / "emptybin"
+        self.empty_path.mkdir()
+
+    def no_path(self):
+        return mock.patch.dict(os.environ, {"PATH": str(self.empty_path)})
+
+    def test_duration_of_video_and_audio_streams(self):
+        self.assertAlmostEqual(composite.duration_of(self.clip), 1.0, delta=0.1)
+        self.assertAlmostEqual(composite.duration_of(self.clip, "v:0"), 1.0, delta=0.1)
+        self.assertAlmostEqual(composite.duration_of(self.clip, "a:0"), 1.0, delta=0.1)
+
+    def test_duration_of_absent_stream_is_none(self):
+        self.assertIsNone(composite.duration_of(self.audio, "v:0"))
+        self.assertIsNone(composite.duration_of(self.silent, "a:0"))
+
+    def test_require_alpha_accepts_alpha_pix_fmts(self):
+        self.assertTrue(composite.require_alpha(self.alpha_qtrle))
+        self.assertTrue(composite.require_alpha(self.alpha_prores))
+
+    def test_require_alpha_refuses_opaque_with_unchanged_message(self):
+        with self.assertRaises(composite.CompositeError) as cm:
+            composite.require_alpha(self.clip)
+        self.assertEqual(
+            str(cm.exception),
+            "c.mp4 has no alpha channel (pix_fmt yuv420p). "
+            "Render the shot with transparent: true, or place it as a cutaway instead.")
+
+    def test_video_info_values(self):
+        width, height, fps = composite._video_info(self.clip)
+        self.assertEqual((width, height), (160, 90))
+        self.assertAlmostEqual(fps, 25.0, delta=0.01)
+
+    def test_video_info_fps_default_when_rate_missing(self):
+        info = {"duration": 1.0, "audio": None,
+                "video": {"duration": 1.0, "fps": None, "width": 8, "height": 6,
+                          "pix_fmt": "yuv420p"}}
+        with mock.patch.object(composite.ff, "probe", return_value=info):
+            self.assertEqual(composite._video_info(self.clip), (8, 6, 30.0))
+
+    def test_video_info_no_video_stream_is_unreadable(self):
+        with self.assertRaises(composite.CompositeError) as cm:
+            composite._video_info(self.audio)
+        self.assertEqual(str(cm.exception), "a.wav: unreadable")
+
+    def test_has_stream(self):
+        self.assertTrue(composite._has_stream(self.clip, "v"))
+        self.assertTrue(composite._has_stream(self.clip, "a"))
+        self.assertFalse(composite._has_stream(self.silent, "a"))
+        self.assertFalse(composite._has_stream(self.audio, "v"))
+
+    def test_has_stream_unreadable_is_false(self):
+        self.assertFalse(composite._has_stream(self.bad, "v"))
+        self.assertFalse(composite._has_stream(self.bad, "a"))
+
+    def test_unreadable_raises_composite_error(self):
+        for label, call in (("duration_of", composite.duration_of),
+                            ("require_alpha", composite.require_alpha),
+                            ("_video_info", composite._video_info)):
+            with self.subTest(label):
+                with self.assertRaises(composite.CompositeError) as cm:
+                    call(self.bad)
+                self.assertEqual(str(cm.exception), "bad.mp4: unreadable")
+
+    def test_missing_binary_raises_composite_error(self):
+        with self.no_path():
+            for label, call in (("duration_of", lambda p: composite.duration_of(p)),
+                                ("require_alpha", composite.require_alpha),
+                                ("_video_info", composite._video_info),
+                                ("_has_stream", lambda p: composite._has_stream(p, "v"))):
+                with self.subTest(label):
+                    with self.assertRaises(composite.CompositeError) as cm:
+                        call(self.clip)
+                    self.assertEqual(str(cm.exception), "ffprobe not found on PATH")
 
 
 if __name__ == "__main__":

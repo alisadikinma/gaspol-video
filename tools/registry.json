@@ -1260,10 +1260,6 @@
   ],
   "ffprobe_allow": [
     {
-      "id": "tools/composite.py",
-      "reason": "needs -select_streams per call; migrate under follow-up"
-    },
-    {
       "id": "tools/person_mask.py",
       "reason": "needs -count_packets with nb_read_packets and r_frame_rate as JSON, which ff.probe does not return"
     },
