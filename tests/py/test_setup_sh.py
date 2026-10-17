@@ -83,5 +83,39 @@ class SetupShStaleVenvGateTest(unittest.TestCase):
             self.assertIn("delete", proc.stderr.lower())
 
 
+class SetupShMlFlagTest(unittest.TestCase):
+    def setUp(self):
+        self.text = SETUP_SH.read_text(encoding="utf-8")
+
+    def test_ml_flag_is_parsed(self):
+        self.assertIn("--ml)", self.text)
+        self.assertIn("WITH_ML", self.text)
+
+    def test_weights_urls_and_hashes_pinned(self):
+        for needle in (
+            "https://storage.googleapis.com/dm-tapnet/tapnextpp/tapnextpp_ckpt.pt",
+            "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt",
+            "cb96a43444ccb4fbdb25d800b88c7ba196179a526e78f01b021a16b1c1eff6da",
+            "6d1aa6f30de5c92224f8172114de081d104bbd23dd9dc5c58996f0cad5dc4d38",
+        ):
+            self.assertIn(needle, self.text)
+
+    def test_sam2_cuda_build_disabled(self):
+        self.assertIn("SAM2_BUILD_CUDA=0", self.text)
+
+    def test_requirements_pin_git_commits(self):
+        req = (ROOT / "requirements-ml.txt").read_text(encoding="utf-8")
+        self.assertIn("tapnet[torch] @ git+https://github.com/google-deepmind/tapnet.git@", req)
+        self.assertIn("SAM-2 @ git+https://github.com/facebookresearch/sam2.git@", req)
+        self.assertIn("einops==", req)
+
+    def test_unknown_option_refused(self):
+        proc = subprocess.run(
+            ["bash", str(SETUP_SH), "--bogus"], capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("--ml", proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
