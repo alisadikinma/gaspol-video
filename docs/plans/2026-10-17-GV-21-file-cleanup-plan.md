@@ -458,6 +458,27 @@ which file lacks which text.
 - [ ] `python3 tools/registry_build.py validate --coverage` and `render --check` exit 0; registry holds 63 tools and 63 routes
 - [ ] No placeholder/TODO comments in new code or docs
 
+## Changes after review (commit `b918136`)
+
+A silent-failure review found that `--empty-tmp` could delete a paid render with no other copy
+(path-string matching broke on `.tmp/Image` vs `.tmp/image` and on names containing ` = `; a file
+written between scan and delete was not re-checked). The shipped behaviour therefore differs
+from Phase C as written:
+
+- Everything under `.tmp/image` and `.tmp/video` (matched case-insensitively, any extension,
+  unreadable or zero-byte included) is kept unless `--include-mcp`, or unless the tmp file and
+  a same-size, same-sha256 home file are both re-hashed at delete time and still match.
+  `.tmp/image/notes.txt` is therefore kept, not deleted.
+- `.tmp/vocache-*` (paid ElevenLabs chunk cache from `gen_vo.mjs`) is always kept.
+- Per-item `OSError` goes into a `failed` list; the CLI prints every action and failure and exits 1.
+- `archive_file` refuses a symlinked `_arsip`, a top-level file (e.g. `renders.json`), and files
+  inside `_arsip/` or `.tmp/`; `check` prints `render` when the file is missing on disk.
+- Skills run `archive` only after the user approves the render, immediately before it.
+- `_arsip/` is never reported as holding unknown subfolders.
+
+Not fixed (recorded in the ledger): races with a hostile concurrent process swapping a folder
+for a symlink between check and unlink/rename (would need `os.fwalk` with `dir_fd`).
+
 ## Out of scope
 
 Pixel-based image/video QA; auto-removal of duplicates; deleting `_arsip/`; changing where MCP
