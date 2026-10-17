@@ -248,7 +248,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/py/test_pointtrack.py`
 
 **Steps:**
-1. Write failing test: synthetic 32-frame 320×240 RGB clip of a textured plane translating +3 px/frame in x; 16 queries at t=0; `track()` returns tracks within 1.5 px of truth on ≥ 90% of (t, n) and `visible` all True. Expected error: `ModuleNotFoundError: No module named 'tools.vidkit.pointtrack'`. Test class decorated `skipUnless(ML available)`.
+1. Write failing test for synthetic 32-frame 320×240 RGB clip of a textured plane translating +3 px/frame in x; 16 queries at t=0; `track()` returns tracks within 1.5 px of truth on ≥ 90% of (t, n) and `visible` all True. Expected error: `ModuleNotFoundError: No module named 'tools.vidkit.pointtrack'`. Test class decorated `skipUnless(ML available)`.
 2. Run `"$ML_PY" -m unittest tests.py.test_pointtrack`, confirm it fails for that reason.
 3. Implement per Contracts using the exact calls recorded in `docs/evals/ml-probe.md`; resize to the model size, map back to input pixels; weights via `ml.weight`, device via `ml.device()`.
 4. Add tests: occlusion — a grey box covers half the points for frames 10–14 → those points `visible=False` there and back within 2 px by frame 18; input validation (`T==0`, `N==0`, query outside frame, `t>=T`) raises `ValueError` (these run without ML).
@@ -273,7 +273,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/py/test_segment.py`
 
 **Steps:**
-1. Write failing test: 24-frame clip, a red disc moving across a noisy background; one point prompt on the disc at frame 0 → mask IoU ≥ 0.9 vs the known disc on every frame. Expected error: `ModuleNotFoundError: No module named 'tools.vidkit.segment'`.
+1. Write failing test for 24-frame clip, a red disc moving across a noisy background; one point prompt on the disc at frame 0 → mask IoU ≥ 0.9 vs the known disc on every frame. Expected error: `ModuleNotFoundError: No module named 'tools.vidkit.segment'`.
 2. Run under `ML_PY`, confirm it fails for that reason.
 3. Implement per Contracts: write frames as `00000.jpg…` into a `tempfile.TemporaryDirectory`, `init_state`, add prompt, `propagate_in_video`, threshold logits > 0, return bool `[T,H,W]`. Prompt at `frame_idx > 0` must still cover frames before it (run propagation in reverse as SAM 2 supports).
 4. Add tests: box prompt; negative point (label 0) excludes a second disc; `ValueError` cases (no prompt, length mismatch, outside frame) run without ML.
@@ -298,7 +298,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/py/test_screen.py`
 
 **Steps:**
-1. Write failing test: 640×360 frame, grey background, pure green (`#00FF00`) quad with corners `[[200,80],[450,95],[440,280],[190,260]]`, plus a skin-coloured "finger" rectangle crossing the bottom edge → `corners_green` returns each corner within 2 px. Expected error: `ModuleNotFoundError: No module named 'tools.vidkit.screen'`.
+1. Write failing test for 640×360 frame, grey background, pure green (`#00FF00`) quad with corners `[[200,80],[450,95],[440,280],[190,260]]`, plus a skin-coloured "finger" rectangle crossing the bottom edge → `corners_green` returns each corner within 2 px. Expected error: `ModuleNotFoundError: No module named 'tools.vidkit.screen'`.
 2. Run under the shared venv python, confirm it fails for that reason.
 3. Implement `corners_green` per Contracts (HSV key → largest component → contour edge points split into four sides by the min-area-rect orientation → RANSAC line per side → intersections, clockwise from top-left).
 4. Add tests: no green → `None`; green with JPEG noise and a 1 px anti-aliased edge → within 2 px; finger covering one corner region → still within 3 px.
@@ -323,7 +323,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/py/test_screen.py`
 
 **Steps:**
-1. Write failing test: 40-frame synthetic clip, a textured screen + textured bezel warped by a known homography sequence (slow pan + 3° roll) → `corners_track` within 3 px of truth on every frame. Expected error: `AttributeError: module 'tools.vidkit.screen' has no attribute 'corners_track'`.
+1. Write failing test for 40-frame synthetic clip, a textured screen + textured bezel warped by a known homography sequence (slow pan + 3° roll) → `corners_track` within 3 px of truth on every frame. Expected error: `AttributeError: module 'tools.vidkit.screen' has no attribute 'corners_track'`.
 2. Run under `ML_PY`, confirm it fails for that reason.
 3. Implement per Contracts (ring of points on and around the quad, `pointtrack.track`, per-frame RANSAC homography, One-Euro on the 8 corner coordinates).
 4. Implement `Refused` and the refusal checks (track lost, corner jump, inlier ratio) as a separate pure function `check_track(corners, inliers, visible, fps, diag)` and test each refusal with hand-built arrays (no ML needed).
@@ -348,7 +348,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/py/test_screen.py`, `tests/py/test_vidkit.py` (CLI parse)
 
 **Steps:**
-1. Write failing test: `composite` with an occluder mask → every occluder pixel equals the original frame exactly; pixels inside the quad and outside the occluder differ from the original and correlate ≥ 0.9 with the warped panel. Expected error: `AttributeError: ... no attribute 'composite'`.
+1. Write failing test for `composite` with an occluder mask → every occluder pixel equals the original frame exactly; pixels inside the quad and outside the occluder differ from the original and correlate ≥ 0.9 with the warped panel. Expected error: `AttributeError: ... no attribute 'composite'`.
 2. Run, confirm it fails for that reason.
 3. Implement `composite` per Contracts: warp, 1.5 px feathered edge, colour/gamma match (match panel mean luminance to the screen region's 90th percentile luminance), motion blur kernel length = corner displacement from `prev_corners` (0 when None), glass residual = original minus its Gaussian blur (σ 6) × `glass`.
 4. Add tests: motion blur reduces horizontal gradient energy when corners move 20 px/frame vs 0; `glass=0` leaves no residual; panel PNG with alpha respected.
@@ -377,7 +377,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/py/test_embroider.py`
 
 **Steps:**
-1. Write failing test: `thread_maps` on a 200×80 RGBA bar → `height` is 0 where alpha is 0, maximum lies within 2 px of the bar's centre line, `normal[..., 2] > 0` everywhere, and the FFT of a height row inside the bar peaks at period `stitch_px` ± 0.5. Expected error: `ModuleNotFoundError: No module named 'tools.vidkit.embroider'`.
+1. Write failing test for `thread_maps` on a 200×80 RGBA bar → `height` is 0 where alpha is 0, maximum lies within 2 px of the bar's centre line, `normal[..., 2] > 0` everywhere, and the FFT of a height row inside the bar peaks at period `stitch_px` ± 0.5. Expected error: `ModuleNotFoundError: No module named 'tools.vidkit.embroider'`.
 2. Run under the shared venv, confirm it fails for that reason.
 3. Implement per Contracts: distance transform of alpha → dome profile; satin ridges = `0.5 + 0.5·cos(2π·u/stitch_px)` along the stitch direction (`angle_deg`, default perpendicular to the local stroke via the distance-transform gradient); normal from Sobel of height; albedo = logo RGB with slight per-ridge brightness variation (± 6%).
 4. Add tests: fully transparent input → `ValueError("logo has no opaque pixels")`; non-RGBA → `ValueError`; thin 2 px stroke still has height > 0.
@@ -401,7 +401,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/py/test_embroider.py`
 
 **Steps:**
-1. Write failing test: `grid_warp` with a 7×7 grid displaced by a known smooth field (`dx = 6·sin(y/40)`, `dy = 4·cos(x/50)`) → mean absolute difference to the ground-truth `cv2.remap` result ≤ 1.5 px-equivalent (compare alpha centroids per cell). Expected error: `AttributeError: ... no attribute 'grid_warp'`.
+1. Write failing test for `grid_warp` with a 7×7 grid displaced by a known smooth field (`dx = 6·sin(y/40)`, `dy = 4·cos(x/50)`) → mean absolute difference to the ground-truth `cv2.remap` result ≤ 1.5 px-equivalent (compare alpha centroids per cell). Expected error: `AttributeError: ... no attribute 'grid_warp'`.
 2. Run, confirm it fails for that reason.
 3. Implement `grid_warp` (piecewise-affine over a Delaunay triangulation of visible points; points with `visible=False` dropped; fewer than 4 visible → `Refused("track lost ...")`).
 4. Write failing test for `shade`: on a frame whose cloth luminance ramps dark→bright, the shaded thread luminance correlates ≥ 0.8 with the cloth luminance; ridge pixels brighter than valley pixels. Implement; run.
@@ -425,7 +425,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/py/test_embroider.py`, `tests/py/test_vidkit.py`
 
 **Steps:**
-1. Write failing test: synthetic 24-frame clip of a textured "shirt" region that deforms by a known field, plus a "hand" disc crossing it → output pixels outside the shirt mask equal the input exactly; pixels under the hand equal the input exactly; inside the shirt the design is present. Expected error: `AttributeError: ... no attribute 'embroider'`.
+1. Write failing test for synthetic 24-frame clip of a textured "shirt" region that deforms by a known field, plus a "hand" disc crossing it → output pixels outside the shirt mask equal the input exactly; pixels under the hand equal the input exactly; inside the shirt the design is present. Expected error: `AttributeError: ... no attribute 'embroider'`.
 2. Run under `ML_PY`, confirm it fails for that reason.
 3. Implement `embroider()`: shirt mask = `segment.masks(point=at)`; hand mask = `segment.masks(points=hand_points)` when given, else none; tracking grid = 7×7 points over the design footprint, restricted to shirt-mask pixels, via `pointtrack.track`; per frame `grid_warp` → `shade` → alpha × (shirt ∧ ¬hand); refusals per table; QA sheet when `qa_dir`; audio copied.
 4. Add CLI `embroider <clip> <logo.png> <out> --at x,y --width W [--rot DEG] [--hand x,y ...] [--qa DIR]`; exit codes as `screen-insert`. Test parsing and exit mapping.
