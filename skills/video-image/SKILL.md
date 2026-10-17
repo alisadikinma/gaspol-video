@@ -300,10 +300,14 @@ After the asset library is approved (option A above), offer to render it through
      say so ("sudah up to date, dilewati") and drop it from the render list.
      `render` means it needs one. If the WHOLE batch prints `up-to-date`, skip
      step 3 entirely (no question, no render).
-     If `{output_folder}/<file>` already exists, run
+     When `check` printed `render` and `{output_folder}/<file>` already exists,
+     do NOT archive yet. Only AFTER the user approves the render (step 3), and
+     immediately before the render call for that file, run
         python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"
-     BEFORE the render, so the old paid version is kept in `_arsip/` instead of
-     overwritten. Then render, then `record`.
+     so the old paid version is kept in `_arsip/` instead of overwritten. If the
+     user declines, the old file stays where it is (and `check` prints `render`
+     for it next time, since the slot is only up to date while the file exists).
+     Then render, then `record`.
 
 2b. REUSE generic assets from the cross-project library (Phase 4A standalone
    assets only, never Phase 4B scene keyframes): for each prompt still in the
@@ -494,10 +498,12 @@ FOR each batch (ACT or sub-batch):
         the same prompt hash, say "sudah up to date, dilewati", drop from the
         render list. Whole batch `up-to-date` → skip to step 6 (no question,
         no render). When `check` printed `render` and `{output_folder}/<file>`
-        already exists, run
+        already exists, do NOT archive yet. Only AFTER the user approves the
+        render, and immediately before the render call for that file, run
         `python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"`
-        BEFORE the render, so the old paid version is kept in `_arsip/` instead
-        of overwritten. Then render, then `record`.
+        so the old paid version is kept in `_arsip/` instead of overwritten.
+        If the user declines, the old file stays in place. Then render, then
+        `record`.
      b2. (v3.11.1, Rule 46) PILOT — first 4B batch of the project only, and only
         when no keyframe is `done` yet: render ONE start frame (the scene that
         carries the most cast and refs), Read it, show it, and ask

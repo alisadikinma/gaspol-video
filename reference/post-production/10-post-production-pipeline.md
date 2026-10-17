@@ -154,19 +154,27 @@ python3 -m tools.vidkit tidy {output_folder} --apply         # move strays into 
 python3 -m tools.vidkit tidy {output_folder} --empty-tmp     # empty .tmp/
 ```
 
-`archive` runs BEFORE a re-render: it moves the existing file to
-`_arsip/<kind>-<stem>-v<N>-<reason><ext>`, so the old paid version is never overwritten.
+`archive` runs after the user approves a re-render, immediately before the render call: it moves
+the existing file to `_arsip/<kind>-<stem>-v<N>-<reason><ext>`, so the old paid version is never
+overwritten. It refuses a file that is not inside a sub-folder (for example `renders.json`), a file
+inside `_arsip/` or `.tmp/`, and an `_arsip/` that is a symlink or resolves outside the project.
+`renders.py check` prints `render` for a slot whose file is missing on disk, even when the ledger
+hash matches, so a declined re-render is not skipped later.
 
-`tidy` with no flag reports unknown top-level folders, subfolders inside the flat folders,
-duplicate files, stale ledger entries and old `.tmp/` files. `--apply` moves unknown top-level
-folders and subfolders inside flat folders to `_arsip/folder-...`; a `folder-*` entry already in
-`_arsip/` is never reported or moved again.
+`tidy` with no flag reports unknown top-level folders, subfolders inside the flat folders
+(`_arsip/` is never a source of subfolders and `--apply` never renames anything in it),
+duplicate files, stale ledger entries, old `.tmp/` files and folders that could not be listed.
+`--apply` moves unknown top-level folders and subfolders inside flat folders to `_arsip/folder-...`.
 
-`--empty-tmp` deletes only content of `.tmp/`. An MCP render under `.tmp/image` or `.tmp/video` is
-deleted only when the same bytes already sit in its home folder (it prints
-`deleted <tmp> (copy of <home>)`); otherwise it is kept, unless `--include-mcp` is given. An
-unreadable media file there is kept like an unmoved paid render. `_arsip/` and `shots/out/` are
-never touched. Do not run it while a render is writing to `.tmp/`.
+`--empty-tmp` deletes only content of `.tmp/`. The MCP area is `.tmp/image` and `.tmp/video`
+(letter case ignored). Every file there, of any type, readable or not, is kept unless it is
+verified at delete time as a copy: the tool hashes the `.tmp` file again, finds a home file with
+the same size and sha256, hashes that home file again and checks it still matches. Only then does it
+delete the copy (prints `deleted <tmp> (copy of <home>)`); any mismatch or error keeps the file.
+`--include-mcp` deletes the MCP area without that check. `.tmp/vocache-*` (paid ElevenLabs chunk
+cache from `gen_vo.mjs`) is always kept (`paid TTS cache, kept: <path>`). A file or folder that
+cannot be removed is listed as `failed <path>: <error>`, the rest still run, and the exit code is 1.
+`_arsip/` and `shots/out/` are never touched. Do not run it while a render is writing to `.tmp/`.
 
 Naming rules that other tools depend on:
 

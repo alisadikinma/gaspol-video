@@ -279,6 +279,8 @@ class MainCliTest(unittest.TestCase):
 
     def test_check_subcommand_prints_up_to_date_when_done_and_unchanged(self):
         prompt = self.prompt_file.read_text()
+        (self.project / "keyframes").mkdir(parents=True, exist_ok=True)
+        (self.project / "keyframes/x.png").write_bytes(b"png")
         renders.record(self.project, {
             "file": "keyframes/x.png", "phase": "4B", "status": "done",
             "prompt_sha256": renders.prompt_sha256(prompt),
@@ -545,6 +547,82 @@ class ArchiveCliTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertTrue(err.startswith("renders: "), err)
         self.assertIn("file escapes project", err)
+
+
+class ArchiveSafetyTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.project = Path(self._tmp.name) / "proj"
+        self.project.mkdir()
+
+    def _make(self, rel, data=b"paid"):
+        path = self.project / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return path
+
+    def test_arsip_symlink_refused_and_target_untouched(self):
+        import os
+        self._make("keyframes/a.png")
+        other = Path(self._tmp.name) / "elsewhere"
+        other.mkdir()
+        os.symlink(other, self.project / "_arsip")
+        with self.assertRaises(ValueError):
+            renders.archive_file(self.project, "keyframes/a.png", "x", "4B")
+        self.assertEqual(list(other.iterdir()), [])
+        self.assertTrue((self.project / "keyframes/a.png").exists())
+
+    def test_non_dict_ledger_entry_falls_back_to_extension(self):
+        self._make("clips/a.mp4")
+        (self.project / "renders.json").write_text(json.dumps({"renders": ["junk", 5, None]}))
+        dest = renders.archive_file(self.project, "clips/a.mp4", "x")
+        self.assertEqual(dest.name, "klip-a-v1-x.mp4")
+
+    def test_ledger_oserror_falls_back_to_extension(self):
+        from unittest import mock
+        self._make("clips/a.mp4")
+        with mock.patch.object(renders, "load", side_effect=PermissionError("denied")):
+            dest = renders.archive_file(self.project, "clips/a.mp4", "x")
+        self.assertEqual(dest.name, "klip-a-v1-x.mp4")
+
+    def test_refuses_file_not_in_a_subfolder(self):
+        self._make("renders.json", b"{}")
+        with self.assertRaises(ValueError):
+            renders.archive_file(self.project, "renders.json", "x")
+        self.assertTrue((self.project / "renders.json").exists())
+
+    def test_refuses_file_inside_arsip_or_tmp(self):
+        self._make("_arsip/x.png")
+        self._make(".tmp/x.png")
+        for rel in ("_arsip/x.png", ".tmp/x.png", "_ARSIP/x.png", "keyframes/../.tmp/x.png"):
+            with self.assertRaises(ValueError, msg=rel):
+                renders.archive_file(self.project, rel, "x")
+        self.assertTrue((self.project / "_arsip/x.png").exists())
+        self.assertTrue((self.project / ".tmp/x.png").exists())
+
+
+class CheckMissingFileTest(unittest.TestCase):
+    def test_check_says_render_when_file_is_gone_despite_matching_hash(self):
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            (proj / "keyframes").mkdir()
+            pf = proj / "prompt.txt"
+            pf.write_text("A gate at dusk.")
+            renders.record(proj, {"file": "keyframes/s.png", "phase": "4B", "status": "done",
+                                  "prompt_sha256": renders.prompt_sha256("A gate at dusk.")})
+            argv = [str(proj), "check", "--file", "keyframes/s.png", "--prompt-file", str(pf)]
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                renders.main(argv)
+            self.assertEqual(out.getvalue().strip(), "render")
+            (proj / "keyframes/s.png").write_bytes(b"x")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                renders.main(argv)
+            self.assertEqual(out.getvalue().strip(), "up-to-date")
 
 
 if __name__ == "__main__":

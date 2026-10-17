@@ -3,7 +3,9 @@
 ``scan`` reports stray folders and subfolders, duplicate files, stale ledger entries, old
 ``.tmp`` files and MCP renders that were not moved home. It never writes.
 ``apply_unknown_dirs`` moves stray folders into ``_arsip/``. ``empty_tmp`` is the only deletion
-and it stays inside ``.tmp/``.
+and it stays inside ``.tmp/``; it keeps every file in the MCP area (``.tmp/image``,
+``.tmp/video``, any letter case) and the paid TTS cache ``.tmp/vocache-*`` unless the file is
+verified at delete time to be a byte-identical copy of a file already at home.
 """
 import hashlib
 import os
@@ -15,7 +17,6 @@ from tools import renders
 CONTRACT_DIRS = {"ref", "keyframes", "shots", "clips", "vo", "sfx", "work", "output", "_arsip",
                  ".tmp", "screens", "packaging"}
 DUP_DIRS = ("ref", "keyframes", "clips", "vo", "sfx", "output", "_arsip")
-MCP_SUBDIRS = (".tmp/image", ".tmp/video")
 MEDIA_EXT = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".mp3", ".wav"}
 FLAT_DIRS = ("ref", "keyframes", "clips", "vo", "sfx", "_arsip")
 ALLOWED_SUBDIRS = {"output": {"stems"}}
@@ -34,11 +35,13 @@ def _check_project(project):
     return root
 
 
-def _entries(path):
+def _entries(path, unreadable=None):
     try:
         with os.scandir(path) as it:
             return sorted(it, key=lambda e: e.name)
     except OSError:
+        if unreadable is not None:
+            unreadable.add(str(path))
         return []
 
 
@@ -46,13 +49,19 @@ def _rel(root, path):
     return Path(path).relative_to(root).as_posix()
 
 
-def _files(root, rel_dir):
-    """Regular files (no symlinks, no symlinked dirs) below root/rel_dir, sorted."""
+def _files(root, rel_dir, unreadable=None):
+    """Regular files (no symlinks, no symlinked dirs) below root/rel_dir, sorted.
+
+    A directory that cannot be listed is added to ``unreadable`` (when given)."""
     out = []
     start = root / rel_dir
     if start.is_symlink() or not start.is_dir():
         return out
-    for dp, dn, fn in os.walk(start, followlinks=False):
+
+    def onerror(exc):
+        if unreadable is not None and getattr(exc, "filename", None):
+            unreadable.add(str(exc.filename))
+    for dp, dn, fn in os.walk(start, followlinks=False, onerror=onerror):
         dn[:] = sorted(d for d in dn if not os.path.islink(os.path.join(dp, d)))
         for n in sorted(fn):
             p = os.path.join(dp, n)
@@ -94,38 +103,57 @@ def _hash_groups(paths, unreadable):
     return groups
 
 
+def _is_mcp_area(rel):
+    """True when the first component under ``.tmp/`` is ``image`` or ``video`` (any case)."""
+    parts = Path(rel).parts
+    return len(parts) >= 2 and parts[0] == ".tmp" and parts[1].lower() in ("image", "video")
+
+
+def _home_index(root, unreadable=None):
+    """``{(size, sha256): [absolute paths]}`` for every readable non-empty file in DUP_DIRS."""
+    index = {}
+    for d in DUP_DIRS:
+        for p in _files(root, d, unreadable):
+            try:
+                size = os.stat(p).st_size
+                if size == 0:
+                    continue
+                index.setdefault((size, _sha256(p)), []).append(p)
+            except OSError:
+                if unreadable is not None:
+                    unreadable.add(p)
+    return index
+
+
 def scan(project, tmp_days=7, now=None):
     root = _check_project(project)
     now = time.time() if now is None else now
     report = {k: [] for k in _KEYS}
+    unreadable = set()
 
-    for e in _entries(root):
+    for e in _entries(root, unreadable):
         if e.name.startswith(".") or e.name in CONTRACT_DIRS:
             continue
         if e.is_dir(follow_symlinks=False) or (e.is_symlink() and e.is_dir()):
             report["unknown_dirs"].append(e.name)
 
-    for d in FLAT_DIRS + tuple(ALLOWED_SUBDIRS):
+    for d in tuple(x for x in FLAT_DIRS if x != "_arsip") + tuple(ALLOWED_SUBDIRS):
         base = root / d
         if base.is_symlink() or not base.is_dir():
             continue
         allowed = ALLOWED_SUBDIRS.get(d, set())
-        for e in _entries(base):
+        for e in _entries(base, unreadable):
             if e.name in allowed:
                 continue
-            if d == "_arsip" and e.name.startswith(ARCHIVED_PREFIX):
-                continue  # a folder this tool moved here earlier
             if e.is_dir(follow_symlinks=False) or (e.is_symlink() and e.is_dir()):
                 report["unknown_subdirs"].append(f"{d}/{e.name}")
     report["unknown_subdirs"].sort()
 
-    unreadable = set()
     home = []
     for d in DUP_DIRS:
-        home.extend(_files(root, d))
-    mcp = []
-    for d in MCP_SUBDIRS:
-        mcp.extend(p for p in _files(root, d) if Path(p).suffix.lower() in MEDIA_EXT)
+        home.extend(_files(root, d, unreadable))
+    mcp = [p for p in _files(root, ".tmp", unreadable)
+           if _is_mcp_area(_rel(root, p)) and Path(p).suffix.lower() in MEDIA_EXT]
     groups = _hash_groups(home + mcp, unreadable)
     home_set = set(home)
     stray = tuple(u + "/" for u in report["unknown_subdirs"])
@@ -163,7 +191,7 @@ def scan(project, tmp_days=7, now=None):
         report["stale_ledger"].sort()
 
     cutoff = now - tmp_days * 86400
-    for p in _files(root, ".tmp"):
+    for p in _files(root, ".tmp", unreadable):
         try:
             if os.lstat(p).st_mtime < cutoff:
                 report["old_tmp"].append(_rel(root, p))
@@ -199,76 +227,148 @@ def format_report(report):
     return "\n".join(lines) if lines else "clean"
 
 
+class Moved(list):
+    """List of ``(src, dst)`` pairs; ``failed`` holds ``(path, error)`` for moves that did not happen."""
+
+    def __init__(self, *a):
+        super().__init__(*a)
+        self.failed = []
+
+
 def apply_unknown_dirs(project, report):
-    """Move stray folders to ``_arsip/folder-X`` or ``_arsip/folder-P-X``. Returns (src, dst) pairs."""
+    """Move stray folders to ``_arsip/folder-X`` or ``_arsip/folder-P-X``.
+
+    Returns a list of ``(src, dst)`` pairs with a ``.failed`` list of ``(path, error)``.
+    One failed move does not stop the others. Nothing inside ``_arsip/`` is touched."""
     root = _check_project(project)
     entries = list(report.get("unknown_dirs", [])) + list(report.get("unknown_subdirs", []))
     entries = [e for e in entries if os.path.lexists(root / e)]
+    moved = Moved()
     if not entries:
-        return []
+        return moved
     arsip = root / "_arsip"
     if arsip.is_symlink():
         raise ValueError(f"_arsip is a symlink: {arsip}")
     arsip.mkdir(exist_ok=True)
-    moved = []
     for rel in entries:
         base = ARCHIVED_PREFIX + rel.replace("/", "-")
         dst, n = arsip / base, 1
         while os.path.lexists(dst):
             n += 1
             dst = arsip / f"{base}-{n}"
-        os.replace(root / rel, dst)
+        try:
+            os.replace(root / rel, dst)
+        except OSError as exc:
+            moved.failed.append((rel, str(exc)))
+            continue
         moved.append((rel, _rel(root, dst)))
     return moved
 
 
-def empty_tmp(project, include_mcp=False):
-    """Delete the content of ``.tmp/``. Unmoved MCP renders stay unless ``include_mcp``.
+def _verified_home(path, index):
+    """Home path holding exactly the bytes of ``path``, checked now, or None."""
+    try:
+        size = os.stat(path).st_size
+        if size == 0:
+            return None
+        key = (size, _sha256(path))
+    except OSError:
+        return None
+    for cand in sorted(index.get(key, ()), key=lambda c: (_rel_arsip(c), c)):
+        try:
+            if os.path.islink(cand) or os.stat(cand).st_size != size or _sha256(cand) != key[1]:
+                continue
+        except OSError:
+            continue
+        return cand
+    return None
 
-    Returns ``{"deleted": [...], "kept_mcp": [...], "home_of": {tmp_path: home_path}}``.
+
+def _rel_arsip(cand):
+    return "/_arsip/" in cand.replace(os.sep, "/")
+
+
+def empty_tmp(project, include_mcp=False):
+    """Delete the content of ``.tmp/``.
+
+    Kept unless ``include_mcp``: every file in the MCP area (``.tmp/image``, ``.tmp/video``,
+    any letter case) that is not, at delete time, re-verified as a byte-identical copy of a
+    file in a home folder. ``.tmp/vocache-*`` (paid TTS cache) is always kept.
+
+    Returns ``{"deleted", "kept_mcp", "kept_tts", "home_of", "failed"}``; ``failed`` is a list
+    of ``(path, error)``. One failure does not stop the rest.
     """
     root = _check_project(project)
     tmp = root / ".tmp"
-    result = {"deleted": [], "kept_mcp": [], "home_of": {}}
+    result = {"deleted": [], "kept_mcp": [], "kept_tts": [], "home_of": {}, "failed": []}
     if not tmp.is_dir():
         return result
-    report = scan(root)
-    keep = set()
-    if not include_mcp:
-        keep.update(report["unmoved_mcp"])
-        keep.update(u for u in report["unreadable"]
-                    if u.startswith(MCP_SUBDIRS) and Path(u).suffix.lower() in MEDIA_EXT)
-    for line in report["mcp_already_home"]:
-        tmp_path, home_path = line.split(" = ", 1)
-        result["home_of"][tmp_path] = home_path
     root_real = os.path.realpath(root)
     tmp_real = os.path.realpath(tmp)
     if os.path.dirname(tmp_real) != root_real:
         raise ValueError(f".tmp resolves outside the project: {tmp_real}")
+    index = _home_index(root)
 
     def inside(path):
         return os.path.commonpath([tmp_real, path]) == tmp_real and path != tmp_real
 
-    for dp, dn, fn in os.walk(tmp_real, topdown=False, followlinks=False):
+    blocked = set()
+
+    def block(dp):
+        while dp != tmp_real and dp not in blocked:
+            blocked.add(dp)
+            dp = os.path.dirname(dp)
+
+    def walk_error(exc):
+        name = getattr(exc, "filename", None)
+        if name:
+            result["failed"].append((Path(os.path.relpath(name, root_real)).as_posix(), str(exc)))
+            block(str(name))
+
+    for dp, dn, fn in os.walk(tmp_real, topdown=False, followlinks=False, onerror=walk_error):
         for name in fn + [d for d in dn if os.path.islink(os.path.join(dp, d))]:
             path = os.path.join(dp, name)
             rel = Path(os.path.relpath(path, root_real)).as_posix()
             if not inside(path):
                 continue
-            if rel in keep:
-                result["kept_mcp"].append(rel)
+            is_link = os.path.islink(path)
+            if not is_link and name.startswith("vocache-"):
+                result["kept_tts"].append(rel)
+                block(dp)
                 continue
-            os.unlink(path)
+            if not is_link and not include_mcp and _is_mcp_area(rel):
+                home = _verified_home(path, index)
+                if home is None:
+                    result["kept_mcp"].append(rel)
+                    block(dp)
+                    continue
+                home_rel = Path(os.path.relpath(home, str(root))).as_posix()
+                try:
+                    os.unlink(path)
+                except OSError as exc:
+                    result["failed"].append((rel, str(exc)))
+                    block(dp)
+                    continue
+                result["deleted"].append(rel)
+                result["home_of"][rel] = home_rel
+                continue
+            try:
+                os.unlink(path)
+            except OSError as exc:
+                result["failed"].append((rel, str(exc)))
+                block(dp)
+                continue
             result["deleted"].append(rel)
         for name in dn:
             path = os.path.join(dp, name)
-            if os.path.islink(path) or not inside(path):
+            if os.path.islink(path) or not inside(path) or path in blocked:
                 continue
             try:
                 os.rmdir(path)
-            except OSError:
-                pass
-    result["deleted"].sort()
-    result["kept_mcp"].sort()
-    result["home_of"] = {k: v for k, v in result["home_of"].items() if k in set(result["deleted"])}
+            except OSError as exc:
+                result["failed"].append((Path(os.path.relpath(path, root_real)).as_posix(), str(exc)))
+                block(path)
+    for k in ("deleted", "kept_mcp", "kept_tts"):
+        result[k].sort()
+    result["failed"].sort()
     return result

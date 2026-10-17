@@ -118,10 +118,10 @@ def _archive_kind(project, file: str, phase, ext: str) -> str:
     if phase is None:
         try:
             for entry in load(project)["renders"]:
-                if entry.get("file") == file:
+                if isinstance(entry, dict) and entry.get("file") == file:
                     phase = entry.get("phase")
                     break
-        except RenderLedgerError:
+        except (RenderLedgerError, OSError, TypeError, KeyError):
             phase = None
     if phase in _PHASE_KIND:
         return _PHASE_KIND[phase]
@@ -144,6 +144,16 @@ def archive_file(project, file, reason="", phase=None):
         raise ValueError(f"file is a symlink: {file}")
     if src.is_dir():
         raise ValueError(f"file is a directory: {file}")
+    parts = resolved.relative_to(root).parts
+    if len(parts) < 2:
+        raise ValueError(f"file is not inside a sub-folder: {file}")
+    if parts[0].lower() in (ARCHIVE_DIR, ".tmp"):
+        raise ValueError(f"file is inside {parts[0]}/, not archivable: {file}")
+    arsip = Path(project) / ARCHIVE_DIR
+    if arsip.is_symlink():
+        raise ValueError(f"{ARCHIVE_DIR} is a symlink: {arsip}")
+    if arsip.exists() and Path(os.path.realpath(arsip)).parent != root:
+        raise ValueError(f"{ARCHIVE_DIR} resolves outside the project: {arsip}")
     if not src.exists():
         return None
 
@@ -160,6 +170,8 @@ def archive_file(project, file, reason="", phase=None):
     dest = archive_dir / f"{prefix}{highest + 1}-{_slug(reason)}{src.suffix}"
     if dest.exists():
         raise ValueError(f"archive destination exists: {dest.name}")
+    if root not in Path(os.path.realpath(dest)).parents:
+        raise ValueError(f"archive destination escapes project: {dest}")
     archive_dir.mkdir(parents=True, exist_ok=True)
     os.replace(src, dest)
     return dest
@@ -262,7 +274,8 @@ def _cmd_check(args):
         print(f"renders: {exc}", file=sys.stderr)
         return 1
     prompt = Path(args.prompt_file).read_text()
-    print("render" if needs_render(ledger, args.file, prompt) else "up-to-date")
+    missing = not (Path(args.project) / args.file).exists()
+    print("render" if missing or needs_render(ledger, args.file, prompt) else "up-to-date")
     return 0
 
 

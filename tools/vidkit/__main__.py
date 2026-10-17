@@ -154,6 +154,7 @@ def main(argv=None):
     s.add_argument("--rot", type=float, default=-1.2)
 
     a = ap.parse_args(argv)
+    rc = 0
     if a.cmd == "tidy" and a.include_mcp and not a.empty_tmp:
         ap.error("--include-mcp needs --empty-tmp")
     try:
@@ -190,7 +191,10 @@ def main(argv=None):
                 moved = tidy.apply_unknown_dirs(a.project, tidy.scan(a.project, a.tmp_days))
                 for src, dst in moved:
                     print(f"moved {src} -> {dst}")
-                if not moved:
+                for path, err in moved.failed:
+                    print(f"failed {path}: {err}", file=sys.stderr)
+                    rc = 1
+                if not moved and not moved.failed:
                     print("nothing to move")
             if a.empty_tmp:
                 r = tidy.empty_tmp(a.project, a.include_mcp)
@@ -199,7 +203,13 @@ def main(argv=None):
                     print(f"deleted {path} (copy of {home})" if home else f"deleted {path}")
                 for path in r["kept_mcp"]:
                     print(f"paid render not moved yet, kept: {path}")
-                print(f"emptied .tmp: {len(r['deleted'])} deleted, {len(r['kept_mcp'])} kept")
+                for path in r["kept_tts"]:
+                    print(f"paid TTS cache, kept: {path}")
+                for path, err in r["failed"]:
+                    print(f"failed {path}: {err}", file=sys.stderr)
+                    rc = 1
+                print(f"emptied .tmp: {len(r['deleted'])} deleted, "
+                      f"{len(r['kept_mcp']) + len(r['kept_tts'])} kept, {len(r['failed'])} failed")
         elif a.cmd == "probe":
             print(json.dumps(ff.probe(a.file), indent=1))
         elif a.cmd == "gate-av":
@@ -247,10 +257,10 @@ def main(argv=None):
     except loudness.ProfileError as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 2
-    except (gates.GateError, ff.FFError, beats.BeatError, ValueError, RuntimeError) as exc:
+    except (gates.GateError, ff.FFError, beats.BeatError, ValueError, RuntimeError, OSError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
-    return 0
+    return rc
 
 
 if __name__ == "__main__":

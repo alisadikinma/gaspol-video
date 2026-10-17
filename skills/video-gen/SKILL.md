@@ -463,10 +463,13 @@ FOR each batch (ACT or sub-batch):
         prompt to a temp file, then `python3 tools/renders.py {output_folder}
         check --file <file> --prompt-file <temp-file>` — `up-to-date` drops
         the scene from the render list, same as Phase 4. When `check` printed
-        `render` and `{output_folder}/<file>` already exists, run
+        `render` and `{output_folder}/<file>` already exists, do NOT archive
+        yet. Only AFTER the user approves the render (step e), and immediately
+        before the render call for that file, run
         `python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"`
-        BEFORE the render, so the old paid version is kept in `_arsip/` instead
-        of overwritten. Then render, then `record`.
+        so the old paid version is kept in `_arsip/` instead of overwritten.
+        If the user declines, the old file stays in place. Then render, then
+        `record`.
      e. ASK (only if any eligible scene remains in the render list):
         AskUserQuestion:
         "Render batch {N} sekarang? ({k} clip VEO 3.1 fast, {s} detik total)"
