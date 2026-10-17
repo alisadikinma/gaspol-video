@@ -369,6 +369,20 @@ class ArchiveFileTest(unittest.TestCase):
         path.write_bytes(data)
         return path
 
+    def test_ledger_kind_lookup_normalises_paths_on_both_sides(self):
+        self._make("keyframes/x.png")
+        (self.project / "renders.json").write_text(json.dumps(
+            {"renders": [{"file": "./clips/../keyframes/x.png", "phase": "4B", "status": "done"}]}))
+        dest = renders.archive_file(self.project, "keyframes/x.png", "r")
+        self.assertTrue(dest.name.startswith("keyframe-x-v1-"), dest.name)
+
+    def test_ledger_kind_lookup_normalises_the_argument(self):
+        self._make("keyframes/y.png")
+        (self.project / "renders.json").write_text(json.dumps(
+            {"renders": [{"file": "keyframes/y.png", "phase": "4B", "status": "done"}]}))
+        dest = renders.archive_file(self.project, "./keyframes/y.png", "r")
+        self.assertTrue(dest.name.startswith("keyframe-y-v1-"), dest.name)
+
     def test_moves_keyframe_into_arsip_with_reason(self):
         self._make("keyframes/scene-03.png")
         dest = renders.archive_file(self.project, "keyframes/scene-03.png",

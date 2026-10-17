@@ -119,7 +119,8 @@ The v3.10.0 gold-serif card tool is removed.
 20. **Folder contract — twelve folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `shots/` `clips/` `vo/` `sfx/` `work/` `output/` `_arsip/`
 `.tmp/` `screens/` `packaging/`. A new folder needs the user's approval. Subfolders are not allowed
-inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/`; `output/` allows only `stems/`. Derived files (previews, QA stills, upload
+inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/ output/`, except those the plugin's tools create:
+`ref/sumber/`, `vo/native/`, `vo/master/`, `output/stems/`. Derived files (previews, QA stills, upload
 copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
 subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
 to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,
@@ -463,13 +464,9 @@ FOR each batch (ACT or sub-batch):
         prompt to a temp file, then `python3 tools/renders.py {output_folder}
         check --file <file> --prompt-file <temp-file>` — `up-to-date` drops
         the scene from the render list, same as Phase 4. When `check` printed
-        `render` and `{output_folder}/<file>` already exists, do NOT archive
-        yet. Only AFTER the user approves the render (step e), and immediately
-        before the render call for that file, run
-        `python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"`
-        so the old paid version is kept in `_arsip/` instead of overwritten.
-        If the user declines, the old file stays in place. Then render, then
-        `record`.
+        `render` and `{output_folder}/<file>` already exists, do not archive
+        here: the archive happens inside the render step (f), after a
+        successful render. If the user declines, the old file stays in place.
      e. ASK (only if any eligible scene remains in the render list):
         AskUserQuestion:
         "Render batch {N} sekarang? ({k} clip VEO 3.1 fast, {s} detik total)"
@@ -485,7 +482,10 @@ FOR each batch (ACT or sub-batch):
           duration=<duration_s>, aspect=<aspect>, mode_image=<mapped>,
           output_dir="{output_folder}/.tmp", refs=[<absolute keyframe
           paths>])`.
-        - Success → move the returned local file to
+        - Success → if `{output_folder}/clips/scene-{NN}.mp4` already exists, run
+          `python3 tools/renders.py {output_folder} archive --file clips/scene-{NN}.mp4 --reason "<why it is re-rendered>"`
+          first (old paid version goes to `_arsip/`; on failure the old file
+          stays in place), then move the returned local file to
           `{output_folder}/clips/scene-{NN}.mp4` (create parents first), then
           `python3 tools/renders.py {output_folder} record --json '{...
           "phase": "5", "status": "done", "cdn_url": "<cdn_url>", ...}'

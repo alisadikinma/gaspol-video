@@ -17,9 +17,17 @@ from tools import renders
 CONTRACT_DIRS = {"ref", "keyframes", "shots", "clips", "vo", "sfx", "work", "output", "_arsip",
                  ".tmp", "screens", "packaging"}
 DUP_DIRS = ("ref", "keyframes", "clips", "vo", "sfx", "output", "_arsip")
-MEDIA_EXT = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".mp3", ".wav"}
 FLAT_DIRS = ("ref", "keyframes", "clips", "vo", "sfx", "_arsip")
-ALLOWED_SUBDIRS = {"output": {"stems"}}
+# Subfolders the plugin's own tools create inside a contract folder. Keep this list explicit:
+# a name is added only with the tool that makes it.
+ALLOWED_SUBDIRS = {
+    "output": {"stems"},    # tools/make_stems.py writes output/stems/{voice,sfx,music}.wav
+    "ref": {"sumber"},      # vidkit ingest / vidkit scenes (skills/video-repackage): ref/sumber, ref/sumber/scenes
+    "vo": {"native",        # tools/vidkit/js/cast_voice.mjs default out: vo/native/<scene>.mp3
+           "master"},       # tools/check_vo_duration.py convention: vo/master/scene-NN-narr.mp3
+}
+# Pre-v3.3.0 MCP scratch folder. It can hold paid renders, so it is reported like any stray folder.
+LEGACY_SCRATCH = ".render-tmp"
 ARCHIVED_PREFIX = "folder-"
 
 _KEYS = ("unknown_dirs", "unknown_subdirs", "duplicates", "stale_ledger", "old_tmp",
@@ -109,20 +117,25 @@ def _is_mcp_area(rel):
     return len(parts) >= 2 and parts[0] == ".tmp" and parts[1].lower() in ("image", "video")
 
 
-def _home_index(root, unreadable=None):
-    """``{(size, sha256): [absolute paths]}`` for every readable non-empty file in DUP_DIRS."""
-    index = {}
-    for d in DUP_DIRS:
-        for p in _files(root, d, unreadable):
-            try:
-                size = os.stat(p).st_size
-                if size == 0:
-                    continue
-                index.setdefault((size, _sha256(p)), []).append(p)
-            except OSError:
-                if unreadable is not None:
-                    unreadable.add(p)
-    return index
+class _HomeFiles:
+    """Home files by size, listed (stat only) on first use. Nothing is hashed here."""
+
+    def __init__(self, root):
+        self._root = root
+        self._by_size = None
+
+    def same_size(self, size):
+        if self._by_size is None:
+            self._by_size = {}
+            for d in DUP_DIRS:
+                for p in _files(self._root, d):
+                    try:
+                        n = os.stat(p).st_size
+                    except OSError:
+                        continue
+                    if n:
+                        self._by_size.setdefault(n, []).append(p)
+        return self._by_size.get(size, ())
 
 
 def scan(project, tmp_days=7, now=None):
@@ -132,12 +145,16 @@ def scan(project, tmp_days=7, now=None):
     unreadable = set()
 
     for e in _entries(root, unreadable):
-        if e.name.startswith(".") or e.name in CONTRACT_DIRS:
+        if e.name.lower() in CONTRACT_DIRS:
+            continue
+        if e.name.startswith(".") and e.name != LEGACY_SCRATCH:
             continue
         if e.is_dir(follow_symlinks=False) or (e.is_symlink() and e.is_dir()):
             report["unknown_dirs"].append(e.name)
 
-    for d in tuple(x for x in FLAT_DIRS if x != "_arsip") + tuple(ALLOWED_SUBDIRS):
+    subdir_roots = tuple(dict.fromkeys(
+        [x for x in FLAT_DIRS if x != "_arsip"] + list(ALLOWED_SUBDIRS)))
+    for d in subdir_roots:
         base = root / d
         if base.is_symlink() or not base.is_dir():
             continue
@@ -152,8 +169,7 @@ def scan(project, tmp_days=7, now=None):
     home = []
     for d in DUP_DIRS:
         home.extend(_files(root, d, unreadable))
-    mcp = [p for p in _files(root, ".tmp", unreadable)
-           if _is_mcp_area(_rel(root, p)) and Path(p).suffix.lower() in MEDIA_EXT]
+    mcp = [p for p in _files(root, ".tmp", unreadable) if _is_mcp_area(_rel(root, p))]
     groups = _hash_groups(home + mcp, unreadable)
     home_set = set(home)
     stray = tuple(u + "/" for u in report["unknown_subdirs"])
@@ -265,21 +281,28 @@ def apply_unknown_dirs(project, report):
     return moved
 
 
-def _verified_home(path, index):
-    """Home path holding exactly the bytes of ``path``, checked now, or None."""
+def _verified_home(path, home):
+    """Home path holding exactly the bytes of ``path``, checked now, or None.
+
+    Only home files of the same size are opened and hashed."""
     try:
         size = os.stat(path).st_size
         if size == 0:
             return None
-        key = (size, _sha256(path))
+        digest = _sha256(path)
     except OSError:
         return None
-    for cand in sorted(index.get(key, ()), key=lambda c: (_rel_arsip(c), c)):
+    for cand in sorted(home.same_size(size), key=lambda c: (_rel_arsip(c), c)):
         try:
-            if os.path.islink(cand) or os.stat(cand).st_size != size or _sha256(cand) != key[1]:
+            if os.path.islink(cand) or os.stat(cand).st_size != size or _sha256(cand) != digest:
                 continue
         except OSError:
             continue
+        try:
+            if _sha256(path) != digest:   # the .tmp file changed while the home was checked
+                return None
+        except OSError:
+            return None
         return cand
     return None
 
@@ -307,7 +330,7 @@ def empty_tmp(project, include_mcp=False):
     tmp_real = os.path.realpath(tmp)
     if os.path.dirname(tmp_real) != root_real:
         raise ValueError(f".tmp resolves outside the project: {tmp_real}")
-    index = _home_index(root)
+    home = _HomeFiles(root)
 
     def inside(path):
         return os.path.commonpath([tmp_real, path]) == tmp_real and path != tmp_real
@@ -337,12 +360,12 @@ def empty_tmp(project, include_mcp=False):
                 block(dp)
                 continue
             if not is_link and not include_mcp and _is_mcp_area(rel):
-                home = _verified_home(path, index)
-                if home is None:
+                found = _verified_home(path, home)
+                if found is None:
                     result["kept_mcp"].append(rel)
                     block(dp)
                     continue
-                home_rel = Path(os.path.relpath(home, str(root))).as_posix()
+                home_rel = Path(os.path.relpath(found, str(root))).as_posix()
                 try:
                     os.unlink(path)
                 except OSError as exc:

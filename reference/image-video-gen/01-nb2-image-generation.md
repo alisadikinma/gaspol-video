@@ -139,9 +139,11 @@ the 3-angle sheet.
 routinely 17 MB, so keep a downscaled copy for sending and the original for the sheet:
 
 ```bash
-mkdir -p ref/_small
-sips -Z 2048 ref/cast-c2-face-3sudut.png --out ref/_small/cast-c2-face-3sudut.png
+ffmpeg -i ref/cast-c2-face-3sudut.png -vf scale=2048:-2 .tmp/cast-c2-face-3sudut.png
 ```
+
+The downscaled copy is a derived file: it lives in `.tmp/`, never in a `ref/` subfolder. Never
+`sips --out <folder>/<file>` (it replaces the folder).
 
 ### Inspect the keyframe before spending a video render (v3.2.1)
 

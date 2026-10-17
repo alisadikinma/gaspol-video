@@ -142,7 +142,7 @@ the whole chain:
 grep -rl "staticFile('video/" shots/src
 
 # 2. rebuild the embedded copy from the NEW composited clip
-ffmpeg -i clips/_ov/scene-01.mp4 \
+ffmpeg -i .tmp/scene-01-ov.mp4 \
   -filter_complex "[0:v]trim=0:5.3,setpts=PTS-STARTPTS,scale=960:540,\
 tpad=stop_mode=clone:stop_duration=1.8,fps=30[v]" \
   -map "[v]" -an -c:v libx264 -crf 20 -pix_fmt yuv420p shots/public/video/s01.mp4

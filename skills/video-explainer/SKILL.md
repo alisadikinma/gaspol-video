@@ -100,7 +100,8 @@ coded shot.
 8. **Folder contract — twelve folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `shots/` `clips/` `vo/` `sfx/` `work/` `output/` `_arsip/`
 `.tmp/` `screens/` `packaging/`. A new folder needs the user's approval. Subfolders are not allowed
-inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/`; `output/` allows only `stems/`. Derived files (previews, QA stills, upload
+inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/ output/`, except those the plugin's tools create:
+`ref/sumber/`, `vo/native/`, `vo/master/`, `output/stems/`. Derived files (previews, QA stills, upload
 copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
 subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
 to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,

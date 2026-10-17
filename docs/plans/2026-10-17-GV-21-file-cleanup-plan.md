@@ -479,6 +479,20 @@ from Phase C as written:
 Not fixed (recorded in the ledger): races with a hostile concurrent process swapping a folder
 for a symlink between check and unlink/rename (would need `os.fwalk` with `dir_fd`).
 
+## Changes after second review
+
+- `ALLOWED_SUBDIRS` now lists every subfolder a plugin tool creates: `output/stems` (make_stems.py),
+  `ref/sumber` (vidkit ingest/scenes; `ref/sumber/scenes` is nested and never scanned), `vo/native`
+  (cast_voice.mjs), `vo/master` (check_vo_duration.py convention). Folder-contract text names them.
+- Archive moved from the check step into the render step, after a successful render, before the new
+  file is moved in. `asset_library.py use --force` archives first. `tidy-contract.sh` checks both and
+  greps skills/ and reference/ for `clips/_`, `keyframes/_`, `ref/_`, `vo/_` paths.
+- Old advice that created `clips/_tidak-dipakai`, `keyframes/_gen`, `ref/_small`, `clips/_ov` now points
+  to `renders.py archive` or `.tmp/`.
+- `empty_tmp` lists home files lazily and hashes only home files of equal size; `unmoved_mcp` lists every
+  file `empty_tmp` keeps; top-level names compare case-insensitively; `.render-tmp` is reported;
+  ledger kind lookup in `renders.py` normalises paths.
+
 ## Out of scope
 
 Pixel-based image/video QA; auto-removal of duplicates; deleting `_arsip/`; changing where MCP

@@ -117,8 +117,10 @@ def _slug(reason: str) -> str:
 def _archive_kind(project, file: str, phase, ext: str) -> str:
     if phase is None:
         try:
+            want = os.path.normpath(file)
             for entry in load(project)["renders"]:
-                if isinstance(entry, dict) and entry.get("file") == file:
+                got = entry.get("file") if isinstance(entry, dict) else None
+                if isinstance(got, str) and os.path.normpath(got) == want:
                     phase = entry.get("phase")
                     break
         except (RenderLedgerError, OSError, TypeError, KeyError):

@@ -138,7 +138,8 @@ of referencing the file is the same Asset-First violation as Rule 10, applied to
 23. **Folder contract — twelve folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `shots/` `clips/` `vo/` `sfx/` `work/` `output/` `_arsip/`
 `.tmp/` `screens/` `packaging/`. A new folder needs the user's approval. Subfolders are not allowed
-inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/`; `output/` allows only `stems/`. Derived files (previews, QA stills, upload
+inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/ output/`, except those the plugin's tools create:
+`ref/sumber/`, `vo/native/`, `vo/master/`, `output/stems/`. Derived files (previews, QA stills, upload
 copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
 subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
 to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,
@@ -300,14 +301,11 @@ After the asset library is approved (option A above), offer to render it through
      say so ("sudah up to date, dilewati") and drop it from the render list.
      `render` means it needs one. If the WHOLE batch prints `up-to-date`, skip
      step 3 entirely (no question, no render).
-     When `check` printed `render` and `{output_folder}/<file>` already exists,
-     do NOT archive yet. Only AFTER the user approves the render (step 3), and
-     immediately before the render call for that file, run
-        python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"
-     so the old paid version is kept in `_arsip/` instead of overwritten. If the
-     user declines, the old file stays where it is (and `check` prints `render`
-     for it next time, since the slot is only up to date while the file exists).
-     Then render, then `record`.
+     Do not archive here. If `{output_folder}/<file>` already exists, the
+     archive happens inside the render step (4b), after a successful render.
+     If the user declines, the old file stays where it is (and `check` prints
+     `render` for it next time, since the slot is only up to date while the
+     file exists).
 
 2b. REUSE generic assets from the cross-project library (Phase 4A standalone
    assets only, never Phase 4B scene keyframes): for each prompt still in the
@@ -319,7 +317,9 @@ After the asset library is approved (option A above), offer to render it through
    ulang dari library? {n} gambar"); on yes, for each hit:
         python3 tools/asset_library.py use --id <id> --to <file>
    (`<id>` is the stored file's name without `.png`; add `--force` only when the
-   user agreed to overwrite), then record it as done, no render:
+   user agreed to overwrite, and when `<file>` already exists run
+   `python3 tools/renders.py {output_folder} archive --file <file> --reason "replaced by library asset"`
+   first, so the old paid version is kept), then record it as done, no render:
         python3 tools/renders.py {output_folder} record --json \
           '{"file": "<file>", "phase": "4A", "status": "done", \
             "model": "library"}' --prompt-file <temp-file>
@@ -348,7 +348,11 @@ After the asset library is approved (option A above), offer to render it through
           prompt=<full prompt body text>, model=<image_model>,
           aspect=<aspect>, resolution="2K", output_format="png",
           output_dir="{output_folder}/.tmp", refs=[<resolved ref paths>])
-      - ON success: move the returned local file to the prompt's `**Output →**`
+      - ON success: if `{output_folder}/<file>` already exists, first run
+           python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"
+        so the old paid version is kept in `_arsip/` (this happens only after
+        the new render succeeded; on failure the old file stays in place).
+        Then move the returned local file to the prompt's `**Output →**`
         path (create parent directories first), then:
            python3 tools/renders.py {output_folder} record --json \
              '{"file": "<file>", "phase": "4A", "status": "done", \
@@ -497,13 +501,9 @@ FOR each batch (ACT or sub-batch):
         --prompt-file <temp-file>` — `up-to-date` means already `done` with
         the same prompt hash, say "sudah up to date, dilewati", drop from the
         render list. Whole batch `up-to-date` → skip to step 6 (no question,
-        no render). When `check` printed `render` and `{output_folder}/<file>`
-        already exists, do NOT archive yet. Only AFTER the user approves the
-        render, and immediately before the render call for that file, run
-        `python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"`
-        so the old paid version is kept in `_arsip/` instead of overwritten.
-        If the user declines, the old file stays in place. Then render, then
-        `record`.
+        no render). Do not archive here: if `{output_folder}/<file>` already
+        exists, the archive happens inside the render step (d), after a
+        successful render. If the user declines, the old file stays in place.
      b2. (v3.11.1, Rule 46) PILOT — first 4B batch of the project only, and only
         when no keyframe is `done` yet: render ONE start frame (the scene that
         carries the most cast and refs), Read it, show it, and ask
@@ -524,7 +524,10 @@ FOR each batch (ACT or sub-batch):
           prompt body>, model=<image_model>, aspect=<aspect>,
           resolution="2K", output_format="png",
           output_dir="{output_folder}/.tmp", refs=[<resolved ref
-          paths>])`. Success → move the returned local file to the
+          paths>])`. Success → if `{output_folder}/<file>` already exists, run
+          `python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"`
+          first (old paid version goes to `_arsip/`; on failure the old file
+          stays in place), then move the returned local file to the
           `**Output →**` path (create parents first), then
           `python3 tools/renders.py {output_folder} record --json '{...
           "phase": "4B", "status": "done", "cdn_url": "<cdn_url>", ...}'
