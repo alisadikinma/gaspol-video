@@ -36,6 +36,44 @@ class BoxConversion(unittest.TestCase):
         self.assertTrue(all(isinstance(v, int) for v in box))
 
 
+class YunetRows(unittest.TestCase):
+    def test_threshold_is_named_and_0_6(self):
+        self.assertEqual(face_box.SCORE_THRESHOLD, 0.6)
+
+    def test_none_and_empty_give_no_box(self):
+        self.assertIsNone(face_box.best_box(None, 100, 100))
+        self.assertIsNone(face_box.best_box([], 100, 100))
+
+    def test_row_converts_to_end_exclusive_box(self):
+        row = [100.2, 200.4, 50.0, 80.0] + [0.0] * 10 + [0.9]
+        self.assertEqual(face_box.best_box([row], 1080, 1920), [100, 200, 150, 280])
+
+    def test_below_threshold_dropped_at_threshold_kept(self):
+        low = [10, 10, 20, 20] + [0.0] * 10 + [0.59]
+        edge = [10, 10, 20, 20] + [0.0] * 10 + [0.6]
+        self.assertIsNone(face_box.best_box([low], 100, 100))
+        self.assertEqual(face_box.best_box([edge], 100, 100), [10, 10, 30, 30])
+
+    def test_largest_face_wins(self):
+        small = [0, 0, 10, 10] + [0.0] * 10 + [0.99]
+        big = [20, 20, 40, 40] + [0.0] * 10 + [0.7]
+        self.assertEqual(face_box.best_box([small, big], 100, 100), [20, 20, 60, 60])
+
+    def test_clamped_to_frame(self):
+        row = [-5, -5, 500, 500] + [0.0] * 10 + [0.9]
+        self.assertEqual(face_box.best_box([row], 100, 80), [0, 0, 100, 80])
+
+
+class DisplaySize(unittest.TestCase):
+    def test_quarter_turns_swap_sides(self):
+        for rot in (90, -90, 270, -270):
+            self.assertEqual(face_box.display_size(1024, 576, rot), (576, 1024))
+
+    def test_no_turn_or_half_turn_keep_sides(self):
+        for rot in (0, 180, -180, None):
+            self.assertEqual(face_box.display_size(1024, 576, rot), (1024, 576))
+
+
 class Record(unittest.TestCase):
     def test_none_box(self):
         self.assertEqual(face_box.record(4, 25.0, None), {"frame": 4, "t": 0.16, "box": None})

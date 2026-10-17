@@ -73,10 +73,10 @@ else
   echo "model downloaded $MODEL"
 fi
 
-# Face detector model for tools/face_box.py (GV-23). Same rule as above: versioned URL, pinned hash.
-FACE_MODEL="$MODEL_DIR/blaze_face_short_range.tflite"
-FACE_MODEL_URL="https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite"
-FACE_MODEL_SHA256="b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f"
+# Face detector model for tools/face_box.py (GV-23): OpenCV YuNet from opencv_zoo. Same rule as above: pinned hash.
+FACE_MODEL="$MODEL_DIR/face_detection_yunet_2023mar.onnx"
+FACE_MODEL_URL="https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+FACE_MODEL_SHA256="8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
 if [ -f "$FACE_MODEL" ] && [ "$(shasum -a 256 "$FACE_MODEL" | cut -d' ' -f1)" = "$FACE_MODEL_SHA256" ]; then
   echo "model ok $FACE_MODEL"
 else

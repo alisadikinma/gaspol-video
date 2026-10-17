@@ -9,8 +9,8 @@ was found in that frame; the caller must report it, not count it as a pass. Larg
 when several are found.
 
 Exit 0 written. Exit 2 the model file is missing (run tools/setup.sh), a venv module is
-missing, or the video is unreadable. The model is MediaPipe's BlazeFace short-range detector.
-This module imports on bare python3; mediapipe loads only inside make_detector.
+missing, or the video is unreadable. The model is OpenCV's YuNet (cv2.FaceDetectorYN, CPU).
+This module imports on bare python3; cv2 loads only inside make_detector.
 """
 
 import argparse
@@ -27,6 +27,11 @@ from tools import _venv  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
+
+# YuNet rows are [x, y, w, h, 5 landmark (x, y) pairs, score]; the score is the last column.
+# Below this a row is not a face (OpenCV's own sample default is 0.9; 0.6 keeps small or
+# turned faces that a layout check must still avoid).
+SCORE_THRESHOLD = 0.6
 
 
 class ModelMissing(Exception):
@@ -54,22 +59,43 @@ def to_pixel_box(x, y, w, h, frame_w, frame_h, relative=False):
     return [int(x0), int(y0), int(x1), int(y1)]
 
 
+def best_box(rows, frame_w, frame_h):
+    """Largest face at or above SCORE_THRESHOLD as [x0, y0, x1, y1], or None."""
+    if rows is None or len(rows) == 0:
+        return None
+    kept = [r for r in rows if float(r[-1]) >= SCORE_THRESHOLD]
+    if not kept:
+        return None
+    r = max(kept, key=lambda r: float(r[2]) * float(r[3]))
+    return to_pixel_box(float(r[0]), float(r[1]), float(r[2]), float(r[3]), frame_w, frame_h)
+
+
 def record(index, fps, box):
     return {"frame": index, "t": round(index / fps, 3), "box": box}
 
 
+def display_size(w, h, rotation):
+    """Frame size as ffmpeg decodes it: a quarter-turn rotation tag swaps the sides."""
+    if rotation is not None and int(rotation) % 180 != 0:
+        return h, w
+    return w, h
+
+
 def probe(video):
-    """(width, height, fps, frame count); frames 0 when the file holds no video."""
+    """(width, height, fps, frame count) as decoded (rotation applied); frames 0 when no video."""
     proc = subprocess.run(
         [FFPROBE, "-v", "error", "-select_streams", "v:0", "-count_packets",
-         "-show_entries", "stream=width,height,r_frame_rate,nb_read_packets",
+         "-show_entries", "stream=width,height,r_frame_rate,nb_read_packets:stream_side_data=rotation:stream_tags=rotate",
          "-of", "json", str(video)],
         capture_output=True, text=True)
     try:
         stream = json.loads(proc.stdout)["streams"][0]
         num, _, den = stream["r_frame_rate"].partition("/")
         fps = float(num) / float(den or 1)
-        return int(stream["width"]), int(stream["height"]), fps, int(stream["nb_read_packets"])
+        rotation = next((d["rotation"] for d in stream.get("side_data_list", []) if "rotation" in d),
+                        stream.get("tags", {}).get("rotate"))
+        w, h = display_size(int(stream["width"]), int(stream["height"]), rotation)
+        return w, h, fps, int(stream["nb_read_packets"])
     except (KeyError, IndexError, ValueError, ZeroDivisionError):
         return 0, 0, 0.0, 0
 
@@ -107,33 +133,23 @@ def boxes(video, every_n, detect):
 
 def model_path():
     home = Path(os.environ.get("GASPOL_VIDEO_HOME", str(Path.home() / ".gaspol-video")))
-    return home / "models" / "blaze_face_short_range.tflite"
+    return home / "models" / "face_detection_yunet_2023mar.onnx"
 
 
 def make_detector():
     path = model_path()
     if not path.is_file():
         raise ModelMissing(f"model missing: {path}; run tools/setup.sh")
-    mp = _venv.require("mediapipe")
+    cv2 = _venv.require("cv2")
     np = _venv.require("numpy")
-    from mediapipe.tasks import python
-    from mediapipe.tasks.python import vision
-
-    detector = vision.FaceDetector.create_from_options(vision.FaceDetectorOptions(
-        base_options=python.BaseOptions(
-            model_asset_path=str(path), delegate=python.BaseOptions.Delegate.CPU),
-        running_mode=vision.RunningMode.IMAGE))
+    detector = cv2.FaceDetectorYN.create(str(path), "", (320, 320), SCORE_THRESHOLD)
 
     def detect(rgb, index, w, h):
         data = np.frombuffer(rgb, dtype=np.uint8).reshape(h, w, 3)
-        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(data))
-        found = detector.detect(image).detections
-        if not found:
-            return None
-        # Bounding boxes are absolute pixels (origin_x, origin_y, width, height).
-        best = max(found, key=lambda d: d.bounding_box.width * d.bounding_box.height)
-        b = best.bounding_box
-        return to_pixel_box(b.origin_x, b.origin_y, b.width, b.height, w, h)
+        bgr = np.ascontiguousarray(data[:, :, ::-1])
+        detector.setInputSize((w, h))
+        _, rows = detector.detect(bgr)
+        return best_box(rows, w, h)
 
     return detect
 

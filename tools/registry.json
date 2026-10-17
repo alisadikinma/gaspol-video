@@ -861,7 +861,7 @@
     },
     {
       "id": "tools/face_box.py",
-      "purpose": "Face box per sampled frame of a clip (MediaPipe face detector) for the layout gate.",
+      "purpose": "Face box per sampled frame of a clip (OpenCV YuNet) for the layout gate.",
       "tasks": [
         "face-box",
         "face-detect",
