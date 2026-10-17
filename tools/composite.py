@@ -139,7 +139,8 @@ def _video_info(path):
     video = _info(path)["video"]
     if not video:
         raise CompositeError(f"{Path(path).name}: unreadable")
-    return video["width"], video["height"], video["fps"] or 30.0
+    # 0/1 fps stays 0.0 so the filter fails loudly; only an unknown rate falls back.
+    return video["width"], video["height"], 30.0 if video["fps"] is None else video["fps"]
 
 
 def split_filter(box, master_w, master_h, fps, at_s, out_s, crop_cx=0.5, crop_cy=0.5, zoom=1.0):

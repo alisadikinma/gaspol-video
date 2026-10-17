@@ -184,7 +184,8 @@ def probe(clip):
     except ff.FFError:
         return None, DEFAULT_FPS
     video = info["video"] or {}
-    return video.get("duration") or info["duration"], video.get("fps") or DEFAULT_FPS
+    duration = video.get("duration")
+    return (info["duration"] if duration is None else duration), video.get("fps") or DEFAULT_FPS
 
 
 def _run(args):

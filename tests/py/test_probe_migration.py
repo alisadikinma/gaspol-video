@@ -384,3 +384,25 @@ class CompositeProbes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ZeroValuesKept(unittest.TestCase):
+    """A measured 0.0 is a value, not a missing field (GV-22 review)."""
+
+    def test_composite_zero_fps_is_not_replaced_by_default(self):
+        info = {"duration": 1.0, "audio": None,
+                "video": {"duration": 1.0, "fps": 0.0, "width": 64, "height": 36, "pix_fmt": "yuv420p"}}
+        with mock.patch.object(composite.ff, "probe", return_value=info):
+            self.assertEqual(composite._video_info("x.mp4"), (64, 36, 0.0))
+
+    def test_composite_unknown_fps_still_defaults_to_30(self):
+        info = {"duration": 1.0, "audio": None,
+                "video": {"duration": 1.0, "fps": None, "width": 64, "height": 36, "pix_fmt": "yuv420p"}}
+        with mock.patch.object(composite.ff, "probe", return_value=info):
+            self.assertEqual(composite._video_info("x.mp4"), (64, 36, 30.0))
+
+    def test_qa_frames_zero_stream_duration_wins_over_format(self):
+        info = {"duration": 5.0, "audio": None,
+                "video": {"duration": 0.0, "fps": 25.0, "width": 64, "height": 36, "pix_fmt": "yuv420p"}}
+        with mock.patch.object(qa_frames.ff, "probe", return_value=info):
+            self.assertEqual(qa_frames.probe("x.mp4"), (0.0, 25.0))
