@@ -45,7 +45,7 @@ Invoke the video-brainstorm skill for:
 - Institution detection + costume confirmation
 - Location & setting context
 - Domain Deep Research (6 location-aware WebSearch queries)
-- Target market, awareness level, platform selection
+- Video type (presentasi / promo / isu / edukasi), target market, awareness level, format confirmation
 - Emotional core discovery
 - Storyline input + 7-beat arc mapping
 - Tone/mood selection

@@ -8,7 +8,8 @@ description: >
   (VO in Ali's cloned voice, VEO clips, Remotion, cut, approval, final post). Adds the standard
   Ali packaging: a 3-second hook, a thumbnail at the front, and a follow CTA that shows @alisadikinma.
   Triggers on: repackage, repackaging, ambil dari link, tiru video ini, versi saya, remake reel,
-  konten orang lain, link instagram, link reel, bikin ulang video ini.
+  konten orang lain, link instagram, link reel, bikin ulang video ini, gabung dua video, dua link,
+  gabungkan link. Takes one link, or two links merged into one video (merge mode, step 2b).
 ---
 
 # Video Repackage: from someone else's link to Ali's version
@@ -16,6 +17,10 @@ description: >
 Read first: `docs/pembelajaran-rea.md` (what went wrong and right on the REA video). This skill
 reuses the whole production line; it only adds the front end (ingest, analysis, localisation) and
 the packaging rules.
+
+Load `reference/storytelling_script_gen/F13_Short_Form_Timeline.md` before step 3. The output is a
+9:16 short of at most 60 s: Thumbnail 0-1 s, Hook 0-3 s, Foreshadow 3-6 s, Body 6-50 s, CTA in the
+last 2-4 s (follow `@alisadikinma` plus a reason), loop ending "Dan itulah...".
 
 ## Rules that do not bend
 
@@ -33,6 +38,10 @@ the packaging rules.
    never a system voice). Presenter is Ali from the approved face references.
 5. **The first 3 seconds decide everything.** The video opens on a hook (the strongest, most curious
    moment, often moved from the end), not on an intro. Details in "Packaging".
+   **Foreshadow follows the hook (3 to 6 s):** a micro clue of 0.5 to 1 s (a reaction snippet or a
+   mystery prop). Show the conflict, never the answer. Cut right before the resolution. No fake
+   foreshadow: the clue must pay off in the body.
+   **The cap is 60 s.** Anything longer is cut or split (step 2b), never sped up.
 6. **Say where it came from.** Keep the source link in `strategic-brief.md`. The repackage changes
    the words, images and voice, but the idea belongs to someone. Mention the creator in the caption
    when the idea is theirs ("ide dari ..."), and do not copy their script word for word.
@@ -41,27 +50,69 @@ the packaging rules.
 ## Flow
 
 ### 1. Ingest
+Take one link, or at most two links (merge mode, step 2b). A third link is refused: ask which two.
+One link goes to `ref/sumber-1`; a second goes to `ref/sumber-2`.
 ```bash
-python3 -m tools.vidkit ingest "<url>" {output_folder}/ref/sumber
-python3 -m tools.vidkit scenes {output_folder}/ref/sumber/source.mp4 {output_folder}/ref/sumber/scenes
+python3 -m tools.vidkit ingest "<url-1>" {output_folder}/ref/sumber-1
+python3 -m tools.vidkit scenes {output_folder}/ref/sumber-1/source.mp4 {output_folder}/ref/sumber-1/scenes
+# merge mode only
+python3 -m tools.vidkit ingest "<url-2>" {output_folder}/ref/sumber-2
+python3 -m tools.vidkit scenes {output_folder}/ref/sumber-2/source.mp4 {output_folder}/ref/sumber-2/scenes
 ```
+A failed download stops the flow and names the link that failed. Never go on with one source
+silently when two were given: tell the owner and ask (retry, replace the link, or one source only).
 `scenes.json` lists every scene with start, end, a clip, and first/mid/last stills. A source with a
 few very long scenes (a screen recording) is normal: those become Remotion shots, not VEO clips.
 Look at the contact sheet (`vidkit sheet`) and fix the cut by hand if the detector missed or
 over-split (change `--threshold`: 0.2 sensitive, 0.5 hard cuts only).
 
 ### 2. Read the source
-- Transcript with timings: `whisper-cli` (`-l auto`, then `-l id`). Write the original script down.
+- Transcript with timings, per source: extract mono audio with ffmpeg, then call
+  `transcribe_assemblyai` from `tools/gen_subs.py` (AssemblyAI, key `ASSEMBLYAI_API_KEY` from `.env`,
+  never printed; `gen_subs.py` has no file CLI, it is imported). Run from the plugin root, once per
+  source (`N` = 1 or 2):
+  ```bash
+  ffmpeg -y -i {output_folder}/ref/sumber-N/<video>.mp4 -vn -ac 1 -ar 16000 {output_folder}/.tmp/sumber-N.wav
+  set -a; . ./.env; set +a
+  python3 -c "import json,os,sys; from tools.gen_subs import transcribe_assemblyai as t; json.dump(t(sys.argv[1], os.environ['ASSEMBLYAI_API_KEY']), open(sys.argv[2], 'w'), ensure_ascii=False)" {output_folder}/.tmp/sumber-N.wav {output_folder}/work/sumber-N-words.json
+  ```
+  The json is `{"words": [{"text", "start_ms", "end_ms", ...}]}`. Text is for reading the source and
+  for timing only. Write the original script down.
 - For each scene note: what is said, what is shown, why it is there (hook, proof, step, CTA).
 - Who is in it, what they wear, where, and who the product is for. Decide the localisation
   (rule 2) and ask the user only when the product's market is unclear.
 - Check every factual claim in the source (numbers, prices, "free", "10 minutes"). Keep only what
   can be backed up. A claim the source made does not become true because you repeated it.
 
+### 2b. Merge (only with two links)
+Read both sources, then build one point table. A point is one idea either video makes.
+
+| Point | Source(s) | Status | Chosen version | Reason |
+|---|---|---|---|---|
+| what the point says | 1, 2 or both | same / unique / conflict | which source's wording, number or example | why this one |
+
+- `same`: both make it. Keep the clearer version.
+- `unique`: only one source has it. Keep it only if it earns its seconds.
+- `conflict`: the sources disagree (a number, a step, a claim). Pick one with a reason, or drop the
+  point. A conflicting claim that cannot be backed up is dropped, not averaged.
+
+Pick the strongest hook of the two and say why (what makes the viewer need the answer). The other
+hook can become the Foreshadow clue if it fits.
+
+**HARD STOP.** Show the table and the hook choice to the owner in Indonesian and wait for approval.
+No storyline is written before the owner says yes. Ask plainly, for example: "Ini tabel poin dari
+dua video. Hook terkuat menurut saya dari link 1, alasannya ada di tabel. Setuju, atau mau ubah?"
+
+Budget: the storyline must fit 60 s in F13 order. Over budget: propose cuts (name the points) or a
+two-part series (name where part 1 ends). Nothing is dropped without the owner's approval.
+Record both links in `strategic-brief.md`, each with its creator, so the caption can credit them.
+
 ### 3. Storyline map
-One table, scene by scene: source scene, beat, new narration (Indonesian, Ali's voice, short
+One table, scene by scene, in F13 order within 60 s (Hook, Foreshadow, Body, CTA, loop ending), with a
+time range per row. In merge mode each scene's reference still comes from whichever source shows it
+best; the source column says which. Columns: source scene, beat, new narration (Indonesian, Ali's voice, short
 sentences), new visual, production method (VEO presenter clip / Remotion shot / screen recording),
-reference still. Move the strongest beat to the front as the hook. Show the table and wait for approval.
+reference still. Move the strongest beat to the front as the hook and mark the Foreshadow row (3 to 6 s). Show the table and wait for approval.
 This is the gate where the user changes the story; after it, only fixes.
 
 ### 4. Assets with gpt-image-2
@@ -95,7 +146,9 @@ A/V gate 0.04 s, loudness -14 LUFS with true peak under -1 dBFS.
 ### 6b. Tools for the packaging (do not rewrite them)
 | Need | Use |
 |---|---|
-| Karaoke subtitles + watermark | `python3 -m tools.vidkit karaoke` |
+| Karaoke subtitles + watermark | `python3 -m tools.vidkit karaoke`. Default `--profile short-organic`: 56 px, 4 words in 2 lines, last baseline about 61.7% from the top. `--profile none` = the old look |
+| Cover title inside the safe area | `python3 -m tools.vidkit title <img> "<text>" <out>` |
+| Text and watermark in the 9:16 safe area, off the face | `python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>]`; not final until it exits 0 |
 | Follow popup, "Ssst!", "WOW!", thumbnail art | Remotion `lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover` |
 | Logo that must sit on a prop (not look pasted) | `vidkit unwhite`, then `mix-blend-mode: multiply`, a little blur and grain |
 | Final mix, loudness, thumbnail on first frames and as cover | `python3 -m tools.vidkit mixdown plan.json` |

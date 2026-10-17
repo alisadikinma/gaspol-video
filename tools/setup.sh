@@ -73,4 +73,27 @@ else
   echo "model downloaded $MODEL"
 fi
 
+# Face detector model for tools/face_box.py (GV-23): OpenCV YuNet from opencv_zoo. Same rule as above: pinned hash.
+FACE_MODEL="$MODEL_DIR/face_detection_yunet_2023mar.onnx"
+FACE_MODEL_URL="https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+FACE_MODEL_SHA256="8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+if [ -f "$FACE_MODEL" ] && [ "$(shasum -a 256 "$FACE_MODEL" | cut -d' ' -f1)" = "$FACE_MODEL_SHA256" ]; then
+  echo "model ok $FACE_MODEL"
+else
+  tmp="$(mktemp "$MODEL_DIR/.face.XXXXXX")"
+  if ! curl -fsSL -o "$tmp" "$FACE_MODEL_URL"; then
+    rm -f "$tmp"
+    echo "model download failed: $FACE_MODEL_URL" >&2
+    exit 1
+  fi
+  got="$(shasum -a 256 "$tmp" | cut -d' ' -f1)"
+  if [ "$got" != "$FACE_MODEL_SHA256" ]; then
+    rm -f "$tmp"
+    echo "model sha256 mismatch: expected $FACE_MODEL_SHA256 got $got" >&2
+    exit 1
+  fi
+  mv "$tmp" "$FACE_MODEL"
+  echo "model downloaded $FACE_MODEL"
+fi
+
 echo "interpreter: $VENV_DIR/bin/python"

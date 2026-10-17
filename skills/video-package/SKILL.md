@@ -91,6 +91,23 @@ nobody will use.
 Concrete promise, a magnet word, and a barrier dropped. Written for the awareness level already
 chosen in Phase 1. It stays the same across all three bets.
 
+### Step 7.3b: Three separate texts for 9:16 (GV-23)
+
+A 9:16 short needs three different texts. Write each one on its own, never reuse one for another:
+
+| Text | Length | Job |
+|---|---|---|
+| Thumbnail title | 3-5 words, ALL CAPS | the click in the feed; stamped on the cover by `vidkit title` (Step 7.7c) |
+| Video title | 5-9 words + tags, ALL CAPS | search and algorithm. Example: `AKU NGINAP DI RUMAH 70 MILIAR DR RICHARD! (PART 1)` |
+| Hook on-screen text | 4-7 words | stops the scroll; appears with the narration at 0-3 s |
+
+Formula for both titles: extreme number + public figure or brand + curiosity word. Examples:
+`SISKA KOHL BELI NASI GORENG SEHARGA 400 JUTA!`, `RAFATHAR HASILKAN 2 MILYAR PER ENDORSE?!`.
+
+Honesty guardrail: the promise must be in the video (Step 7.5 traces it to a frame). For an
+indusia.ai promo, no invented numbers: numbers must come from the brief. No number in the brief
+means the title uses a curiosity word instead. 16:9 keeps the single locked title of Step 7.3.
+
 ### Step 7.4: Three bets on three levers
 
 | Bet | Lever | Bets on |
@@ -143,6 +160,19 @@ python3 tools/thumb_verify.py check {output_folder}
 matching fix from the failure table in `21-thumbnail-style-elements.md`, at most 2 re-rolls per
 thumbnail, then ask the owner. Never edit a cell without looking at the image.
 
+### Step 7.7c: 9:16 cover title and layout gate (GV-23)
+
+For a 9:16 thumbnail, stamp the title with the tool, never with a prompt:
+
+```bash
+python3 -m tools.vidkit title packaging/thumb-a.png "<TITLE, max words per profile>" packaging/thumb-a-titled.png
+python3 tools/layout_gate.py check {output_folder} --thumb "packaging/thumb-*-titled.png"
+```
+
+`title` writes `<out>.box.json` with the measured box. A thumbnail is not final until
+`layout_gate.py check` exits 0 (title inside the safe area and off the face). Run it before
+`thumb_verify.py init`.
+
 ### Step 7.8: Optional deterministic post-process (v3.1.0)
 
 Once the image plugin returns thumbnail plates, these two tools render nothing new — they finish
@@ -165,11 +195,13 @@ scrim falls short. Both are optional; skip them when the plate already reads cle
 ## Quality Gates
 
 - [ ] One title, unchanged across all three bets
+- [ ] 9:16: thumbnail title (3-5 words), video title (5-9 words + tags) and hook on-screen text (4-7 words) written separately, all numbers from the brief
 - [ ] Three bets on three DIFFERENT levers, not three variations of one
 - [ ] Every promise traced to a frame in `av-script.md`
 - [ ] Calibration mode stated in the output; uncalibrated defaults labelled as such
 - [ ] No target CTR quoted that the user has not measured
 - [ ] No image generated in this plugin
+- [ ] 9:16: title stamped with `vidkit title` and `layout_gate.py check --thumb` exited 0 before `thumb_verify.py`
 - [ ] `thumb_verify.py check` exited 0 before any thumbnail was offered as final
 - [ ] Platform shape respected — no bets produced for a platform with no cover
 

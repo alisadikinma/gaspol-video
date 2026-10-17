@@ -261,3 +261,104 @@ export function burstParticles(f, startF, fps, seed, count) {
   }
   return out;
 }
+
+// ---- GV-23: keep the text inside the safe area ----------------------------------------------
+
+// v clamped to [lo, hi]; an inverted range returns lo, never NaN.
+export function clampRange(v, lo, hi) {
+  if (!(hi >= lo)) return lo;
+  if (!(v > lo)) return lo; // also catches NaN
+  return v > hi ? hi : v;
+}
+
+const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+
+// Geometry (CSS) of a cue's text block from its position. `safe` = {x0, y0, x1, y1} in pixels
+// (written by tools/overlay_plan.py when a layout profile applies) or absent.
+//   * no safe box: exactly the geometry the overlay always had (`safePx` is its edge margin);
+//   * safe box: the anchor point is clamped into it, a default anchor starts at its edges, and
+//     the block's maxWidth never reaches past its sides. The block height is not known here
+//     (no layout without a browser), so the vertical clamp is of the anchor point only; the
+//     layout gate (tools/layout_gate.py --overlay) measures the rendered result.
+export function anchorGeometry(pos, size, safe, safePx) {
+  const { width, height } = size;
+  const hasXY = isNum(pos.x) && isNum(pos.y);
+  if (!safe) {
+    if (hasXY) {
+      if (pos.anchor === "left") {
+        return { left: pos.x, top: pos.y, maxWidth: width - pos.x - safePx,
+          transform: "translateY(-50%)", alignItems: "flex-start", textAlign: "left" };
+      }
+      if (pos.anchor === "right") {
+        return { right: width - pos.x, top: pos.y, maxWidth: pos.x - safePx,
+          transform: "translateY(-50%)", alignItems: "flex-end", textAlign: "right" };
+      }
+      return { left: pos.x, top: pos.y,
+        maxWidth: 2 * Math.min(pos.x, width - pos.x) - 2 * safePx,
+        transform: "translate(-50%, -50%)", alignItems: "center", textAlign: "center" };
+    }
+    if (pos.anchor === "center") {
+      return { left: width / 2, top: "64%", transform: "translate(-50%, -50%)",
+        alignItems: "center", textAlign: "center" };
+    }
+    if (pos.anchor === "left") {
+      return { left: safePx, top: "50%", transform: "translateY(-50%)",
+        alignItems: "flex-start", textAlign: "left" };
+    }
+    if (pos.anchor === "right") {
+      return { right: safePx, top: "50%", transform: "translateY(-50%)",
+        alignItems: "flex-end", textAlign: "right" };
+    }
+    return { left: width / 2, top: safePx, transform: "translateX(-50%)",
+      alignItems: "center", textAlign: "center" };
+  }
+
+  const cx = (safe.x0 + safe.x1) / 2;
+  const room = safe.x1 - safe.x0;
+  const x = hasXY ? clampRange(pos.x, safe.x0, safe.x1) : null;
+  const y = hasXY ? clampRange(pos.y, safe.y0, safe.y1) : null;
+  if (pos.anchor === "left") {
+    const left = hasXY ? x : safe.x0;
+    return { left, top: hasXY ? y : clampRange(Math.round(height * 0.5), safe.y0, safe.y1),
+      maxWidth: safe.x1 - left, transform: "translateY(-50%)",
+      alignItems: "flex-start", textAlign: "left" };
+  }
+  if (pos.anchor === "right") {
+    const edge = hasXY ? x : safe.x1;
+    return { right: width - edge,
+      top: hasXY ? y : clampRange(Math.round(height * 0.5), safe.y0, safe.y1),
+      maxWidth: edge - safe.x0, transform: "translateY(-50%)",
+      alignItems: "flex-end", textAlign: "right" };
+  }
+  if (hasXY) {
+    return { left: x, top: y, maxWidth: 2 * Math.min(x - safe.x0, safe.x1 - x),
+      transform: "translate(-50%, -50%)", alignItems: "center", textAlign: "center" };
+  }
+  if (pos.anchor === "center") {
+    return { left: cx, top: clampRange(Math.round(height * 0.64), safe.y0, safe.y1),
+      maxWidth: room, transform: "translate(-50%, -50%)",
+      alignItems: "center", textAlign: "center" };
+  }
+  return { left: cx, top: safe.y0, maxWidth: room, transform: "translateX(-50%)",
+    alignItems: "center", textAlign: "center" };
+}
+
+// The frame at which a cue's text is at full size: every enter effect has finished (blur-in
+// 0.3 s, count-up 0.6 s after keyF, glitch 0.3 s) and the 0.2 s exit has not begun. The middle
+// of that stable window; for a cue too short to have one, the last frame before the exit.
+// tools/layout_gate.py --overlay renders this frame text-only and measures it.
+export function measureFrame(cue, fps) {
+  const settle = cue.keyF + Math.ceil(0.65 * fps);
+  const exitStart = cue.outF - winFrames(0.2, fps);
+  if (settle <= exitStart) return Math.floor((settle + exitStart) / 2);
+  return Math.max(cue.inF, exitStart - 1);
+}
+
+// The cue as it looks once fully entered, for measuring: the frame where every enter effect is
+// done (see measureFrame) and a copy of the cue whose exit is pushed far out, so a cue too short
+// to hold full size (a one-word cue with no hold) is still measured at full size, not mid-fade.
+// Only the layout gate's text-only render uses it.
+export function settledCue(cue, fps) {
+  const frame = cue.keyF + Math.ceil(0.65 * fps);
+  return { frame, cue: { ...cue, inF: Math.min(cue.inF, frame), outF: frame + 10 * fps } };
+}

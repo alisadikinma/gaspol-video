@@ -13,6 +13,7 @@ from unittest import mock
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
 from tools.vidkit import __main__ as vcli
+from tools.vidkit import layout, title
 from tools.vidkit import beats, color, colormatch, cover, encoder, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, tidy, track
 
 
@@ -68,6 +69,91 @@ class KaraokeTest(unittest.TestCase):
     def test_bad_opacity_is_refused(self):
         with self.assertRaises(ValueError):
             karaoke.watermark_event("x", 3.0, opacity=0)
+
+    def test_old_call_without_profile_is_byte_identical(self):
+        w = [("a", 0, .5), ("b", .5, 1), ("c", 1, 1.5), ("d", 1.5, 2)]
+        ass = karaoke.build_ass(w, 3.0, "@x")
+        self.assertEqual(hashlib.sha1(ass.encode()).hexdigest(), "6b9d8e631d67606f3e5dad4848ec3bd5b70069d6")
+
+    def _style(self, ass):
+        line = next(l for l in ass.splitlines() if l.startswith("Style: Sub,"))
+        f = line[len("Style: "):].split(",")
+        return {"size": int(f[2]), "align": int(f[18]), "margin_v": int(f[21])}
+
+    def test_profile_sets_size_margin_and_baseline_inside_safe_box(self):
+        prof = layout.load("short-organic")
+        st = self._style(karaoke.build_ass(self.W, 5.0, profile="short-organic"))
+        self.assertEqual(st["size"], round(layout.value(prof, "subtitle.font_pct") * 1920))
+        self.assertEqual(st["align"], 2)
+        baseline = 1920 - st["margin_v"]
+        self.assertEqual(baseline, round(layout.value(prof, "subtitle.baseline_y_pct") * 1920))
+        self.assertLessEqual(baseline, layout.safe_box(prof)[3])
+
+    def test_profile_per_group_four_breaks_into_two_lines(self):
+        w = [(c, i * .5, i * .5 + .5) for i, c in enumerate(["aa", "bb", "cc", "dd", "ee"])]
+        ass = karaoke.build_ass(w, 5.0, profile="short-organic")
+        first = next(l for l in ass.splitlines() if l.startswith("Dialogue"))
+        self.assertIn("aa {\\kf50}bb \\N{\\kf50}cc".replace(" \\N", "\\N"), first.replace(" \\N", "\\N"))
+        self.assertEqual(first.count("\\N"), 1)
+        self.assertEqual(first.count("\\kf"), 4)  # highlight spans the break
+        self.assertNotIn("ee", first)  # group is 4 words, fifth starts the next
+
+    def test_profile_short_group_stays_one_line(self):
+        w = [("aa", 0, .5), ("bb", .5, 1), ("cc.", 1, 1.5)]
+        ass = karaoke.build_ass(w, 3.0, profile="short-organic")
+        self.assertNotIn("\\N", ass)
+
+    def test_explicit_values_win_over_profile(self):
+        ass = karaoke.build_ass(self.W, 5.0, profile="short-organic", font_size=70, margin_v=200, per_group=2)
+        st = self._style(ass)
+        self.assertEqual((st["size"], st["margin_v"]), (70, 200))
+        self.assertNotIn("\\N", ass)
+
+    def test_other_size_scales_pct_values(self):
+        st = self._style(karaoke.build_ass(self.W, 5.0, profile="short-organic", width=540, height=960))
+        self.assertEqual(st["size"], round(0.029 * 960))
+        self.assertEqual(st["margin_v"], 960 - round(0.617 * 960))
+
+    def test_unknown_profile_names_valid_ones(self):
+        with self.assertRaises(KeyError) as cm:
+            karaoke.build_ass(self.W, 5.0, profile="nope")
+        self.assertIn("short-organic", str(cm.exception))
+
+    def test_watermark_box_inside_safe_area_at_profile_size(self):
+        prof = layout.load("short-organic")
+        x0, y0, x1, y1 = layout.safe_box(prof)
+        ass = karaoke.build_ass(self.W, 5.0, watermark="@alisadikinma", profile="short-organic")
+        line = next(l for l in ass.splitlines() if "\\an5" in l)
+        fs = int(line.split("\\fs")[1].split("\\")[0])
+        half_w = len("@alisadikinma") * fs * 0.6 / 2
+        self.assertGreaterEqual(540 - half_w, x0)
+        self.assertLessEqual(540 + half_w, x1)
+        self.assertGreaterEqual(960 - fs / 2, y0)
+        self.assertLessEqual(960 + fs / 2, y1)
+
+    def test_watermark_too_wide_for_safe_area_is_refused(self):
+        with self.assertRaises(ValueError):
+            karaoke.build_ass(self.W, 5.0, watermark="@" + "x" * 40, profile="short-organic")
+
+    def test_cli_unknown_profile_exits_2_with_names(self):
+        with tempfile.TemporaryDirectory() as d:
+            wf = Path(d) / "w.json"
+            wf.write_text(json.dumps(self.W))
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = vcli.main(["karaoke", str(wf), str(Path(d) / "o.ass"), "--total", "3", "--profile", "nope"])
+            self.assertEqual(rc, 2)
+            self.assertIn("short-organic", err.getvalue())
+
+    def test_cli_default_profile_and_none_opt_out(self):
+        with tempfile.TemporaryDirectory() as d:
+            wf, o = Path(d) / "w.json", Path(d) / "o.ass"
+            wf.write_text(json.dumps(self.W))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(vcli.main(["karaoke", str(wf), str(o), "--total", "3"]), 0)
+                self.assertEqual(self._style(o.read_text())["size"], round(0.029 * 1920))
+                self.assertEqual(vcli.main(["karaoke", str(wf), str(o), "--total", "3", "--profile", "none"]), 0)
+                self.assertEqual(self._style(o.read_text())["size"], 86)
 
 
 class CoverUnwhiteTest(unittest.TestCase):
@@ -2213,3 +2299,184 @@ class TidyReviewFixesTest(unittest.TestCase):
         self.assertEqual(r["home_of"], {".tmp/image/a.png": "keyframes/same.png"})
         self.assertNotIn("other-size.png", calls)
         self.assertIn("same.png", calls)
+
+
+def _png(path, size, drawbox=None, color="black"):
+    vf = "null" if not drawbox else "drawbox=x=%d:y=%d:w=%d:h=%d:color=white:t=fill" % drawbox
+    ff.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color={color}:s={size}",
+            "-vf", vf, "-frames:v", "1", str(path)])
+
+
+@requires_ffmpeg
+class TextBoxTest(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.addCleanup(self.d.cleanup)
+
+    def test_exact_box_of_a_drawn_rectangle(self):
+        p = Path(self.d.name) / "a.png"
+        _png(p, "200x100", (20, 30, 50, 10))
+        self.assertEqual(layout.text_box(p), [20, 30, 70, 40])
+
+    def test_all_black_is_none(self):
+        p = Path(self.d.name) / "b.png"
+        _png(p, "64x64")
+        self.assertIsNone(layout.text_box(p))
+
+    def test_grey_background_finds_dark_and_light_marks(self):
+        p = Path(self.d.name) / "g.png"
+        ff.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=0x808080:s=100x60",
+                "-vf", "drawbox=x=10:y=10:w=5:h=5:color=black:t=fill,"
+                       "drawbox=x=60:y=40:w=5:h=5:color=white:t=fill", "-frames:v", "1", str(p)])
+        self.assertEqual(layout.text_box(p, background=0x80), [10, 10, 65, 45])
+        self.assertEqual(layout.text_box(p), [0, 0, 100, 60])
+
+    def test_flat_grey_is_none_on_grey_background(self):
+        p = Path(self.d.name) / "h.png"
+        _png(p, "64x64", color="0x808080")
+        self.assertIsNone(layout.text_box(p, background=0x80))
+
+    def test_near_black_below_threshold_is_none(self):
+        p = Path(self.d.name) / "c.png"
+        _png(p, "64x64", color="0x101010")
+        self.assertIsNone(layout.text_box(p))
+
+
+@requires_ffmpeg
+class TitleTest(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.addCleanup(self.d.cleanup)
+        self.img = Path(self.d.name) / "in.png"
+        self.out = Path(self.d.name) / "out.png"
+        _png(self.img, "1080x1920", color="white")
+
+    def test_stamp_writes_output_and_box_inside_safe_area(self):
+        box = title.stamp(self.img, "rumah 70 miliar", self.out, profile="short-organic")
+        self.assertTrue(self.out.exists())
+        self.assertEqual(ff.probe(self.out)["video"]["width"], 1080)
+        sx0, sy0, sx1, sy1 = layout.safe_box(layout.load("short-organic"))
+        self.assertGreaterEqual(box[0], sx0)
+        self.assertGreaterEqual(box[1], sy0)
+        self.assertLessEqual(box[2], sx1)
+        self.assertLessEqual(box[3], sy1)
+        self.assertNotEqual(self.img.read_bytes(), self.out.read_bytes())
+
+    def test_box_json_has_uppercase_text_and_font(self):
+        box = title.stamp(self.img, "rumah 70 miliar", self.out)
+        doc = json.loads(Path(str(self.out) + ".box.json").read_text())
+        self.assertEqual(doc["box"], box)
+        self.assertEqual(doc["text"], "RUMAH 70 MILIAR")
+        self.assertEqual(doc["profile"], "short-organic")
+        self.assertTrue(Path(doc["font"]).exists())
+        self.assertEqual(doc["source"], str(self.img.resolve()))
+        self.assertTrue(os.path.isabs(doc["source"]))
+
+    def test_box_is_centred_on_x_and_near_center_y(self):
+        box = title.stamp(self.img, "RUMAH 70 MILIAR", self.out)
+        sx0, _, sx1, _ = layout.safe_box(layout.load("short-organic"))
+        self.assertAlmostEqual((box[0] + box[2]) / 2, (sx0 + sx1) / 2, delta=3)
+        self.assertAlmostEqual((box[1] + box[3]) / 2, 0.38 * 1920, delta=6)
+
+    def test_real_titles_that_were_refused_now_fit_inside_the_safe_area(self):
+        sx0, sy0, sx1, sy1 = layout.safe_box(layout.load("short-organic"))
+        for t in ("Alisha Superstar Sekolah", "Alisha Superstar Cilik", "Alisha Jadi Superstar",
+                  "Alisha Si Superstar", "Alisha Jadi Bintang"):
+            box = title.stamp(self.img, t, self.out)
+            self.assertTrue(sx0 <= box[0] and box[2] <= sx1 and sy0 <= box[1] and box[3] <= sy1, (t, box))
+
+    def test_five_words_can_use_three_lines(self):
+        box = title.stamp(self.img, "ALISHA JADI SUPERSTAR SEKOLAH HARI", self.out)
+        doc = json.loads(Path(str(self.out) + ".box.json").read_text())
+        self.assertEqual(doc["box"], box)
+        self.assertLessEqual(len(doc.get("lines", [])), 3)
+
+    def test_split_lines_balances_up_to_three_lines(self):
+        self.assertEqual(len(title.split_lines(["ALISHA", "SUPERSTAR", "SEKOLAH"])), 3)
+        self.assertEqual(title.split_lines(["A", "B"]), ["A", "B"])
+        self.assertLessEqual(len(title.split_lines(["HARI", "INI", "ALISHA", "JADI", "BINTANG"])), 3)
+
+    def test_y_pct_override_moves_the_box(self):
+        box = title.stamp(self.img, "RUMAH 70 MILIAR", self.out, y_pct=0.45)
+        self.assertAlmostEqual((box[1] + box[3]) / 2, 0.45 * 1920, delta=6)
+
+    def test_refuses_more_than_max_words(self):
+        with self.assertRaisesRegex(ValueError, "words"):
+            title.stamp(self.img, "satu dua tiga empat lima enam", self.out)
+        self.assertFalse(self.out.exists())
+
+    def test_refuses_empty_text(self):
+        for t in ("", "   "):
+            with self.assertRaisesRegex(ValueError, "empty"):
+                title.stamp(self.img, t, self.out)
+
+    def test_refuses_line_too_wide_at_min_font(self):
+        with self.assertRaisesRegex(ValueError, r"usable width \d+ px.*widest line \d+ px at min font"):
+            title.stamp(self.img, "ABCDEFGHIJKLMNOPQRST", self.out)
+        self.assertFalse(self.out.exists())
+
+    def test_refuses_non_9_16_input(self):
+        wide = Path(self.d.name) / "wide.png"
+        _png(wide, "1920x1080", color="white")
+        with self.assertRaisesRegex(ValueError, "9:16"):
+            title.stamp(wide, "HALO", self.out)
+
+    def test_refuses_when_fc_match_is_missing(self):
+        with mock.patch("tools.vidkit.title.shutil.which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "fc-match"):
+                title.stamp(self.img, "HALO", self.out)
+
+    def test_refuses_when_no_font_resolves(self):
+        fake = mock.Mock(returncode=0, stdout="Nonsense\n/no/such/font.ttf")
+        real = title.subprocess.run
+
+        def fake_run(argv, *a, **k):
+            return fake if argv[0] == "fc-match" else real(argv, *a, **k)
+
+        with mock.patch("tools.vidkit.title.subprocess.run", side_effect=fake_run):
+            with self.assertRaisesRegex(ValueError, "font"):
+                title.stamp(self.img, "HALO", self.out)
+
+    def test_cli_prints_box_json_and_exit_0(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = vcli.main(["title", str(self.img), "halo dunia", str(self.out)])
+        self.assertEqual(rc, 0)
+        self.assertIn(str(self.out) + ".box.json", Path(str(self.out) + ".box.json").as_posix())
+        self.assertIn('"box"', buf.getvalue())
+
+    def test_cli_maps_every_refusal_to_exit_2(self):
+        wide = Path(self.d.name) / "wide.png"
+        _png(wide, "1920x1080", color="white")
+        cases = [(self.img, "a b c d e f"), (self.img, " "),
+                 (self.img, "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF"), (wide, "HALO")]
+        for img, text in cases:
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = vcli.main(["title", str(img), text, str(self.out)])
+            self.assertEqual(rc, 2, text)
+            self.assertIn("FAIL", err.getvalue())
+
+    def test_percent_and_brace_text_draws_every_line(self):
+        # drawtext expands % sequences in textfile by default: "DISKON 50%" vanished (GV-23 review)
+        for text, control in (("DISKON 50% HARI INI", "DISKON 50X HARI INI"), ("A %{pts} B", "A X{PTS} B")):
+            got = title.stamp(self.img, text, self.out)
+            want = title.stamp(self.img, control, self.out)
+            self.assertAlmostEqual(got[1], want[1], delta=4, msg=(text, got, want))
+            self.assertAlmostEqual(got[3], want[3], delta=4, msg=(text, got, want))
+            self.assertGreaterEqual(got[2] - got[0], 0.8 * (want[2] - want[0]), (text, got, want))
+
+    def test_cli_stdout_is_pure_json(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vcli.main(["title", str(self.img), "halo dunia", str(self.out)])
+        self.assertEqual(rc, 0)
+        doc = json.loads(out.getvalue())
+        self.assertEqual(doc["out"], str(self.out))
+        self.assertIn("title font:", err.getvalue())
+
+    def test_cli_unknown_profile_exit_2(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = vcli.main(["title", str(self.img), "HALO", str(self.out), "--profile", "nope"])
+        self.assertEqual(rc, 2)

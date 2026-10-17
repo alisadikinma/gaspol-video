@@ -17,6 +17,7 @@ import { Img, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig } from
 
 import { COLORS, FONT_BODY, FONT_DISPLAY, FONT_SCRIPT } from './brand';
 import {
+  anchorGeometry,
   burstParticles,
   carouselX,
   cueStyle,
@@ -24,6 +25,7 @@ import {
   drift,
   exitFx,
   leadIn,
+  settledCue,
   springIn,
   stepState,
   vignetteAlpha,
@@ -87,6 +89,9 @@ export type StepsSpec = { total: number; marks: { n: number; f: number }[] };
 // are course advice, not platform data.
 export type PresetSpec = { name: string; source: string; lead_px: number; key_px: number };
 
+// Safe area in pixels written by tools/overlay_plan.py from a layout profile (GV-23).
+export type SafeBox = { x0: number; y0: number; x1: number; y1: number; profile?: string };
+
 export type OverlayPlan = {
   scene: string;
   fps: number;
@@ -98,6 +103,7 @@ export type OverlayPlan = {
   cues: CueSpec[];
   steps?: StepsSpec;
   preset?: PresetSpec;
+  safe?: SafeBox;
 };
 
 // A {remotion: Name} panel is drawn by a component the user registers in the scene file.
@@ -254,46 +260,21 @@ const useOwnedMotion = (cue: CueSpec, seed: number) => {
 // =============================================================================
 // CueText — lead words, keyword, optional line icon. No box behind the text.
 // =============================================================================
-const anchorBox = (pos: CuePos, width: number): React.CSSProperties => {
-  if (pos.x !== null && pos.y !== null && pos.x !== undefined && pos.y !== undefined) {
-    // x is the text block's LEFT edge for anchor "left", its RIGHT edge for "right", and its
-    // centre only for "top". Centring a left-anchored block pushed a long keyword off the
-    // frame in the first real render (scene 25, "masalahnya").
-    if (pos.anchor === 'left') {
-      return { left: pos.x, top: pos.y, maxWidth: width - pos.x - SAFE_PX,
-        transform: 'translateY(-50%)', alignItems: 'flex-start', textAlign: 'left' };
-    }
-    if (pos.anchor === 'right') {
-      return { right: width - pos.x, top: pos.y, maxWidth: pos.x - SAFE_PX,
-        transform: 'translateY(-50%)', alignItems: 'flex-end', textAlign: 'right' };
-    }
-    return {
-      left: pos.x,
-      top: pos.y,
-      maxWidth: 2 * Math.min(pos.x, width - pos.x) - 2 * SAFE_PX,
-      transform: 'translate(-50%, -50%)',
-      alignItems: 'center',
-      textAlign: 'center',
-    };
-  }
-  if (pos.anchor === 'center') {
-    // centred across, 64% down: in a talking-head frame the exact middle is the face, and text
-    // must stay off the face (first GV-19 render: the warning icon sat on the speaker's nose)
-    return { left: width / 2, top: '64%', transform: 'translate(-50%, -50%)', alignItems: 'center', textAlign: 'center' };
-  }
-  if (pos.anchor === 'left') {
-    return { left: SAFE_PX, top: '50%', transform: 'translateY(-50%)', alignItems: 'flex-start', textAlign: 'left' };
-  }
-  if (pos.anchor === 'right') {
-    return { right: SAFE_PX, top: '50%', transform: 'translateY(-50%)', alignItems: 'flex-end', textAlign: 'right' };
-  }
-  // top (default): centred over the empty space above the speaker
-  return { left: width / 2, top: SAFE_PX, transform: 'translateX(-50%)', alignItems: 'center', textAlign: 'center' };
-};
+// Geometry lives in overlayFx.mjs (anchorGeometry, unit-tested). With a safe box (GV-23) the
+// block is kept inside it; without one the geometry is the one the overlay always had.
+const anchorBox = (pos: CuePos, width: number, height: number, safe?: SafeBox | null): React.CSSProperties =>
+  anchorGeometry(pos, { width, height }, safe ?? undefined, SAFE_PX) as React.CSSProperties;
 
-export const CueText: React.FC<{ cue: CueSpec; preset?: PresetSpec }> = ({ cue, preset }) => {
-  const frame = useCurrentFrame();
-  const { fps, width } = useVideoConfig();
+// `settled` (the layout gate's text-only render) draws the cue at full size at any frame: every
+// enter effect finished, no exit, whatever frame the still is taken at.
+export const CueText: React.FC<{ cue: CueSpec; preset?: PresetSpec; safe?: SafeBox | null; settled?: boolean }> = ({
+  cue: planCue, preset, safe, settled = false,
+}) => {
+  const currentFrame = useCurrentFrame();
+  const { fps, width, height } = useVideoConfig();
+  const fixed = settled ? settledCue(planCue, fps) : null;
+  const cue: CueSpec = fixed ? { ...planCue, ...fixed.cue } : planCue;
+  const frame = fixed ? fixed.frame : currentFrame;
   if (!cueVisible(frame, cue.inF, cue.outF)) return null;
 
   const style = cueStyle(cue, frame, fps);
@@ -353,7 +334,7 @@ export const CueText: React.FC<{ cue: CueSpec; preset?: PresetSpec }> = ({ cue, 
         flexDirection: 'column',
         gap: 12,
         maxWidth: width * 0.5,
-        ...anchorBox(cue.pos, width),
+        ...anchorBox(cue.pos, width, height, safe),
       }}
     >
       {cue.icon ? (

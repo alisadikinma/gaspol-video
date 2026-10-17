@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>v3.19.0</b> · Claude Code plugin · MIT<br>
+  <b>v3.20.0</b> · Claude Code plugin · MIT<br>
   Agencies, freelancers and brand owners: ship a professional 2-3 minute promo from a single chat.
 </p>
 
@@ -248,6 +248,10 @@ The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand n
 
 Every release is in [CHANGELOG.md](CHANGELOG.md).
 
+## v3.20.0 Changelog
+
+- **Short-form layout and format (GV-23).** 9:16 output has a measured safe area (profiles in `media/layout-profiles.json`, numbers from a Samuel Shorts measurement; title numbers are marked interpretation). `vidkit karaoke` places subtitles by that profile, `vidkit title` stamps a cover title inside it, and `tools/layout_gate.py check` blocks a layout whose subtitle, watermark or title leaves the safe area or crowds the face (`tools/face_box.py`, OpenCV YuNet). The gate runs in validate, post `--final`, package and repackage. New F13 short-form timeline (checked by `viral_checklist.py timeline`), four video types in brainstorm with a format confirmation step, a Foreshadow beat and a two-link merge in repackage, and three distinct texts in packaging. A real run on a finished master is in `docs/evals/layout-gate-run.md`. Not done: more than two merge links, a 4:5 LinkedIn variant, OCR of burned-in text, separate renders per platform, cover-title numbers, rotation tags in `person_mask.py`.
+
 ## Project Structure
 
 ```
@@ -273,7 +277,7 @@ reference/                          # 41 reference documents (RAG knowledge base
   storytelling_script_gen/          # Storytelling and script references
   image-video-gen/                  # Image and video production references
   post-production/                  # Post-production and packaging references
-tools/                              # 37 CLI tools: 35 python3 (mostly stdlib) + 2 node, ffmpeg throughout
+tools/                              # 40 CLI tools: 38 python3 (mostly stdlib) + 2 node, ffmpeg throughout
   vidkit/                           # Reusable assembly library (python3 -m tools.vidkit --help)
   _venv.py, setup.sh                # Dependency guard + venv builder for tools that need libs
 templates/remotion/                 # Shot, caption, overlay and screen templates, workspace scaffolder

@@ -264,6 +264,120 @@ class F12Test(unittest.TestCase):
     def test_person_claim_guard_is_an_item(self):
         self.assertIn("person-claim-verified", vc.ITEMS["hook"])
 
+F13 = ROOT / "reference" / "storytelling_script_gen" / "F13_Short_Form_Timeline.md"
+
+
+def tl(rows):
+    head = "# A/V Script\n\n| Tahap | Detik | Video | Audio |\n|---|---|---|---|\n"
+    return head + "".join(f"| {s} | {d} | v | a |\n" for s, d in rows)
+
+
+GOOD = [("Hook", "0-3"), ("Foreshadow", "3-6"), ("Body", "6-50"), ("CTA", "50-54")]
+
+
+class TimelineTest(unittest.TestCase):
+    def test_good_timeline_has_no_problems(self):
+        self.assertEqual(vc.timeline_problems(tl(GOOD)), [])
+
+    def test_decimals_and_case_ok(self):
+        rows = [("thumbnail", "0-1"), ("HOOK", "0-3.0"), ("foreshadow", "3.0-6.5"), ("Body", "6.5-50"), ("cta", "50-54.5")]
+        self.assertEqual(vc.timeline_problems(tl(rows)), [])
+
+    def test_missing_foreshadow(self):
+        found = vc.timeline_problems(tl([GOOD[0], GOOD[2], GOOD[3]]))
+        self.assertTrue(any("foreshadow" in p.lower() for p in found), found)
+
+    def test_out_of_order(self):
+        found = vc.timeline_problems(tl([GOOD[1], GOOD[0], GOOD[2], GOOD[3]]))
+        self.assertTrue(any("order" in p.lower() for p in found), found)
+
+    def test_hook_too_long(self):
+        rows = [("Hook", "0-5"), ("Foreshadow", "5-8"), ("Body", "8-50"), ("CTA", "50-54")]
+        found = vc.timeline_problems(tl(rows))
+        self.assertTrue(any("hook" in p.lower() for p in found), found)
+
+    def test_hook_within_tolerance_ok(self):
+        rows = [("Hook", "0-3.9"), ("Foreshadow", "3.9-6"), ("Body", "6-50"), ("CTA", "50-54")]
+        self.assertEqual(vc.timeline_problems(tl(rows)), [])
+
+    def test_malformed_detik_names_row(self):
+        found = vc.timeline_problems(tl([("Hook", "abc")] + GOOD[1:]))
+        self.assertTrue(any("Hook" in p and "abc" in p for p in found), found)
+
+    def test_unknown_stage(self):
+        found = vc.timeline_problems(tl(GOOD + [("Outro", "54-55")]))
+        self.assertTrue(any("Outro" in p for p in found), found)
+
+    def test_no_columns_returns_none(self):
+        self.assertIsNone(vc.timeline_problems("| a | b |\n|---|---|\n| 1 | 2 |\n"))
+
+    def test_tolerance_from_profile(self):
+        self.assertEqual(vc.timeline_tolerance(), 1.0)
+
+    def test_audit_probe_body_cta_overrun(self):
+        rows = [("Hook", "0-3"), ("Foreshadow", "3-6"), ("Body", "6-58"), ("CTA", "58-70")]
+        found = " | ".join(vc.timeline_problems(tl(rows)))
+        self.assertIn("Body: ends at 58", found)
+        self.assertIn("CTA: lasts 12", found)
+        self.assertIn("total length 70", found)
+
+    def test_cta_not_last(self):
+        rows = [("Hook", "0-3"), ("Foreshadow", "3-6"), ("Body", "6-50"), ("CTA", "50-54"), ("Body", "54-56")]
+        found = vc.timeline_problems(tl(rows))
+        self.assertTrue(any("CTA" in p and "last" in p for p in found), found)
+
+    def test_cta_too_short(self):
+        rows = [("Hook", "0-3"), ("Foreshadow", "3-6"), ("Body", "6-50"), ("CTA", "50-51")]
+        found = vc.timeline_problems(tl(rows))
+        self.assertTrue(any("CTA: lasts 1" in p for p in found), found)
+
+    def test_max_s_param(self):
+        self.assertEqual(vc.timeline_problems(tl(GOOD), max_s=60), [])
+        found = vc.timeline_problems(tl(GOOD), max_s=45)
+        self.assertTrue(any("total length 54" in p for p in found), found)
+
+    def test_cli_max_s(self):
+        self.assertEqual(run_timeline(tl(GOOD), ["--max-s", "60"])[0], 0)
+        self.assertEqual(run_timeline(tl(GOOD), ["--max-s", "45"])[0], 1)
+
+
+def run_timeline(text, extra=()):
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "av-script.md"
+        p.write_text(text, encoding="utf-8")
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = vc.main(["timeline", str(p), *extra])
+        return code, out.getvalue() + err.getvalue()
+
+
+class TimelineCliTest(unittest.TestCase):
+    def test_exit_0(self):
+        self.assertEqual(run_timeline(tl(GOOD))[0], 0)
+
+    def test_exit_1(self):
+        self.assertEqual(run_timeline(tl(GOOD[1:]))[0], 1)
+
+    def test_exit_2_no_columns(self):
+        self.assertEqual(run_timeline("# x\n")[0], 2)
+
+    def test_exit_2_missing_file(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(vc.main(["timeline", "/nonexistent/av.md"]), 2)
+
+
+class F13Test(unittest.TestCase):
+    def test_exists_with_sources_and_tags(self):
+        text = F13.read_text(encoding="utf-8")
+        for needle in ("fd70ee32", "2026-10-17", "[DATA]", "[TAFSIRAN]", "F12", "9 Commandments", "F5", "F6", "@alisadikinma"):
+            self.assertIn(needle, text)
+
+    def test_every_rule_line_is_tagged(self):
+        for line in F13.read_text(encoding="utf-8").splitlines():
+            if line.startswith("- **Rule:"):
+                self.assertTrue("[DATA]" in line or "[TAFSIRAN]" in line, line)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -77,7 +77,7 @@ Onsets cannot tell a sound effect from a consonant: read results with word timin
 
 | Module | What |
 |---|---|
-| `karaoke.build_ass(words, total, watermark, opacity)` | 2-word karaoke ASS (`\kf`), groups close at sentence end, `C Sharp` becomes `C#`, optional centre watermark |
+| `karaoke.build_ass(words, total, watermark, opacity, profile=)` | karaoke ASS (`\kf`), groups close at sentence end, `C Sharp` becomes `C#`, optional centre watermark. Default profile `short-organic`: 56 px, 4 words in 2 lines, last baseline about 61.7% from the top; `--profile none` = old 2-word look |
 | `cover.apply(video, thumb, out, ass, hold_s)` | burns subtitles, THEN lays the thumbnail on the first `hold_s` seconds (so no subtitle on it), attaches it as cover art |
 | `unwhite.unwhite(src, out)` | keys the white box out of a logo (ffmpeg only, no numpy) |
 | `mixdown.run(plan)` | voice + SFX cues + sidechain-ducked music, two-step loudness (gain to target, then limiter), subs, thumbnail |

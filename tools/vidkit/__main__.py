@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import audiostudy, beats, colormatch, cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, tidy, track, unwhite
+from . import audiostudy, beats, colormatch, cover, ff, gates, ingest, join, karaoke, layout, mixdown, loudness, patch, sheet, speech, synth, tidy, title, track, unwhite
 
 
 def _json(p):
@@ -38,7 +38,16 @@ def main(argv=None):
     s.add_argument("--watermark")
     s.add_argument("--opacity", type=float, default=0.12)
     s.add_argument("--font", default="Helvetica Neue")
-    s.add_argument("--margin-v", type=int, default=360)
+    s.add_argument("--margin-v", type=int, default=None, help="overrides the profile (no profile: 360)")
+    s.add_argument("--profile", default="short-organic",
+                   help="layout profile from media/layout-profiles.json, or 'none' for the old fixed defaults")
+
+    s = sub.add_parser("title", help="stamp a cover title on a 9:16 image inside the safe area; writes <out>.box.json")
+    s.add_argument("img")
+    s.add_argument("text")
+    s.add_argument("out")
+    s.add_argument("--profile", default="short-organic", help="layout profile from media/layout-profiles.json")
+    s.add_argument("--y-pct", type=float, default=None, help="title centre Y as a share of the height (default: profile)")
 
     s = sub.add_parser("cover", help="burn .ass, thumbnail on the first frames, thumbnail as mp4 cover")
     s.add_argument("video")
@@ -175,8 +184,23 @@ def main(argv=None):
                   f"{len(rep['onsets'])} onsets {'%.0f BPM' % bpm if bpm else 'no tempo'}")
         elif a.cmd == "karaoke":
             words = [tuple(w) for w in _json(a.words)]
-            open(a.out, "w").write(karaoke.build_ass(words, a.total, a.watermark, a.opacity, a.font, margin_v=a.margin_v))
+            try:
+                prof = None if a.profile == "none" else layout.load(a.profile)
+            except KeyError as exc:
+                print(str(exc.args[0]), file=sys.stderr)
+                return 2
+            ass = karaoke.build_ass(words, a.total, a.watermark, a.opacity, a.font,
+                                    margin_v=a.margin_v, profile=prof)
+            with open(a.out, "w") as fh:
+                fh.write(ass)
             print(a.out)
+        elif a.cmd == "title":
+            try:
+                box = title.stamp(a.img, a.text, a.out, a.profile, a.y_pct)
+            except (KeyError, ValueError) as exc:
+                print(f"FAIL: {exc.args[0] if isinstance(exc, KeyError) else exc}", file=sys.stderr)
+                return 2
+            print(json.dumps({"box": box, "out": a.out}))
         elif a.cmd == "cover":
             print(cover.apply(a.video, a.thumb, a.out, a.ass, a.hold))
         elif a.cmd == "unwhite":

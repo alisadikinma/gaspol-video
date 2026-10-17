@@ -4,7 +4,7 @@ description: >
   Phase 1 brainstorm for AI video promotional production. Covers language selection,
   multi-character cast builder (max 5), product/service discovery, institution detection,
   location & setting context, domain deep research (6 WebSearch queries), target market,
-  awareness level, platform selection, emotional core, storyline input with 7-beat arc mapping,
+  awareness level, format confirmation, emotional core, storyline input with 7-beat arc mapping,
   and tone/mood selection.
   Triggers on: video brainstorm, cast setup, karakter video, brainstorm video, pemeran,
   mulai video baru, start video, new video project, video planning, rencana video.
@@ -14,7 +14,7 @@ description: >
 
 ## Overview
 
-Phase 1 of the video production pipeline. This skill guides the user through strategic planning for a 2-3 minute promotional video: language selection, multi-character cast setup, product/service discovery, institution detection, location context, domain deep research, target market, awareness level, platform selection, emotional core discovery, storyline input with 7-beat arc mapping, and tone/mood selection. Output: `strategic-brief.md` + `cast-profile.md`.
+Phase 1 of the video production pipeline. This skill guides the user through strategic planning for a 2-3 minute promotional video: language selection, multi-character cast setup, product/service discovery, institution detection, location context, domain deep research, target market, awareness level, format confirmation, emotional core discovery, storyline input with 7-beat arc mapping, and tone/mood selection. Output: `strategic-brief.md` + `cast-profile.md`.
 
 ## Reference Files (Read On-Demand)
 
@@ -52,8 +52,8 @@ Total: 4 files. Do NOT preload Phase 2-5 references.
 13. **(v3.8.0) Customer business profile + reference photos (Step 1.2e)** — for any video that shows a real customer, ask what the business sells and collect product + site photos BEFORE scripting. Environments and products in every later phase derive from these photos, not from the category. No photo → web research + NB2 reference the user approves; never invented silently.
 14. **(v3.9.0) Delivery points & vehicles (Step 1.2e)** — for any distribution/delivery customer, ask which delivery-point types it serves and which vehicle serves each, and which points a truck physically cannot reach. A truck-only film is wrong: last-mile to housing-complex shops and alleys is a motorbike with a cooler box. Saved as `### Delivery Points & Vehicles`.
 15. **(v3.9.0) One company uniform with logo (Step 1.2e)** — every employee of the customer wears the same uniform with the company logo. Ask the garment, colour, logo and logo placement, and which roles wear it; save `### Company Uniform` and one verbatim phrase in `cast-profile.md` → `## Company Uniform`. Only roles explicitly listed as exempt differ. Non-customer staff are not in the uniform.
-16. **(v3.11.1) Video type first (Step 1.0b)** — a promo video and an issue/explainer video are different jobs. `video_type: issue` skips the product gates (Steps 1.2, 1.2b, 1.2e; Rules 1, 4, 13-15) and uses the four-part frame Opening → Foreshadow → Body → CTA instead of the 7-beat promo arc. Forcing an issue video through business profile, uniform and pain-table gates produces questions with no true answer.
-17. **(v3.11.1) Honesty limits for issue videos** — required in the brief when `video_type: issue`: ask, do not accuse; aim at policies and numbers, never at named people; say "belum ada buktinya" (or the language equivalent) before any estimate or projection; no AI-generated face of a real person. Saved as `## Honesty Limits` and checked again in Phase 2.
+16. **(v3.11.1, GV-23) Video type first (Step 1.0b)** — four types: `presentasi` (16:9, 180 s), `promo` (indusia.ai product, 9:16, 60 s), `isu` (9:16, 60 s), `edukasi` (stop, route to `/video-repackage`). The type derives aspect, `max_duration_s` and `platforms`; Step 1.5 only confirms them. `isu` skips the product gates (Steps 1.2, 1.2b, 1.2e; Rules 1, 4, 13-15) and uses Hook → Foreshadow → Body → CTA instead of the 7-beat arc. `promo` keeps the product gates and adds the F13 timeline. Forcing an `isu` video through business profile, uniform and pain-table gates produces questions with no true answer. Legacy `issue` is read as `isu`.
+17. **(v3.11.1) Honesty limits for isu videos** — required in the brief when `video_type: isu` (or legacy `issue`): ask, do not accuse; aim at policies and numbers, never at named people; say "belum ada buktinya" (or the language equivalent) before any estimate or projection; no AI-generated face of a real person. Saved as `## Honesty Limits` and checked again in Phase 2.
 18. **(v3.11.1) Offer the design artifact (Step 1.0c)** — some users design faster on one page than through a chain of choice questions. Offer it once; if chosen, publish one design artifact (flow, narration per step, on-screen text, production method per step) and update the SAME artifact on every revision. The strategic brief is still written from it at Step 1.8.
 
 ---
@@ -76,23 +76,40 @@ Save selection as `narration_language` in strategic-brief.md.
 This affects: script dialogue (Phase 2), VEO `says:` text (Phase 5), strategic brief language.
 NB2/VEO prompt structure always stays English (per `global-promo-config.md` `prompt_language`).
 
-#### Step 1.0b: Video Type (v3.11.1)
+#### Step 1.0b: Video Type (v3.11.1, four types GV-23)
 
 ```
 AskUserQuestion:
 "Jenis video apa ini?"
 
 Options:
-A) Promosi produk/layanan (alur standar)
-B) Isu / penjelasan (tidak ada produk yang dipromosikan)
+A) Presentasi (16:9, sampai 3 menit)
+B) Promo produk indusia.ai (9:16, 60 detik)
+C) Isu / penjelasan (9:16, 60 detik)
+D) Edukasi (remake video orang lain lewat link)
 ```
 
-Save as `video_type: promo | issue` in strategic-brief.md.
+The type decides the format. There is no platform question.
 
-If `issue`:
-- Skip Step 1.2 (product), 1.2b (institution) and 1.2e (business profile, record `business_profile: none`). Location (1.2c) and domain research (1.2d) still run — research the issue, not a product.
-- Step 1.7 maps the storyline to four parts — Opening, Foreshadow, Body, CTA — instead of the 7-beat arc. The Foreshadow is a question the Body must answer.
+| `video_type` | aspect | `max_duration_s` | `platforms` | Arc |
+|---|---|---|---|---|
+| `presentasi` | 16:9 | 180 | `[youtube, linkedin]` | 7-beat, no F12/F13 |
+| `promo` (indusia.ai product) | 9:16 | 60 | `[shorts, reels, tiktok, linkedin]` | product gates kept + F13 timeline + F12 |
+| `isu` | 9:16 | 60 | `[shorts, reels, tiktok, linkedin]` | honesty limits kept + F13 + F12 |
+| `edukasi` | none | none | none | STOP, route to `/video-repackage` |
+
+Save `video_type`, `aspect`, `max_duration_s` and `platforms: [...]` in strategic-brief.md. Legacy values: legacy `issue` is read as `isu`; legacy `promo` stays `promo`.
+
+If `edukasi`: stop this skill. Ask the owner for 1 or 2 source links (two links on the same topic can be merged) and hand them to `/video-repackage`. Do not run any later step. An education video is a remake of someone else's video, so brainstorm questions have no true answer for it.
+
+If `isu`:
+- Skip Step 1.2 (product), 1.2b (institution) and 1.2e (business profile, record `business_profile: none`). Location (1.2c) and domain research (1.2d) still run: research the issue, not a product.
+- Step 1.7 maps the storyline to the F13 order (Hook, Foreshadow, Body, CTA) instead of the 7-beat arc. The Foreshadow is a question the Body must answer.
 - Hard Rule 17 (honesty limits) becomes part of the brief.
+
+If `promo`: the product gates (Steps 1.2, 1.2b, 1.2e) stay. The script follows the F13 timeline and the F12 checklist.
+
+If `presentasi`: standard 7-beat arc and the product gates; no F12 or F13.
 
 #### Step 1.0c: Design Mode (v3.11.1)
 
@@ -419,18 +436,20 @@ D) Product-Aware — tahu produk kamu, belum yakin
 E) Most-Aware — sudah yakin, butuh push terakhir
 ```
 
-#### Step 1.5: Platform Selection
+#### Step 1.5: Format Confirmation (GV-23)
+
+No platform question. Show the format derived from `video_type` (Step 1.0b table) and let the owner confirm or edit it.
 
 ```
 AskUserQuestion:
-"Platform utama untuk video ini?"
+"Format video ini: {aspect}, maksimal {max_duration_s} detik, platform {platforms}. Sudah sesuai?"
 
 Options:
-A) YouTube (16:9, 2-3 min)
-B) LinkedIn (16:9, 1-2 min)
-C) Instagram Reels (9:16, 60-90s)
-D) TikTok (9:16, 60-90s)
+A) Sesuai
+B) Ubah format
 ```
+
+If B: ask which of aspect, `max_duration_s` or `platforms` to change, and save the edited values. The brief keeps the derived `## Platform:` line for readers that expect it.
 
 **(v3.11.1) Timing budget.** The target duration is split before any script exists:
 - On-camera slots (a person speaking to camera, usually hook and CTA) at `on_camera_words_per_sec`, not at narration pace.
@@ -562,7 +581,12 @@ Present the Strategic Brief for approval:
 
 ## Product: {name}
 ## Target: {market} — {awareness_level}
-## Platform: {platform} ({aspect_ratio}, {duration})
+## Platform: {platforms} ({aspect}, max {max_duration_s}s)  (derived from video_type)
+## Format
+- video_type: {presentasi | promo | isu}
+- aspect: {16:9 | 9:16}
+- max_duration_s: {180 | 60}
+- platforms: [{platform_1}, {platform_2}]
 ## Language: {narration_language}
 ## Tone: {video_tone}
 ## Emotional Arc: {from_state} → {to_state}
@@ -604,7 +628,7 @@ Present the Strategic Brief for approval:
 ### Company Uniform
 {Garment, colour, logo, logo placement, roles in uniform, exempt roles — Step 1.2e}
 
-## Honesty Limits (only when video_type: issue)
+## Honesty Limits (only when video_type: isu (or legacy issue))
 {the four limits from Hard Rule 17, plus any the user adds}
 
 ## Cultural Context

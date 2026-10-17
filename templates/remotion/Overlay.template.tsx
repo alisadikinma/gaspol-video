@@ -17,6 +17,11 @@
 //   * colours and fonts come from brand.json (through ../lib/brand). This plugin ships NO
 //     palette.
 //
+// GV-23: `plan.safe` (written by overlay_plan.py from a layout profile) keeps every text block
+// inside the safe area. `textOnly` (an input prop, with `cueId` to pick one cue) renders ONLY the cue text on a flat mid-grey:
+// no clip, panels, mask, vignette, burst or step bar. tools/layout_gate.py --overlay renders it
+// through scripts/render-overlay-text.mjs and measures the real text box.
+//
 // Effect arithmetic lives in ../lib/overlayFx.mjs (zero imports, unit-tested); the pieces
 // that draw it live in ../lib/overlay-fx.tsx. This file only stacks the five layers. GV-19 adds the step bar, red vignette and falling
 // burst inside L4 front, so the layer order is unchanged.
@@ -73,7 +78,11 @@ const fill: React.CSSProperties = { width: '100%', height: '100%' };
 // =============================================================================
 // LAYERS — bottom to top
 // =============================================================================
-export const KineticOverlay: React.FC = () => {
+// Flat mid-grey (gray level 128) the gate measures against: a dark outline differs from it and
+// counts in the box. rgb() on purpose: hex colours come from brand.ts only.
+const MEASURE_GREY = 'rgb(128, 128, 128)';
+
+export const KineticOverlay: React.FC<{ textOnly?: boolean; cueId?: string }> = ({ textOnly = false, cueId }) => {
   const frame = useCurrentFrame();
   const visible = (cue: CueSpec) => cueVisible(frame, cue.inF, cue.outF);
   const maskUrl = plan.mask ? staticFile(`${plan.mask}${pad5(frame + 1)}.png`) : null;
@@ -87,6 +96,18 @@ export const KineticOverlay: React.FC = () => {
       } as React.CSSProperties)
     : null;
   const sourceCue = plan.cues.find((cue) => cue.source && visible(cue));
+
+  if (textOnly) {
+    return (
+      <AbsoluteFill style={{ backgroundColor: MEASURE_GREY }}>
+        {plan.cues
+          .filter((cue) => cueId === undefined || String(cue.id) === String(cueId))
+          .map((cue) => (
+          <CueText key={`text-${cue.id}`} cue={cue} preset={plan.preset} safe={plan.safe} settled />
+          ))}
+      </AbsoluteFill>
+    );
+  }
 
   return (
     <AbsoluteFill>
@@ -108,7 +129,7 @@ export const KineticOverlay: React.FC = () => {
               <Bubble key={`b-${bi}`} cue={cue} bubble={bubble} seed={ci * 31 + 17 + bi} registry={PANELS} />
             ))}
             <Carousel cue={cue} registry={PANELS} />
-            {cue.layer === 'behind' ? <CueText cue={cue} preset={plan.preset} /> : null}
+            {cue.layer === 'behind' ? <CueText cue={cue} preset={plan.preset} safe={plan.safe} /> : null}
           </React.Fragment>
         ))}
       </AbsoluteFill>
@@ -130,7 +151,7 @@ export const KineticOverlay: React.FC = () => {
               .map((panel, pi) => (
                 <Panel key={`p-${pi}`} cue={cue} panel={panel} seed={ci * 31 + 9 + pi} registry={PANELS} />
               ))}
-            {cue.layer === 'front' ? <CueText cue={cue} preset={plan.preset} /> : null}
+            {cue.layer === 'front' ? <CueText cue={cue} preset={plan.preset} safe={plan.safe} /> : null}
             <Burst cue={cue} seed={ci * 131 + 5} />
           </React.Fragment>
         ))}

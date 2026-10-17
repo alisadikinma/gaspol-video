@@ -43,6 +43,18 @@ def run(cmd, capture_stderr=False, heartbeat_s=None):
     return stderr if capture_stderr else stdout
 
 
+def run_bytes(cmd):
+    """Run a command list and return stdout as bytes (raw pixel data). Raises FFError on failure."""
+    argv = [str(c) for c in cmd]
+    try:
+        proc = subprocess.run(argv, capture_output=True)
+    except FileNotFoundError:
+        raise FFMissing(f"{argv[0]} not found on PATH") from None
+    if proc.returncode != 0:
+        raise FFError(f"{argv[0]} failed ({proc.returncode}):\n{proc.stderr.decode(errors='replace').strip()[-900:]}")
+    return proc.stdout
+
+
 def _run_with_heartbeat(argv, heartbeat_s):
     label = Path(argv[-1]).name if len(argv) > 1 else argv[0]
     start = time.monotonic()
