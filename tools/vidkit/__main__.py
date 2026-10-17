@@ -202,6 +202,16 @@ def main(argv=None):
     s.add_argument("--occluder", help="track mode: x,y of a point on whatever covers the screen at frame 0")
     s.add_argument("--qa", help="folder for qa-screen.jpg")
 
+    s = sub.add_parser("embroider", help="stitch a logo onto clothing in a clip: raised thread that follows the folds")
+    s.add_argument("clip")
+    s.add_argument("logo", help="PNG with alpha")
+    s.add_argument("out")
+    s.add_argument("--at", required=True, help="x,y design centre on the shirt at frame 0")
+    s.add_argument("--width", type=float, required=True, help="design width in px")
+    s.add_argument("--rot", type=float, default=0.0)
+    s.add_argument("--hand", action="append", help="x,y on a hand over the shirt at frame 0 (repeatable)")
+    s.add_argument("--qa", help="folder for qa-embroider.jpg")
+
     a = ap.parse_args(argv)
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     rc = 0
@@ -327,6 +337,13 @@ def main(argv=None):
             _ensure_ml(raw_argv, need_torch=a.mode == "track")
             print(json.dumps(screen.insert(a.clip, a.panel, a.out, a.mode, corners=corners,
                                            occluder_point=point, qa_dir=a.qa)))
+        elif a.cmd == "embroider":
+            from . import embroider
+            at = _floats(a.at, 2, "--at")
+            hands = [_floats(h, 2, "--hand") for h in (a.hand or [])]
+            _ensure_ml(raw_argv, need_torch=True)
+            print(json.dumps(embroider.embroider(a.clip, a.logo, a.out, at, a.width, rot=a.rot,
+                                                 hand_points=hands or None, qa_dir=a.qa)))
         elif a.cmd == "bond":
             from . import bond
             print(json.dumps(bond.bond_print(a.clip, a.out, a.print_png, a.cx, a.top, a.width, a.rot)))

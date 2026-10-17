@@ -1449,7 +1449,7 @@
     },
     {
       "task": "Embroider a logo/text onto clothing (raised thread, follows folds)",
-      "use": "`tools.vidkit.embroider.thread_maps(rgba)` (full CLI in a later phase)",
+      "use": "`python3 -m tools.vidkit embroider <clip> <logo.png> <out> --at x,y --width W [--hand x,y] [--qa DIR]`",
       "tools": [
         "tools/vidkit/embroider.py"
       ]

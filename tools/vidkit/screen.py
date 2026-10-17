@@ -279,19 +279,14 @@ def corners_track(frames, init_corners, ring=24, fps=30.0, min_cutoff=1.0, beta=
     return out, ratio
 
 
-def check_track(corners, inliers, visible, fps, diag):
-    """Raise ``Refused`` when a track is not trustworthy; return None when it is.
+def check_lost(visible, fps):
+    """Raise ``Refused`` when more than 30% of points are hidden for 0.5 s or longer.
 
-    ``corners`` [T, 4, 2] (after smoothing), ``inliers`` [T], ``visible`` [T, N] bool, ``diag`` the
-    screen diagonal in px. Rules: more than 30% of points hidden for 0.5 s or longer; a corner
-    moving more than 8% of ``diag`` between two frames; an inlier ratio under 0.5.
+    ``visible`` is a bool ``[T, N]`` array. Shared by ``check_track`` and ``embroider``.
     """
     _, np = _deps()
-    corners = np.asarray(corners, dtype=np.float64)
-    inliers = np.asarray(inliers, dtype=np.float64)
     visible = np.asarray(visible, dtype=bool)
     n_pts = visible.shape[1]
-
     lost = (~visible).sum(axis=1) * 10 > LOST_POINT_SHARE * 10 * n_pts
     need = LOST_SECONDS * fps - 1e-9
     t = 0
@@ -306,6 +301,19 @@ def check_track(corners, inliers, visible, fps, diag):
             pct = round(100.0 * float((~visible[t:end + 1]).sum(axis=1).max()) / n_pts)
             raise Refused(f"track lost on frames {t}-{end} ({pct}% points hidden)")
         t = end + 1
+
+
+def check_track(corners, inliers, visible, fps, diag):
+    """Raise ``Refused`` when a track is not trustworthy; return None when it is.
+
+    ``corners`` [T, 4, 2] (after smoothing), ``inliers`` [T], ``visible`` [T, N] bool, ``diag`` the
+    screen diagonal in px. Rules: more than 30% of points hidden for 0.5 s or longer; a corner
+    moving more than 8% of ``diag`` between two frames; an inlier ratio under 0.5.
+    """
+    _, np = _deps()
+    corners = np.asarray(corners, dtype=np.float64)
+    inliers = np.asarray(inliers, dtype=np.float64)
+    check_lost(visible, fps)
 
     if len(corners) > 1:
         step = np.linalg.norm(np.diff(corners, axis=0), axis=2).max(axis=1)

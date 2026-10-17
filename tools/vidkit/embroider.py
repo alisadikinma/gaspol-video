@@ -9,6 +9,7 @@ one global warp. This module builds the thread surface; later phases add the war
 Needs ``cv2`` and ``numpy`` (shared venv); imported lazily so vidkit stays importable without them.
 """
 import math
+import os
 
 MAX_LOGO_WIDTH = 2000      # wider logos are downscaled first
 NORMAL_STRENGTH = 2.0      # multiplies the Sobel slope of the height map before normalising
@@ -28,6 +29,11 @@ SPECULAR_POWER = 16        # lambert ** SPECULAR_POWER, weighted by height
 CAVITY_MAX = 0.15          # darkening in valleys: 1 - CAVITY_MAX * (1 - height)
 EDGE_AO_MAX = 0.30         # darkening at the thread boundary, fading over EDGE_AO_SIGMA
 EDGE_AO_SIGMA = 2.0        # px, blur of the alpha edge
+
+MIN_SHIRT_RATIO = 1.5      # shirt area at frame 0 must be at least this times the design's opaque area
+GRID_COARSE = 7            # tracking grid over the design box
+GRID_DENSE = 11            # used when the coarse grid keeps fewer than MIN_GRID_POINTS on the shirt
+MIN_GRID_POINTS = 9
 
 
 def _deps():
@@ -259,3 +265,157 @@ def shade(frame_bgr, albedo, normal, height, alpha):
     out = np.clip(np.rint(out), 0, 255).astype(np.uint8)
     out[alpha <= 0] = frame[alpha <= 0]
     return out
+
+
+def _place_logo(logo, width, rot, at, size, cv2, np):
+    """Scale ``logo`` (BGRA) to ``width`` px, rotate by ``rot`` deg, centre it at ``at`` on a canvas.
+
+    Returns ``(rgba, x0, y0)``: the scaled and rotated logo and its top-left corner on the canvas
+    (may be negative when the logo hangs over the frame edge).
+    """
+    if width <= 0 or width > MAX_LOGO_WIDTH:
+        raise ValueError(f"--width must be 1..{MAX_LOGO_WIDTH}, got {width}")
+    h0, w0 = logo.shape[:2]
+    scale = width / float(w0)
+    new_w, new_h = max(int(round(w0 * scale)), 1), max(int(round(h0 * scale)), 1)
+    interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+    rgba = cv2.resize(logo, (new_w, new_h), interpolation=interp)
+    if rot:
+        c, s_ = abs(math.cos(math.radians(rot))), abs(math.sin(math.radians(rot)))
+        out_w, out_h = int(math.ceil(new_w * c + new_h * s_)), int(math.ceil(new_w * s_ + new_h * c))
+        mat = cv2.getRotationMatrix2D((new_w / 2.0, new_h / 2.0), rot, 1.0)
+        mat[0, 2] += out_w / 2.0 - new_w / 2.0
+        mat[1, 2] += out_h / 2.0 - new_h / 2.0
+        rgba = cv2.warpAffine(rgba, mat, (out_w, out_h), flags=cv2.INTER_LINEAR,
+                              borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+    x0 = int(round(at[0] - rgba.shape[1] / 2.0))
+    y0 = int(round(at[1] - rgba.shape[0] / 2.0))
+    return rgba, x0, y0
+
+
+def _canvas_layer(rgba, x0, y0, size, np):
+    """Thread maps of ``rgba`` placed on a frame-sized float32 layer: albedo 3, normal 3, height, alpha."""
+    height, normal, albedo = thread_maps(rgba)
+    alpha = rgba[..., 3].astype(np.float32) / 255.0
+    stack = np.concatenate([albedo, normal, height[..., None], alpha[..., None]], axis=2).astype(np.float32)
+    width, frame_h = size
+    layer = np.zeros((frame_h, width, stack.shape[2]), np.float32)
+    h, w = stack.shape[:2]
+    cx0, cy0 = max(x0, 0), max(y0, 0)
+    cx1, cy1 = min(x0 + w, width), min(y0 + h, frame_h)
+    if cx1 <= cx0 or cy1 <= cy0:
+        raise ValueError("the design is entirely outside the frame")
+    layer[cy0:cy1, cx0:cx1] = stack[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
+    return layer
+
+
+def _grid_points(box, shirt0, np):
+    """Tracking points over the design box ``(x0, y0, x1, y1)``, kept where frame 0 shows shirt."""
+    x0, y0, x1, y1 = box
+    height, width = shirt0.shape
+    pts = np.zeros((0, 2), np.float64)
+    for n in (GRID_COARSE, GRID_DENSE):
+        gx, gy = np.meshgrid(np.linspace(x0, x1, n), np.linspace(y0, y1, n))
+        cand = np.stack([gx.ravel(), gy.ravel()], axis=1)
+        ix = np.clip(np.rint(cand[:, 0]).astype(int), 0, width - 1)
+        iy = np.clip(np.rint(cand[:, 1]).astype(int), 0, height - 1)
+        pts = cand[shirt0[iy, ix]]
+        if len(pts) >= MIN_GRID_POINTS:
+            break
+    return pts
+
+
+def _render(frames_bgr, logo, at, width, rot, hand_points, fps):
+    """Composite the embroidered design onto every frame; no file I/O.
+
+    ``frames_bgr`` uint8 ``[T, H, W, 3]``, ``logo`` BGRA uint8, ``at`` (x, y) design centre at
+    frame 0, ``width`` px, ``rot`` deg, ``hand_points`` list of ``[x, y]`` on frame 0 that all
+    belong to the occluding hand region (SAM prompts them together as one object, label 1) or
+    None. Returns ``(frames uint8 [T, H, W, 3], info)``; ``embroider`` encodes the frames.
+    """
+    from . import pointtrack, segment
+    from .screen import Refused, check_lost
+    cv2, np = _deps()
+    if logo is None or logo.ndim != 3 or logo.shape[2] != 4:
+        raise ValueError("logo must be a 4-channel image with alpha (BGRA PNG)")
+    frames = np.asarray(frames_bgr)
+    n, height, fwidth = frames.shape[:3]
+    size = (fwidth, height)
+    rgba, x0, y0 = _place_logo(logo, width, rot, at, size, cv2, np)
+    layer = _canvas_layer(rgba, x0, y0, size, np)
+    opaque = layer[..., 7] > 0.5
+    design_area = int(opaque.sum())
+    if design_area == 0:
+        raise ValueError("logo has no opaque pixels")
+    ys, xs = np.nonzero(layer[..., 7] > 0)
+    box = (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
+
+    rgb = np.ascontiguousarray(frames[..., ::-1])
+    shirt = segment.masks(rgb, 0, points=[[float(at[0]), float(at[1])]])
+    ax, ay = int(round(min(max(at[0], 0), fwidth - 1))), int(round(min(max(at[1], 0), height - 1)))
+    if not shirt[0][ay, ax]:
+        raise Refused("--at is not on the shirt")
+    ratio = float(shirt[0].sum()) / design_area
+    if ratio < MIN_SHIRT_RATIO:
+        raise Refused(f"shirt area too small for design ({ratio:.2f})")
+    if hand_points:
+        hand = segment.masks(rgb, 0, points=[[float(x), float(y)] for x, y in hand_points])
+    else:
+        hand = np.zeros_like(shirt)
+
+    src = _grid_points(box, shirt[0], np)
+    if len(src) < MIN_VISIBLE_POINTS:
+        raise Refused(f"track lost: {len(src)} tracking points on the shirt")
+    queries = np.concatenate([np.zeros((len(src), 1)), src], axis=1)
+    tracks, visible = pointtrack.track(rgb, queries)
+    check_lost(visible, fps)
+
+    out, lost, prev = [], 0, None
+    hidden_share = (~visible).mean(axis=1)
+    for t in range(n):
+        try:
+            warped = grid_warp(layer, src, tracks[t], visible[t], size)
+            prev = warped
+            if hidden_share[t] > 0.30:
+                lost += 1
+        except Refused:
+            if prev is None:
+                raise
+            warped = prev
+            lost += 1
+        alpha = warped[..., 7] * shirt[t] * ~hand[t]
+        normal = warped[..., 3:6]
+        normal = normal / np.maximum(np.linalg.norm(normal, axis=2, keepdims=True), 1e-6)
+        out.append(shade(frames[t], warped[..., 0:3], normal, warped[..., 6], alpha))
+    return np.stack(out), {"frames": n, "lost_frames": lost, "shirt_area_ratio": round(ratio, 3)}
+
+
+def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None):
+    """Stitch ``logo`` (BGRA PNG path) onto the clothing at ``at`` in ``clip`` and write ``out``.
+
+    The design is thread (``thread_maps``) warped by a mesh that follows 7x7 tracked points on the
+    shirt (``grid_warp``), lit like the cloth around it (``shade``) and shown only where SAM 2.1
+    says shirt and not hand. ``hand_points`` are ``[x, y]`` clicks on one occluding hand at frame
+    0. The clip is decoded whole into memory; output is H.264 crf 15 with the audio copied.
+    Returns ``{"frames", "lost_frames", "shirt_area_ratio"}``; raises ``screen.Refused`` when the
+    track or the shirt cannot be trusted.
+    """
+    cv2, _ = _deps()
+    from . import ff, screen
+    logo_img = cv2.imread(str(logo), cv2.IMREAD_UNCHANGED)
+    if logo_img is None:
+        raise ValueError(f"logo is not a readable image: {logo}")
+    if logo_img.ndim != 3 or logo_img.shape[2] != 4:
+        raise ValueError(f"logo must be a 4-channel PNG with alpha: {logo}")
+    info = ff.probe(str(clip))["video"]
+    if not info:
+        raise ValueError(f"clip has no video stream: {clip}")
+    w, h, fps = info["width"], info["height"], info["fps"] or 30.0
+    frames = screen._decode(str(clip), w, h)
+    rendered, res = _render(frames, logo_img, at, width, rot, hand_points, fps)
+    screen._encode(iter(rendered), clip, out, w, h, fps)
+    if qa_dir:
+        from . import sheet
+        os.makedirs(qa_dir, exist_ok=True)
+        sheet.contact_sheet(str(out), os.path.join(str(qa_dir), "qa-embroider.jpg"))
+    return res

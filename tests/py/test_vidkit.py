@@ -2482,6 +2482,56 @@ class TitleTest(unittest.TestCase):
         self.assertEqual(rc, 2)
 
 
+class EmbroiderCliTest(unittest.TestCase):
+    def _run(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vcli.main(argv)
+        return rc, out.getvalue(), err.getvalue()
+
+    def _patched(self, **kw):
+        from tools.vidkit import embroider
+        return mock.patch.object(embroider, "embroider", **kw)
+
+    def test_success_prints_one_json_line(self):
+        res = {"frames": 5, "lost_frames": 1, "shirt_area_ratio": 9.5}
+        with mock.patch.object(vcli, "_ensure_ml") as ens, self._patched(return_value=res) as emb:
+            rc, out, _ = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--at", "10,20", "--width", "60",
+                                    "--rot", "-3", "--hand", "1,2", "--hand", "3,4", "--qa", "qa"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out), res)
+        self.assertEqual(len(out.strip().splitlines()), 1)
+        self.assertEqual(emb.call_args.args, ("a.mp4", "l.png", "o.mp4", [10.0, 20.0], 60.0))
+        self.assertEqual(emb.call_args.kwargs, {"rot": -3.0, "hand_points": [[1.0, 2.0], [3.0, 4.0]], "qa_dir": "qa"})
+        self.assertTrue(ens.call_args.kwargs["need_torch"])
+
+    def test_no_hand_passes_none(self):
+        with mock.patch.object(vcli, "_ensure_ml"), self._patched(return_value={}) as emb:
+            rc, _, _ = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--at", "10,20", "--width", "60"])
+        self.assertEqual(rc, 0)
+        self.assertIsNone(emb.call_args.kwargs["hand_points"])
+
+    def test_refused_exits_2(self):
+        with mock.patch.object(vcli, "_ensure_ml"), self._patched(side_effect=vcli.screen.Refused("--at is not on the shirt")):
+            rc, out, err = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--at", "1,2", "--width", "6"])
+        self.assertEqual((rc, out), (2, ""))
+        self.assertEqual(err.strip(), "refused: --at is not on the shirt")
+
+    def test_ml_missing_exits_2(self):
+        with mock.patch.object(vcli, "_ensure_ml", side_effect=vcli.ml.MLMissing("missing torch: run tools/setup.sh --ml")):
+            rc, _, err = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--at", "1,2", "--width", "6"])
+        self.assertEqual(rc, 2)
+        self.assertTrue(err.startswith("refused: missing torch"))
+
+    def test_bad_at_and_hand_exit_1(self):
+        for extra in (["--at", "1,2,3"], ["--at", "1,2", "--hand", "x,y"]):
+            with mock.patch.object(vcli, "_ensure_ml") as ens:
+                rc, _, err = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--width", "6", *extra])
+            self.assertEqual(rc, 1)
+            self.assertTrue(err.startswith("FAIL: "))
+            ens.assert_not_called()
+
+
 class ScreenInsertCliTest(unittest.TestCase):
     def _run(self, argv, **patches):
         out, err = io.StringIO(), io.StringIO()

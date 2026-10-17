@@ -278,5 +278,199 @@ class ShadeTest(unittest.TestCase):
         self.assertTrue(np.array_equal(out[alpha == 0], frame[alpha == 0]))
 
 
+def _ml_ready():
+    if not (HAS_CV and importlib.util.find_spec("torch") and importlib.util.find_spec("tapnet")):
+        return False
+    from tools.vidkit import ml
+    try:
+        ml.weight("tapnextpp_ckpt.pt")
+        ml.weight("sam2.1_hiera_small.pt")
+    except ml.MLMissing:
+        return False
+    return True
+
+
+needs_ml = unittest.skipUnless(_ml_ready(), "torch, sam2, tapnet or the ML weights missing")
+
+SIZE = 320
+FRAMES = 24
+HAND_FRAMES = range(8, 17)
+AT = (160, 160)
+
+
+def _synthetic_clip():
+    """Textured grey shirt on a green background, deforming by a known smooth field, plus a skin
+    disc that sweeps left to right across the shirt. Returns frames [T,H,W,3] BGR, shirt masks and
+    hand masks [T,H,W] bool (the known ground truth)."""
+    import cv2
+    import numpy as np
+    rng = np.random.default_rng(24)
+    tex = rng.normal(0, 1, (SIZE, SIZE)).astype(np.float32)
+    tex = cv2.GaussianBlur(tex, (0, 0), 1.2)
+    tex = tex / tex.std()
+    base = np.empty((SIZE, SIZE, 3), np.uint8)
+    base[:] = (30, 100, 60)
+    shirt0 = np.zeros((SIZE, SIZE), np.uint8)
+    cv2.rectangle(shirt0, (50, 40), (270, 290), 255, -1)
+    grey = np.clip(128 + 28 * tex, 0, 255).astype(np.uint8)
+    base[shirt0 > 0] = np.stack([grey] * 3, axis=-1)[shirt0 > 0]
+    ys, xs = np.mgrid[0:SIZE, 0:SIZE].astype(np.float32)
+    frames, shirts, hands = [], [], []
+    for t in range(FRAMES):
+        dx = 4 * np.sin(2 * np.pi * ys / 160 + 0.2 * t)
+        dy = 3 * np.cos(2 * np.pi * xs / 200 + 0.2 * t)
+        mx, my = xs + dx, ys + dy
+        frame = cv2.remap(base, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        shirt = cv2.remap(shirt0, mx, my, cv2.INTER_NEAREST) > 0
+        hand = np.zeros((SIZE, SIZE), np.uint8)
+        cx = int(25 + 270 * t / (FRAMES - 1))
+        cv2.circle(hand, (cx, 165), 22, 255, -1)
+        frame[hand > 0] = (120, 160, 220)
+        frames.append(frame)
+        shirts.append(shirt)
+        hands.append(hand > 0)
+    return np.stack(frames), np.stack(shirts), np.stack(hands)
+
+
+def _red_bar(w=60, h=30):
+    import numpy as np
+    img = np.zeros((h, w, 4), np.uint8)
+    img[..., 2] = 255
+    img[..., 3] = 255
+    return img
+
+
+def _write_clip(frames, path, audio):
+    import subprocess
+    cmd = ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{SIZE}x{SIZE}",
+           "-r", "24", "-i", "-"]
+    if audio:
+        cmd += ["-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a", "aac", "-shortest"]
+    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "10", path]
+    subprocess.run(cmd, input=frames.tobytes(), check=True)
+
+
+@needs_ml
+class EmbroiderRenderTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tools.vidkit import embroider
+        cls.e = embroider
+        cls.frames, cls.shirt, cls.hand = _synthetic_clip()
+        cls.out, cls.info = embroider._render(cls.frames, _red_bar(), AT, 60, 0.0, [[25, 165]], 24.0)
+
+    def test_info(self):
+        self.assertEqual(self.info["frames"], FRAMES)
+        self.assertGreater(self.info["shirt_area_ratio"], 1.5)
+        print("lost_frames=%d ratio=%.2f" % (self.info["lost_frames"], self.info["shirt_area_ratio"]))
+        self.assertLessEqual(self.info["lost_frames"], len(HAND_FRAMES))
+
+    def test_off_shirt_unchanged(self):
+        import cv2
+        import numpy as np
+        worst = 0
+        for t in range(FRAMES):
+            far = ~(cv2.dilate(self.shirt[t].astype(np.uint8), np.ones((9, 9), np.uint8)) > 0)
+            worst = max(worst, int((self.out[t][far] != self.frames[t][far]).any(axis=-1).sum()))
+        print("off-shirt pixels changed (max over frames) = %d" % worst)
+        self.assertEqual(worst, 0)
+
+    def test_under_hand_unchanged(self):
+        import cv2
+        import numpy as np
+        worst = 0
+        for t in HAND_FRAMES:
+            core = cv2.erode(self.hand[t].astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+            worst = max(worst, int((self.out[t][core] != self.frames[t][core]).any(axis=-1).sum()))
+        print("under-hand pixels changed (max over frames) = %d" % worst)
+        self.assertEqual(worst, 0)
+
+    def test_design_present_every_frame(self):
+        import cv2
+        import numpy as np
+        counts = []
+        for t in range(FRAMES):
+            o = self.out[t].astype(np.int32)
+            red = (o[..., 2] > o[..., 1] + 60) & (o[..., 2] > o[..., 0] + 60)
+            red &= ~(cv2.dilate(self.hand[t].astype(np.uint8), np.ones((5, 5), np.uint8)) > 0)
+            counts.append(int(red.sum()))
+        print("design-red pixels per frame: min %d max %d" % (min(counts), max(counts)))
+        self.assertGreater(min(counts), 150)
+
+    def test_design_follows_the_cloth(self):
+        import numpy as np
+        def centroid(t):
+            o = self.out[t].astype(np.int32)
+            red = (o[..., 2] > o[..., 1] + 60) & (o[..., 2] > o[..., 0] + 60) & ~self.hand[t]
+            ys, xs = np.nonzero(red)
+            return np.array([xs.mean(), ys.mean()])
+        drift = np.linalg.norm(centroid(0) - centroid(5))
+        self.assertLess(drift, 12.0)
+
+
+@needs_ml
+class EmbroiderRefusalTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tools.vidkit import embroider
+        cls.e = embroider
+        cls.frames, _, _ = _synthetic_clip()
+
+    def test_at_off_the_shirt(self):
+        import numpy as np
+        from unittest import mock
+        from tools.vidkit.screen import Refused
+        empty = np.zeros((FRAMES, SIZE, SIZE), bool)
+        with mock.patch("tools.vidkit.segment.masks", return_value=empty):
+            with self.assertRaisesRegex(Refused, "--at is not on the shirt"):
+                self.e._render(self.frames, _red_bar(), AT, 60, 0.0, None, 24.0)
+
+    def test_design_larger_than_shirt(self):
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"shirt area too small for design \(\d+\.\d+\)"):
+            self.e._render(self.frames, _red_bar(), AT, 300, 0.0, None, 24.0)
+
+    def test_logo_without_alpha(self):
+        import numpy as np
+        with self.assertRaises(ValueError):
+            self.e._render(self.frames, np.zeros((30, 60, 3), np.uint8), AT, 60, 0.0, None, 24.0)
+
+    def test_track_lost(self):
+        import numpy as np
+        from unittest import mock
+        from tools.vidkit.screen import Refused
+        vis = np.zeros((FRAMES, 49), bool)
+        tracks = np.zeros((FRAMES, 49, 2), np.float32)
+        with mock.patch("tools.vidkit.pointtrack.track", return_value=(tracks, vis)):
+            with self.assertRaisesRegex(Refused, r"track lost on frames 0-23 \(100% points hidden\)"):
+                self.e._render(self.frames, _red_bar(), AT, 60, 0.0, None, 24.0)
+
+
+@needs_ml
+class EmbroiderE2ETest(unittest.TestCase):
+    def _run(self, audio):
+        import os
+        import tempfile
+        from tools.vidkit import embroider, ff
+        frames, _, _ = _synthetic_clip()
+        with tempfile.TemporaryDirectory() as d:
+            clip, logo, out = (os.path.join(d, n) for n in ("in.mp4", "logo.png", "out.mp4"))
+            import cv2
+            cv2.imwrite(logo, _red_bar())
+            _write_clip(frames, clip, audio)
+            res = embroider.embroider(clip, logo, out, AT, 60, hand_points=[[25, 165]], qa_dir=os.path.join(d, "qa"))
+            src, dst = ff.probe(clip), ff.probe(out)
+            self.assertEqual(res["frames"], FRAMES)
+            self.assertLessEqual(abs(src["video"]["duration"] - dst["video"]["duration"]), 1 / 24 + 1e-3)
+            self.assertEqual(bool(src.get("audio")), bool(dst.get("audio")))
+            self.assertTrue(os.path.isfile(os.path.join(d, "qa", "qa-embroider.jpg")))
+
+    def test_with_audio(self):
+        self._run(True)
+
+    def test_without_audio(self):
+        self._run(False)
+
+
 if __name__ == "__main__":
     unittest.main()
