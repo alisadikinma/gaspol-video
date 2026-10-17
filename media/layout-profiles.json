@@ -6,6 +6,7 @@
              "right": {"pct": 0.10, "source": "tafsiran: YouTube Shorts template right 192px (third-party)"}},
     "subtitle": {"font_pct": {"value": 0.029, "source": "data: docs/evals/short-form-layout-measurement.md, median of 6; cap height 39 px / 0.71 = 55 px"},
                  "per_group": {"value": 4, "source": "data: docs/evals/short-form-layout-measurement.md, median of 6; clip medians 3-6, median 4.25 rounded down"},
+                 "baseline_y_pct": {"value": 0.617, "source": "data: docs/evals/short-form-layout-measurement.md, median of 6; last-line baseline Y 1184 / 1920"},
                  "chin_gap_pct": {"value": 0.10, "source": "tafsiran: notebook fd70ee32"}},
     "title": {"font_pct": {"value": 0.10, "source": "tafsiran: notebook fd70ee32 8-12%; no title on 6 Samuel clips, see docs/evals/short-form-layout-measurement.md"},
               "center_y_pct": {"value": 0.38, "source": "tafsiran: notebook fd70ee32 30-45%; no title on 6 Samuel clips, see docs/evals/short-form-layout-measurement.md"},

@@ -13,6 +13,7 @@ from unittest import mock
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
 from tools.vidkit import __main__ as vcli
+from tools.vidkit import layout
 from tools.vidkit import beats, color, colormatch, cover, encoder, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, tidy, track
 
 
@@ -68,6 +69,91 @@ class KaraokeTest(unittest.TestCase):
     def test_bad_opacity_is_refused(self):
         with self.assertRaises(ValueError):
             karaoke.watermark_event("x", 3.0, opacity=0)
+
+    def test_old_call_without_profile_is_byte_identical(self):
+        w = [("a", 0, .5), ("b", .5, 1), ("c", 1, 1.5), ("d", 1.5, 2)]
+        ass = karaoke.build_ass(w, 3.0, "@x")
+        self.assertEqual(hashlib.sha1(ass.encode()).hexdigest(), "6b9d8e631d67606f3e5dad4848ec3bd5b70069d6")
+
+    def _style(self, ass):
+        line = next(l for l in ass.splitlines() if l.startswith("Style: Sub,"))
+        f = line[len("Style: "):].split(",")
+        return {"size": int(f[2]), "align": int(f[18]), "margin_v": int(f[21])}
+
+    def test_profile_sets_size_margin_and_baseline_inside_safe_box(self):
+        prof = layout.load("short-organic")
+        st = self._style(karaoke.build_ass(self.W, 5.0, profile="short-organic"))
+        self.assertEqual(st["size"], round(layout.value(prof, "subtitle.font_pct") * 1920))
+        self.assertEqual(st["align"], 2)
+        baseline = 1920 - st["margin_v"]
+        self.assertEqual(baseline, round(layout.value(prof, "subtitle.baseline_y_pct") * 1920))
+        self.assertLessEqual(baseline, layout.safe_box(prof)[3])
+
+    def test_profile_per_group_four_breaks_into_two_lines(self):
+        w = [(c, i * .5, i * .5 + .5) for i, c in enumerate(["aa", "bb", "cc", "dd", "ee"])]
+        ass = karaoke.build_ass(w, 5.0, profile="short-organic")
+        first = next(l for l in ass.splitlines() if l.startswith("Dialogue"))
+        self.assertIn("aa {\\kf50}bb \\N{\\kf50}cc".replace(" \\N", "\\N"), first.replace(" \\N", "\\N"))
+        self.assertEqual(first.count("\\N"), 1)
+        self.assertEqual(first.count("\\kf"), 4)  # highlight spans the break
+        self.assertNotIn("ee", first)  # group is 4 words, fifth starts the next
+
+    def test_profile_short_group_stays_one_line(self):
+        w = [("aa", 0, .5), ("bb", .5, 1), ("cc.", 1, 1.5)]
+        ass = karaoke.build_ass(w, 3.0, profile="short-organic")
+        self.assertNotIn("\\N", ass)
+
+    def test_explicit_values_win_over_profile(self):
+        ass = karaoke.build_ass(self.W, 5.0, profile="short-organic", font_size=70, margin_v=200, per_group=2)
+        st = self._style(ass)
+        self.assertEqual((st["size"], st["margin_v"]), (70, 200))
+        self.assertNotIn("\\N", ass)
+
+    def test_other_size_scales_pct_values(self):
+        st = self._style(karaoke.build_ass(self.W, 5.0, profile="short-organic", width=540, height=960))
+        self.assertEqual(st["size"], round(0.029 * 960))
+        self.assertEqual(st["margin_v"], 960 - round(0.617 * 960))
+
+    def test_unknown_profile_names_valid_ones(self):
+        with self.assertRaises(KeyError) as cm:
+            karaoke.build_ass(self.W, 5.0, profile="nope")
+        self.assertIn("short-organic", str(cm.exception))
+
+    def test_watermark_box_inside_safe_area_at_profile_size(self):
+        prof = layout.load("short-organic")
+        x0, y0, x1, y1 = layout.safe_box(prof)
+        ass = karaoke.build_ass(self.W, 5.0, watermark="@alisadikinma", profile="short-organic")
+        line = next(l for l in ass.splitlines() if "\\an5" in l)
+        fs = int(line.split("\\fs")[1].split("\\")[0])
+        half_w = len("@alisadikinma") * fs * 0.6 / 2
+        self.assertGreaterEqual(540 - half_w, x0)
+        self.assertLessEqual(540 + half_w, x1)
+        self.assertGreaterEqual(960 - fs / 2, y0)
+        self.assertLessEqual(960 + fs / 2, y1)
+
+    def test_watermark_too_wide_for_safe_area_is_refused(self):
+        with self.assertRaises(ValueError):
+            karaoke.build_ass(self.W, 5.0, watermark="@" + "x" * 40, profile="short-organic")
+
+    def test_cli_unknown_profile_exits_2_with_names(self):
+        with tempfile.TemporaryDirectory() as d:
+            wf = Path(d) / "w.json"
+            wf.write_text(json.dumps(self.W))
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = vcli.main(["karaoke", str(wf), str(Path(d) / "o.ass"), "--total", "3", "--profile", "nope"])
+            self.assertEqual(rc, 2)
+            self.assertIn("short-organic", err.getvalue())
+
+    def test_cli_default_profile_and_none_opt_out(self):
+        with tempfile.TemporaryDirectory() as d:
+            wf, o = Path(d) / "w.json", Path(d) / "o.ass"
+            wf.write_text(json.dumps(self.W))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(vcli.main(["karaoke", str(wf), str(o), "--total", "3"]), 0)
+                self.assertEqual(self._style(o.read_text())["size"], round(0.029 * 1920))
+                self.assertEqual(vcli.main(["karaoke", str(wf), str(o), "--total", "3", "--profile", "none"]), 0)
+                self.assertEqual(self._style(o.read_text())["size"], 86)
 
 
 class CoverUnwhiteTest(unittest.TestCase):
