@@ -224,6 +224,19 @@
       "internal_reason": ""
     },
     {
+      "id": "tools/guide_vo.py",
+      "purpose": "Expressive guide-voice takes (stock voice, eleven_v3, audio tags, several stabilities) to convert into the cast voice.",
+      "tasks": [
+        "guide-voice",
+        "delivery",
+        "vo-takes"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "gen_vo speaks the final narration in the locked cast voice on multilingual_v2, one take; a guide voice is a stock v3 voice in several takes.",
+      "internal_reason": ""
+    },
+    {
       "id": "tools/make_stems.py",
       "purpose": "Write full-length voice, SFX and music WAV stems for a human editor, gains baked in, no ducking.",
       "tasks": [
@@ -485,6 +498,35 @@
       "phase": "shared",
       "replaces": [],
       "distinct_because": "audiostudy times SFX/music onsets against words and cuts; prosody measures the speaker's own pace, pitch and stress.",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/tighten.py",
+      "purpose": "Cut gaps between words longer than a limit down to a kept breath, from ASR word timings.",
+      "tasks": [
+        "tighten",
+        "pause",
+        "pace",
+        "vo-edit"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "silence detectors cut breaths and whispers unevenly; this cuts only at word boundaries.",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/placevoice.py",
+      "purpose": "Seat a voice-changed line into its clip: quiet ambience bed from the gaps, mic space, level match.",
+      "tasks": [
+        "placevoice",
+        "dub",
+        "ambience",
+        "room-tone",
+        "voice-change-finish"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "voice_changer --spans keeps the bed only between words; this lays it under the speech and adds space.",
       "internal_reason": ""
     },
     {
@@ -899,12 +941,42 @@
       "replaces": [],
       "distinct_because": "",
       "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/grain.py",
+      "purpose": "Add fine moving film grain so generated footage stops looking airbrushed.",
+      "tasks": [
+        "grain",
+        "film-grain",
+        "skin",
+        "anti-ai-look",
+        "finish"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "colormatch evens out colour between clips; this adds sensor-like texture, the part AI renders leave out.",
+      "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/reframe.py",
+      "purpose": "Cut a 9:16 window out of 16:9 footage, panning between subject-centre keys.",
+      "tasks": [
+        "reframe",
+        "crop",
+        "vertical",
+        "pan",
+        "follow-subject"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "plan_motion adds zoom to static edit-plan segments; this pans a vertical window across wide source footage to keep a moving subject in frame.",
+      "internal_reason": ""
     }
   ],
   "routes": [
     {
-      "task": "Download someone's video from a link (Instagram needs login)",
-      "use": "`python3 -m tools.vidkit ingest <url> <dir> [--cookies-from-browser chrome]`",
+      "task": "Download someone's video from a link, or only the seconds you need (Instagram/YouTube may need login)",
+      "use": "`python3 -m tools.vidkit ingest <url> <dir> [--cookies-from-browser chrome] [--section START-END]`",
       "tools": [
         "tools/vidkit/ingest.py"
       ]
@@ -1151,6 +1223,11 @@
       "tools": []
     },
     {
+      "task": "Line-art diagram shot (arrows that draw themselves, text chips, frames from word timings)",
+      "use": "`templates/remotion/lib/diagram-kit.tsx`: `DiagramBg`, `Arrow`, `Tag`; timing in `lib/diagramFx.mjs`: `durationFrames`, `wordFrame`, `findWordFrame`",
+      "tools": []
+    },
+    {
       "task": "Subtitles / captions / keyword highlight",
       "use": "`gen_subs.py`, `burn_subs.py`, `gen_captions.py`, `caption_keywords.py`",
       "tools": [
@@ -1187,6 +1264,27 @@
       "use": "`python3 -m tools.vidkit prosody <mono.wav> <words.json> [--out r.json] [--min-range-st 10 --min-wps 2.4 --max-pause 0.35]`",
       "tools": [
         "tools/vidkit/prosody.py"
+      ]
+    },
+    {
+      "task": "Narration with someone else's energy: guide-voice takes, then tighten, gate and voice-change",
+      "use": "`python3 tools/guide_vo.py plan.json vo/ --voice-id <stock>` -> `vidkit tighten` -> `vidkit prosody --min-wps` -> `voice_changer.mjs --voice-env ELEVENLABS_VOICE_C1`",
+      "tools": [
+        "tools/guide_vo.py"
+      ]
+    },
+    {
+      "task": "Shorten long pauses in a voice take without touching the words",
+      "use": "`python3 -m tools.vidkit tighten <audio> <words.json> <out> [--max-gap 0.3 --keep 0.2]`",
+      "tools": [
+        "tools/vidkit/tighten.py"
+      ]
+    },
+    {
+      "task": "A voice-changed line sounds pasted on (too clean for the scene)",
+      "use": "`python3 -m tools.vidkit placevoice <clip> <voice> <words.json> <out> [--space outdoor/room/dry]` (default `--bed gaps`; `--bed stems` = Demucs, experimental, sounded worse by ear)",
+      "tools": [
+        "tools/vidkit/placevoice.py"
       ]
     },
     {
@@ -1376,6 +1474,20 @@
       "use": "`python3 -m tools.vidkit title <img> \"<text>\" <out>`",
       "tools": [
         "tools/vidkit/title.py"
+      ]
+    },
+    {
+      "task": "Generated skin or background looks plastic or airbrushed next to real footage",
+      "use": "`python3 -m tools.vidkit grain <src> <out> [--strength 7]` (same strength on every clip)",
+      "tools": [
+        "tools/vidkit/grain.py"
+      ]
+    },
+    {
+      "task": "Wide (16:9) footage must become 9:16 with the moving subject kept in frame",
+      "use": "`python3 -m tools.vidkit reframe <src> <out> --keys 0:0.4,2:0.7 [--zoom 1.0]` (cx = subject centre / width; read it off a contact sheet)",
+      "tools": [
+        "tools/vidkit/reframe.py"
       ]
     }
   ],

@@ -10,16 +10,28 @@ from pathlib import Path
 from . import ff
 
 
-def download(url, out_dir, name="source", cookies_from_browser=None):
+SECTION = re.compile(r"^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$")
+
+
+def download(url, out_dir, name="source", cookies_from_browser=None, section=None):
     """Download `url` with yt-dlp as `<out_dir>/<name>.mp4` (best mp4, audio kept). Returns the path.
 
     `cookies_from_browser` (e.g. "chrome") lets yt-dlp read that browser's login cookies; Instagram
-    reels refuse anonymous downloads ("login required"). The cookies are read, never written to disk.
+    reels refuse anonymous downloads ("login required"), and YouTube may answer 403. The cookies are
+    read, never written to disk.
+
+    `section="START-END"` (seconds) fetches only that range, so a 23-minute 4K event is not
+    downloaded to use six seconds of it.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / f"{name}.mp4"
     cookies = ["--cookies-from-browser", cookies_from_browser] if cookies_from_browser else []
+    if section is not None:
+        m = SECTION.match(str(section))
+        if not m or float(m.group(2)) <= float(m.group(1)):
+            raise ValueError(f"section must be START-END in seconds with END > START, got {section!r}")
+        cookies += ["--download-sections", f"*{section}"]
     ff.run(["yt-dlp", "--no-playlist", *cookies, "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
             "--merge-output-format", "mp4", "-o", str(target), url])
     if not target.exists():

@@ -48,11 +48,25 @@ class IngestTest(unittest.TestCase):
             ingest.download("https://x/reel", d)
             self.assertNotIn("--cookies-from-browser", run.call_args[0][0])
 
+    def test_download_section_fetches_only_that_range(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(ff, "run") as run:
+            run.side_effect = lambda cmd, **kw: (Path(d) / "source.mp4").write_bytes(b"x")
+            ingest.download("https://x/v", d, section="1362.5-1366")
+            cmd = run.call_args[0][0]
+            self.assertEqual(cmd[cmd.index("--download-sections") + 1], "*1362.5-1366")
+
+    def test_download_rejects_malformed_section(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(ff, "run") as run:
+            for bad in ("90", "10-5", "a-b"):
+                with self.assertRaises(ValueError):
+                    ingest.download("https://x/v", d, section=bad)
+            run.assert_not_called()
+
     def test_cli_ingest_forwards_cookies_flag(self):
         with mock.patch.object(ingest, "download", return_value="p") as dl, \
                 contextlib.redirect_stdout(io.StringIO()):
             vcli.main(["ingest", "https://x/reel", "out", "--cookies-from-browser", "chrome"])
-        dl.assert_called_once_with("https://x/reel", "out", "source", "chrome")
+        dl.assert_called_once_with("https://x/reel", "out", "source", "chrome", None)
 
     @requires_ffmpeg
     def test_split_writes_clips_stills_and_json(self):

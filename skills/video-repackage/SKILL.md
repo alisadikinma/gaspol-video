@@ -151,6 +151,7 @@ A/V gate 0.04 s, loudness -14 LUFS with true peak under -1 dBFS.
 | Text and watermark in the 9:16 safe area, off the face | `python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>]`; not final until it exits 0 |
 | Follow popup, "Ssst!", "WOW!", thumbnail art | Remotion `lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover` |
 | Logo that must sit on a prop (not look pasted) | `vidkit unwhite`, then `mix-blend-mode: multiply`, a little blur and grain |
+| Generated skin looks plastic / AI next to real footage | `python3 -m tools.vidkit grain <src> <out> --strength 7`, same strength on every clip, before the cut |
 | Final mix, loudness, thumbnail on first frames and as cover | `python3 -m tools.vidkit mixdown plan.json` |
 
 ### 7. Hand-off

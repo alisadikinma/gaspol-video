@@ -155,6 +155,20 @@ For scenes whose `audio_source` is `platform-native` and whose dialogue is spoke
 speech-to-speech conversion (Pass 1 edge cases below). Scenes with no on-camera dialogue set
 `voice_change: "n/a"`.
 
+**Seat the converted voice, never mux it raw.** Speech-to-speech returns a studio-dry voice with the
+scene's air stripped out; muxed straight onto the clip it reads as a dub ("ditempel"). Always run
+`python3 -m tools.vidkit placevoice <clip> <converted> <words.json> <out> --space outdoor|room|dry` (default `--bed gaps`).
+Three failures seen in the field, all now blocked by tests in `tests/py/test_placevoice.py`:
+1. Raw mux (no ambience, no room) → sounds pasted on.
+2. Level matched BEFORE the echo/EQ chain, with an echo `out_gain` under 1 → the chain silently drops
+   ~5 dB and the voice sounds deflated ("kempes"). Level is matched AFTER the chain, within ±1 dB of
+   the original speech.
+3. `--bed stems` (Demucs background stem under the whole clip) instead of the gap bed → judged
+   WORSE by ear than a 0.38 s looped gap on the same line. Stems stays opt-in. Never make it the
+   default, never replace an approved render with it, and keep the approved file in place while
+   an experiment renders to a new name.
+Do not hand-roll an ffmpeg mix that skips any of these steps.
+
 ### K.4 — Remotion
 Render the explainer shots and the overlays that belong to this kelompok's scenes, through
 `/video-explainer`. Do not render the whole film's shots here — only this kelompok's.

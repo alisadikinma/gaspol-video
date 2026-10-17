@@ -14,7 +14,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 <!-- registry:routes:begin -->
 | I want to... | Use |
 |---|---|
-| Download someone's video from a link (Instagram needs login) | `python3 -m tools.vidkit ingest <url> <dir> [--cookies-from-browser chrome]` |
+| Download someone's video from a link, or only the seconds you need (Instagram/YouTube may need login) | `python3 -m tools.vidkit ingest <url> <dir> [--cookies-from-browser chrome] [--section START-END]` |
 | Cut a video into scenes (clip + first/mid/last stills + scenes.json) | `python3 -m tools.vidkit scenes <video> <dir>` |
 | Probe a clip (duration, fps, size, sample rate, channels) | `python3 -m tools.vidkit probe` / `vidkit.ff.probe` |
 | Check video length = audio length | `vidkit gate-av`; narration fits its cut: `check_vo_duration.py` |
@@ -49,11 +49,15 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Read a file's colour space / primaries / transfer / range | `vidkit.color.probe_color(path)` |
 | Does a source need a BT.601 to BT.709 conversion? | `vidkit.color.convert_filter(probe, warnings, source)` (`''` = leave alone) |
 | Follow popup with clicking cursor, "Ssst!", "WOW!", thumbnail cover (Remotion) | `templates/remotion/lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover` |
+| Line-art diagram shot (arrows that draw themselves, text chips, frames from word timings) | `templates/remotion/lib/diagram-kit.tsx`: `DiagramBg`, `Arrow`, `Tag`; timing in `lib/diagramFx.mjs`: `durationFrames`, `wordFrame`, `findWordFrame` |
 | Subtitles / captions / keyword highlight | `gen_subs.py`, `burn_subs.py`, `gen_captions.py`, `caption_keywords.py` |
 | Kinetic text overlay behind the speaker | `overlay_plan.py`, `person_mask.py`, Remotion `KineticOverlay` |
 | Viral overlay extras (sticker icons, step counter, red vignette, falling burst, `viral` caption preset) | `overlay_plan.py` fields `steps`, `vignette`, `burst`, `preset` + `KineticOverlay` (doc 19 section 8) |
 | Measure onsets, tempo, energy and word/cut timing of a reference clip | `python3 -m tools.vidkit audiostudy <clip> [--words w.json] [--out r.json]` |
 | Copy how a reference voice is delivered, or reject a flat/slow take before voice change | `python3 -m tools.vidkit prosody <mono.wav> <words.json> [--out r.json] [--min-range-st 10 --min-wps 2.4 --max-pause 0.35]` |
+| Narration with someone else's energy: guide-voice takes, then tighten, gate and voice-change | `python3 tools/guide_vo.py plan.json vo/ --voice-id <stock>` -> `vidkit tighten` -> `vidkit prosody --min-wps` -> `voice_changer.mjs --voice-env ELEVENLABS_VOICE_C1` |
+| Shorten long pauses in a voice take without touching the words | `python3 -m tools.vidkit tighten <audio> <words.json> <out> [--max-gap 0.3 --keep 0.2]` |
+| A voice-changed line sounds pasted on (too clean for the scene) | `python3 -m tools.vidkit placevoice <clip> <voice> <words.json> <out> [--space outdoor/room/dry]` (default `--bed gaps`; `--bed stems` = Demucs, experimental, sounded worse by ear) |
 | Retention check on a finished cut (static frame, hook, foreshadow, b-roll, BGM) | `python3 tools/retention_gate.py report` / `check` |
 | Fill/check the viral checklist of a short-form script; rate analytics against course thresholds | `python3 tools/viral_checklist.py check` / `timeline` / `rate` |
 | Put an app screen into a phone/monitor in a clip | `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |
@@ -81,6 +85,8 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Face box per frame, for the layout gate | `face_box.py` |
 | Check text and watermark sit in the 9:16 safe area | `python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>] [--overlay <shots dir>]` |
 | Stamp the thumbnail title | `python3 -m tools.vidkit title <img> "<text>" <out>` |
+| Generated skin or background looks plastic or airbrushed next to real footage | `python3 -m tools.vidkit grain <src> <out> [--strength 7]` (same strength on every clip) |
+| Wide (16:9) footage must become 9:16 with the moving subject kept in frame | `python3 -m tools.vidkit reframe <src> <out> --keys 0:0.4,2:0.7 [--zoom 1.0]` (cx = subject centre / width; read it off a contact sheet) |
 <!-- registry:routes:end -->
 
 ## When no tool fits (inject back)

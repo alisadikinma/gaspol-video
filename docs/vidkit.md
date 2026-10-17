@@ -55,7 +55,7 @@ Tests: `tests/py/test_vidkit.py`, `tests/node/vidkit-js.test.mjs` (run with the 
 
 | Function | What |
 |---|---|
-| `download(url, dir, name, cookies_from_browser)` | yt-dlp, best mp4 with audio; `cookies_from_browser="chrome"` reads that browser's login (Instagram refuses anonymous downloads) |
+| `download(url, dir, name, cookies_from_browser, section)` | yt-dlp, best mp4 with audio; `cookies_from_browser="chrome"` reads that browser's login (Instagram refuses anonymous downloads, YouTube may 403); `section="START-END"` fetches only that range |
 | `scenes_from_cuts(cuts, duration, min_len)` | cut times to scene spans; flash cuts under `min_len` are dropped |
 | `split_scenes(video, dir, threshold, min_len)` | scene clips, first/mid/last stills, `scenes.json` |
 
@@ -87,6 +87,52 @@ How a voice is delivered, so a new take can copy the delivery of a reference voi
 | `gate(rep, min_range_st, min_wps, max_pause_s)` | problems against targets; `[]` passes |
 
 Use: measure the reference (pace, pauses, stressed words), write per-line delivery direction, then gate every take before speech-to-speech: a voice changer keeps the input's pitch and pace, so a flat take stays flat. A music bed under the reference inflates stress on function words; pick the stressed words by hand from `emphasis`. Measure the reference first and derive the gate thresholds from it; there is no universal "engaging" number. CLI: `vidkit prosody <wav> <words> [--out] [--min-range-st] [--min-wps] [--max-pause]`, exit 1 on a gate failure.
+
+## Tighten (`tools/vidkit/tighten.py`)
+
+| Function | What |
+|---|---|
+| `plan_cuts(words, max_gap, keep)` | gaps longer than `max_gap` between ASR words become cuts that leave `keep` seconds (half each side) |
+| `apply(audio, words, out, max_gap, keep)` | writes `out` with those cuts; `{cuts, removed_s, duration}` |
+
+Run it on a guide-voice take before speech-to-speech (which keeps durations), never on a clip with lip-sync. Pair with `tools/guide_vo.py` (stock-voice takes on eleven_v3 with audio tags) and `vidkit prosody` (gate). CLI: `vidkit tighten <audio> <words> <out> [--max-gap] [--keep]`.
+
+## Place voice (`tools/vidkit/placevoice.py`)
+
+| Function | What |
+|---|---|
+| `ambience_gaps(words, duration, min_gap, pad)` | spans with no ASR word |
+| `quiet_runs(env, max_db, min_len)` | spans where the dB envelope stays under `max_db` |
+| `intersect(a, b, min_len)` | overlap of two span lists |
+| `separate(clip, work_dir, model)` | Demucs two-stem split of the clip's audio; returns the background (`no_vocals.wav`) stem |
+| `place(clip, voice, words, out, space, bed_db, min_gap, quiet_below_db, bed)` | clip video + voice with body EQ, light compression and a faint reflection, level-matched AFTER that chain to the original speech, over the bed. `bed`: `gaps` (default: loop of word-free, quiet gaps), `stems` (experimental: Demucs background, whole clip) |
+
+Speech-to-speech output is studio-dry; on location it reads as a dub. Video models also laugh and breathe without an ASR word, so in `gaps` mode a gap is used only when it is `quiet_below_db` (12) under the median speech level. CLI: `vidkit placevoice <clip> <voice> <words> <out> [--space] [--bed gaps|stems] [--bed-db]`.
+
+Rules (field case: a 4 s VEO line, three versions):
+- Never mux a converted on-camera voice raw: it sounds pasted on.
+- Match the level AFTER the space chain. Matching before it, with an echo `out_gain` of 0.6, lost ~5 dB and the voice sounded deflated. `test_speech_level_matches_original_after_the_chain` keeps ±1 dB.
+- Keep the default `--bed gaps`. `--bed stems` (Demucs background under the whole clip) was tried on the same 4 s line and the owner judged it WORSE than the 0.38 s looped gap. Use stems only as an experiment, keep the gaps render beside it, and let the owner pick by ear. Install for that: `uv tool install --python 3.11 demucs --with soundfile`.
+
+## Reframe (`tools/vidkit/reframe.py`)
+
+| Function | What |
+|---|---|
+| `parse_keys("T:CX,...")` | keys; CX = subject centre as a fraction of the frame width |
+| `center_at(keys, t)` / `x_expr(keys, w, win_w)` | linear pan between keys, held at the ends; ffmpeg crop `x` expression, clamped in frame |
+| `apply(src, out, keys, zoom, size)` | 9:16 window panning across wide footage, scaled to `size`, audio dropped |
+| `fit(src, out, size, blur)` | whole wide frame centred over a blurred copy, for a subject wider than any 9:16 window |
+
+Official 16:9 product footage into a 9:16 short: a centre crop loses a moving car. Read CX off a gridded contact sheet (10% lines), give 2-4 keys per clip, then look at frames of the result before using it. A side-on close-up wider than ~32% of the frame gets `--fit`. CLI: `vidkit reframe <src> <out> --keys 0:0.6,2:0.45 [--zoom 1.0]` or `--fit`.
+
+## Grain (`tools/vidkit/grain.py`)
+
+| Function | What |
+|---|---|
+| `vf(strength)` | ffmpeg filter `noise=alls=S:allf=t` (moving grain), strength 1-40 |
+| `apply(src, out, strength, crf)` | `src` with grain, audio copied; refuses `out == src` |
+
+Generated skin and backgrounds have no sensor noise, so faces read as plastic next to real footage. Give every clip of a film the same strength (6-8 subtle on a phone, 14 only to demonstrate) so generated shots and official footage look like one camera. Write to a new file; the approved clip stays. CLI: `vidkit grain <src> <out> [--strength 7]`.
 
 ## Finishing (`karaoke`, `cover`, `unwhite`, `mixdown`)
 

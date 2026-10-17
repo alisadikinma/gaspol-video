@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { MAX_DRIFT_S, convert, driftMessage } from "../../tools/voice_changer.mjs";
+import { MAX_DRIFT_S, convert, driftMessage, parseVoiceSettings } from "../../tools/voice_changer.mjs";
 
 function okFetch(calls) {
   return async (url, init) => {
@@ -288,4 +288,45 @@ test("converting a whole track warns that every voice on it changes", async () =
       "a clip with a second speaker must not convert silently",
     );
   });
+});
+
+// Added 2026-10: conversion narrowed a lively take's pitch range (12.9 st in, 9.5 st out), so the
+// settings are now passable. Whether lower stability helps is unproven; these tests cover the wiring.
+test("voice settings are sent as JSON when given", async () => {
+  await withTmp(async (dir) => {
+    const calls = [];
+    await convert({
+      ...BASE,
+      inputPath: path.join(dir, "in.wav"),
+      outPath: path.join(dir, "vo", "a.mp3"),
+      fetchImpl: okFetch(calls),
+      extract: async () => path.join(dir, "in.wav"),
+      durationOf: async () => 3.2,
+      voiceSettings: { stability: 0.2, style: 0.4 },
+    });
+    assert.deepEqual(JSON.parse(calls[0].init.body.get("voice_settings")), { stability: 0.2, style: 0.4 });
+  });
+});
+
+test("no voice settings field when none are given (API default kept)", async () => {
+  await withTmp(async (dir) => {
+    const calls = [];
+    await convert({
+      ...BASE,
+      inputPath: path.join(dir, "in.wav"),
+      outPath: path.join(dir, "vo", "a.mp3"),
+      fetchImpl: okFetch(calls),
+      extract: async () => path.join(dir, "in.wav"),
+      durationOf: async () => 3.2,
+    });
+    assert.equal(calls[0].init.body.get("voice_settings"), null);
+  });
+});
+
+test("parseVoiceSettings keeps only given values and rejects out-of-range ones", () => {
+  assert.equal(parseVoiceSettings({}), null);
+  assert.deepEqual(parseVoiceSettings({ stability: "0.25" }), { stability: 0.25 });
+  assert.deepEqual(parseVoiceSettings({ stability: "0", style: "1" }), { stability: 0, style: 1 });
+  assert.throws(() => parseVoiceSettings({ stability: "1.5" }), /stability.*0-1/);
+  assert.throws(() => parseVoiceSettings({ style: "abc" }), /style.*0-1/);
 });

@@ -60,6 +60,23 @@ export const SEAM_PAD_S = 0.05;
  * span means the caller has the speaker turns wrong, and quietly sorting them would
  * convert the wrong person while looking like it worked.
  */
+/**
+ * `--stability` / `--style` CLI values -> voice_settings object, or null when neither is given
+ * (the API default is kept). Added to tune a conversion that flattens a lively take. Unproven: one
+ * field test at stability 0.2 / style 0.4 kept no more pitch range than the default (8.5 vs 9.5 st);
+ * the target voice's own range sets the ceiling. Out-of-range values throw instead of being clamped.
+ */
+export function parseVoiceSettings({ stability, style } = {}) {
+  const out = {};
+  for (const [name, raw] of Object.entries({ stability, style })) {
+    if (raw === undefined || raw === null) continue;
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < 0 || v > 1) throw new Error(`${name} must be a number 0-1, got ${raw}`);
+    out[name] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export function parseSpans(text) {
   const spans = [];
   for (const raw of String(text).split(",")) {
@@ -188,6 +205,7 @@ export async function convert({
   extract = extractAudio,
   durationOf = probeDuration,
   log = console.log,
+  voiceSettings = null,
 }) {
   const apiKey = env.ELEVENLABS_API_KEY;
   if (!apiKey) {
@@ -223,6 +241,7 @@ export async function convert({
 
   const form = new FormData();
   form.append("model_id", model);
+  if (voiceSettings) form.append("voice_settings", JSON.stringify(voiceSettings));
   // Deliberately no text field: this converts the performance that is already there.
   // Handing it a script would re-read the line and destroy the timing that lip-sync needs.
   const { readFile } = await import("node:fs/promises");
@@ -290,6 +309,7 @@ export async function convertSpans({
   fetchImpl = globalThis.fetch,
   extract = extractAudio,
   durationOf = probeDuration,
+  voiceSettings = null,
   splice = spliceSpans,
   rmsOf = measureRms,
   log = console.log,
@@ -348,6 +368,7 @@ export async function convertSpans({
 
     const form = new FormData();
     form.append("model_id", model);
+    if (voiceSettings) form.append("voice_settings", JSON.stringify(voiceSettings));
     form.append("audio", new Blob([await readFile(src)]), path.basename(src));
 
     const response = await fetchImpl(`${API_BASE}/${voiceId}`, {
@@ -420,7 +441,8 @@ async function main(argv) {
   if (!clip) {
     console.error(
       "usage: node tools/voice_changer.mjs <clip> --voice-env ELEVENLABS_VOICE_C2 --out vo/scene-02-c2.mp3\n" +
-      "       [--spans 0-3.88,5.2-7]  convert only these turns; required when the clip has a second speaker",
+      "       [--spans 0-3.88,5.2-7]  convert only these turns; required when the clip has a second speaker\n" +
+      "       [--stability 0.2] [--style 0.4]  ElevenLabs voice_settings (default: API default)",
     );
     return 2;
   }
@@ -444,6 +466,7 @@ async function main(argv) {
     outPath: flag("out", "vo/converted.mp3"),
     voiceEnv: flag("voice-env"),
     model: flag("model", DEFAULT_MODEL),
+    voiceSettings: parseVoiceSettings({ stability: flag("stability"), style: flag("style") }),
     env: { ...envFile, ...process.env },
   };
   const result = spansArg

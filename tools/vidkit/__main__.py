@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import audiostudy, beats, colormatch, cover, ff, gates, ingest, join, karaoke, layout, mixdown, loudness, patch, prosody, sheet, speech, synth, tidy, title, track, unwhite
+from . import audiostudy, beats, colormatch, cover, ff, gates, grain, ingest, join, karaoke, layout, mixdown, loudness, patch, placevoice, prosody, reframe, sheet, tighten, speech, synth, tidy, title, track, unwhite
 
 
 def _json(p):
@@ -21,6 +21,7 @@ def main(argv=None):
     s.add_argument("--name", default="source")
     s.add_argument("--cookies-from-browser", default=None,
                    help="browser whose login cookies yt-dlp reads (chrome, safari, firefox); Instagram needs it")
+    s.add_argument("--section", help="download only START-END seconds, e.g. 1362.5-1366")
 
     s = sub.add_parser("scenes", help="cut a video into scenes with first/mid/last stills + scenes.json")
     s.add_argument("video")
@@ -36,6 +37,36 @@ def main(argv=None):
     s.add_argument("--min-wps", type=float, help="gate: exit 1 if the pace is below this many words/s")
     s.add_argument("--max-pause", type=float, help="gate: exit 1 if the mean pause between sentences is above this")
     s.add_argument("--stress-z", type=float, default=1.0)
+
+    s = sub.add_parser("grain", help="add fine moving film grain (generated skin looks less airbrushed)")
+    s.add_argument("src")
+    s.add_argument("out")
+    s.add_argument("--strength", type=int, default=7, help="1-40; 6-8 subtle, 14 clearly visible")
+
+    s = sub.add_parser("reframe", help="cut a 9:16 window from wide footage, panning to follow the subject")
+    s.add_argument("src")
+    s.add_argument("out")
+    s.add_argument("--keys", help="T:CX,... subject centre as fraction of width, e.g. 0:0.4,2:0.7")
+    s.add_argument("--fit", action="store_true", help="whole frame over a blurred copy (subject wider than a 9:16 window)")
+    s.add_argument("--zoom", type=float, default=1.0, help=">= 1; tighter window")
+    s.add_argument("--size", default="1080x1920")
+
+    s = sub.add_parser("tighten", help="cut gaps between words longer than --max-gap down to --keep (word timings)")
+    s.add_argument("audio")
+    s.add_argument("words", help="AssemblyAI words json, [[word,start,end],...] or [{word,start,end}]")
+    s.add_argument("out")
+    s.add_argument("--max-gap", type=float, default=0.3)
+    s.add_argument("--keep", type=float, default=0.2)
+
+    s = sub.add_parser("placevoice", help="seat a converted voice into its clip: ambience bed from the gaps, mic space, level match")
+    s.add_argument("clip")
+    s.add_argument("voice")
+    s.add_argument("words", help="word timings of the speech in the clip (json)")
+    s.add_argument("out")
+    s.add_argument("--space", default="outdoor", choices=sorted(placevoice.SPACES))
+    s.add_argument("--bed", default="gaps", choices=placevoice.BEDS,
+                   help="gaps = loop quiet gaps (default); stems = Demucs background stem, experimental")
+    s.add_argument("--bed-db", type=float, default=None, help="bed level vs its source (default 0 stems, -6 gaps)")
 
     s = sub.add_parser("audiostudy", help="onsets, tempo, loudness, energy and word/cut relation of one clip")
     s.add_argument("clip")
@@ -179,7 +210,7 @@ def main(argv=None):
         ap.error("--include-mcp needs --empty-tmp")
     try:
         if a.cmd == "ingest":
-            print(ingest.download(a.url, a.out_dir, a.name, a.cookies_from_browser))
+            print(ingest.download(a.url, a.out_dir, a.name, a.cookies_from_browser, a.section))
         elif a.cmd == "scenes":
             rows = ingest.split_scenes(a.video, a.out_dir, a.threshold, a.min_len)
             print(f"{len(rows)} scenes -> {a.out_dir}/scenes.json")
@@ -195,6 +226,25 @@ def main(argv=None):
             for problem in prosody.gate(rep, a.min_range_st, a.min_wps, a.max_pause):
                 print(f"FAIL: {problem}", file=sys.stderr)
                 rc = 1
+        elif a.cmd == "grain":
+            grain.apply(a.src, a.out, a.strength)
+            print(f"{a.out}: grain {a.strength}")
+        elif a.cmd == "reframe":
+            sw, sh = (int(v) for v in a.size.lower().split("x"))
+            if a.fit:
+                reframe.fit(a.src, a.out, (sw, sh))
+                print(f"{a.out}: fit over blur")
+            elif not a.keys:
+                raise ValueError("reframe needs --keys or --fit")
+            else:
+                r = reframe.apply(a.src, a.out, reframe.parse_keys(a.keys), a.zoom, (sw, sh))
+                print(f"{a.out}: window {r['window'][0]}x{r['window'][1]}, {len(r['keys'])} key(s)")
+        elif a.cmd == "tighten":
+            r = tighten.apply(a.audio, prosody.load_words(a.words), a.out, a.max_gap, a.keep)
+            print(f"{a.out}: {r['cuts']} gap(s) cut, {r['removed_s']} s removed, {r['duration']} s")
+        elif a.cmd == "placevoice":
+            r = placevoice.place(a.clip, a.voice, prosody.load_words(a.words), a.out, a.space, a.bed_db, bed=a.bed)
+            print(f"{a.out}: voice {r['gain_db']:+} dB, bed {r['bed']} ({r['bed_s']} s), space {r['space']}")
         elif a.cmd == "audiostudy":
             rep = audiostudy.study(a.clip, _json(a.words) if a.words else None)
             if a.out:
