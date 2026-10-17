@@ -596,7 +596,8 @@ Face samples with no face are listed under "Skipped", never counted as a pass.
 |---|---|
 | 0 | No finding. |
 | 1 | At least one finding (text outside the safe area, on the face, or a title over the face). Blocking. |
-| 2 | Bad input: missing file, unknown profile, not 9:16, thumbnail without its `.box.json`, missing face model or venv. Blocking: the gate did not run. |
+| 2 | Bad input or nothing measured: missing file, unknown profile, not 9:16, clip aspect differs from the overlay, thumbnail without its `.box.json`, missing face model or venv, no text box drawn at all. Blocking: the gate did not run. |
+| 3 | INCOMPLETE: `--overlay` directory mode measured only the scene the Remotion workspace is wired to; the others are listed "not measured". Blocking until each is checked with its own `--overlay <json>` run. |
 
 A finding blocks `video-post --final` and `video-package`. Fix the ASS or the title position and
 re-run; never widen the profile to pass.
