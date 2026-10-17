@@ -485,6 +485,18 @@
       "internal_reason": ""
     },
     {
+      "id": "tools/vidkit/segment.py",
+      "purpose": "Mask an object through a clip from a click or box with SAM 2.1 (venv-ml): bool mask per frame, any prompt frame.",
+      "tasks": [
+        "video-mask",
+        "object-segmentation"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
       "id": "tools/vidkit/ml.py",
       "purpose": "Guard for the ML tools: venv-ml interpreter path, sha256-checked model weights, torch device pick (mps or cpu).",
       "tasks": [
@@ -1077,6 +1089,13 @@
       "use": "`tools.vidkit.pointtrack.track(frames, queries)` in venv-ml",
       "tools": [
         "tools/vidkit/pointtrack.py"
+      ]
+    },
+    {
+      "task": "Mask an object through a clip from one click or box",
+      "use": "`tools.vidkit.segment.masks(frames, frame_idx, points=..., box=...)` in venv-ml",
+      "tools": [
+        "tools/vidkit/segment.py"
       ]
     },
     {
