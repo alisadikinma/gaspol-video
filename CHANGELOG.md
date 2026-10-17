@@ -82,6 +82,11 @@ Every release of gaspol-video, newest first. The README carries the product over
 
 > **v2.2.0 hardening:** 4 enforcement rules close gaps that previously allowed mid-production restructures — BODY 1 narrative completeness, NB2 reference uniqueness filter, max 5 inline refs per prompt, and environment-gated cross-scene references. See [v2.2.0 Hard Rules](#v220-hard-rules) below.
 
+## v3.18.1 Changelog
+
+- **ffprobe callers moved to vidkit (GV-22).** 12 tools that ran `ffprobe` themselves now probe through `tools/vidkit/ff.py` or the new Node helper `tools/vidkit/js/ff.mjs`, with unchanged behaviour when ffprobe is missing or a file is unreadable. `ff.probe` returns `pix_fmt`; a missing binary raises `ff.FFMissing`. The `ffprobe_allow` list is down from 17 to 5 files that need fields `ff.probe` does not return or never call ffprobe.
+- **Escaped pipes in routes.** A route cell may contain `|` only as `\|`, so the `vidkit synth notification\|alarm` row no longer breaks the GitHub table.
+
 ## v3.18.0 Changelog
 
 - **Tool registry (GV-20).** `tools/registry.json` holds every tool and every task-to-tool route; the table in `docs/tool-routing.md` is generated from it (`python3 tools/registry_build.py render`). Gates fail on an unregistered tool, an unexplained duplicate, or a new direct `ffprobe` caller. A write-time hook (`hooks/tool-reminder.sh`) reminds you of the existing tool when a script outside `tools/` touches ffmpeg, ffprobe or Remotion; it never blocks. `check_vo_duration.py` and `track_screen.py` moved to `vidkit.ff`. Not done: 17 other ffprobe callers stay on an allowlist with written reasons; duplicate detection is exact (phase + task set) only.

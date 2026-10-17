@@ -13,7 +13,7 @@ at the sheet. Re-running keeps verdicts for a clip whose bytes did not change.
 nothing and writes nothing. Exit 1 when a clip has no section, a cell is empty or malformed
 or `FAIL:`, or the section was judged against different bytes; `UNSURE:` is a note for a human.
 
-Stdlib only. Needs ffmpeg and ffprobe.
+Stdlib only. Needs ffmpeg and its probe tool.
 """
 
 import argparse
@@ -29,9 +29,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import renders  # noqa: E402
+from tools.vidkit import ff  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 
 DEFAULT_FPS = 25.0
 
@@ -179,22 +179,13 @@ def _sha256(path):
 
 def probe(clip):
     """(duration_s, fps) of the first video stream; duration None when unknown."""
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=duration,r_frame_rate:format=duration",
-         "-of", "default=nw=1", str(clip)], capture_output=True, text=True)
-    duration = fps = None
-    for line in proc.stdout.splitlines():
-        key, _, value = line.partition("=")
-        try:
-            if key == "r_frame_rate" and "/" in value:
-                num, den = value.split("/")
-                fps = float(num) / float(den)
-            elif key == "duration" and duration is None:
-                duration = float(value)
-        except (ValueError, ZeroDivisionError):
-            continue
-    return duration, fps or DEFAULT_FPS
+    try:
+        info = ff.probe(clip)
+    except ff.FFError:
+        return None, DEFAULT_FPS
+    video = info["video"] or {}
+    duration = video.get("duration")
+    return (info["duration"] if duration is None else duration), video.get("fps") or DEFAULT_FPS
 
 
 def _run(args):
@@ -321,8 +312,8 @@ def main(argv=None):
         for line in problems + notes:
             print(line)
         return 1 if problems else 0
-    if not (FFMPEG and FFPROBE):
-        print("qa_frames: ffmpeg and ffprobe are required and were not found on PATH",
+    if ff.missing():
+        print(f"qa_frames: {' and '.join(ff.TOOLS)} are required and were not found on PATH",
               file=sys.stderr)
         return 2
 

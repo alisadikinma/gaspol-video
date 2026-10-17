@@ -8,7 +8,7 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 
 | Module | What | Replaces (per project) |
 |---|---|---|
-| `ff` | `probe`, `duration`, `run` (`heartbeat_s=N` prints `still running: <file> <s>s` every N seconds), `ffmpeg` | ad-hoc `ffprobe` helpers in every script |
+| `ff` | `probe` (video dict carries `pix_fmt`), `duration`, `has_audio`, `missing()` and `TOOLS` (binaries not on PATH), `FFMissing` (a `FFError` naming the absent binary), `run` (`heartbeat_s=N` prints `still running: <file> <s>s` every N seconds), `ffmpeg` | ad-hoc `ffprobe` helpers in every script |
 | `encoder` | `available`, `choose`, `video_args`, `run_with_fallback` (env `GASPOL_VIDEO_ENCODER`, see below) | the hard-coded `-c:v libx264 ...` in each encode |
 | `gates` | `gate_av` (video = audio length), `gate_uniform` (same sample rate and channels before concat) | `gerbang.py` |
 | `join` | `concat_copy`, `join_xfade`, `clip_starts` (timeline maths for dissolves) | `join.py`, the `rakit_*.py` concat steps |
@@ -43,6 +43,7 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 |---|---|---|
 | `env.mjs` | `parseEnv`, `loadEnv`, `requireKeys` (names missing keys, never values) | the `parse()` pasted at the top of every project script, with a hard-coded .env path |
 | `eleven.mjs` | `tts` (settings + seed), `sttWords` (Scribe word timings), `sfx`; CLI `tts|stt|sfx` | `tts-satu`, `tes-suara`, `stt`, `sfx/gen` |
+| `ff.mjs` | `probeDuration` (seconds, or `null` when the binary is missing or the file unreadable); the only Node file that calls the probe binary | the `probeDuration` copies in `gen_vo.mjs` and `voice_changer.mjs` |
 | `cast_voice.mjs` | voice change with per-character settings and seed, spans only; plan json | `voice-changer/run.mjs` (which also imported the plugin by a versioned cache path) |
 
 `templates/remotion/scripts/frames.mjs` and `qa-end.mjs` (multi-frame / end-state QA) now ship with every scaffold.

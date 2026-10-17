@@ -25,7 +25,7 @@ paths) and stages the clip, media and person-mask frames in `shots/public/overla
 clip. Re-running gives identical output.
 
 Exit 0 ok, one line per scene. Exit 1 refused; every problem is listed, each as
-"scene <s> cue <id>: <problem>". Exit 2 an input file is missing. Stdlib only; needs ffprobe.
+"scene <s> cue <id>: <problem>". Exit 2 an input file is missing. Stdlib only.
 """
 
 import argparse
@@ -35,15 +35,14 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.gen_captions import _align_norm  # noqa: E402
+from tools.vidkit import ff  # noqa: E402
 
-FFPROBE = shutil.which("ffprobe")
 
 ICONS = ("fire", "gavel", "chart", "cloud", "question", "arrow", "circle",
          "warning", "money", "check", "cross", "clock", "lock")
@@ -122,12 +121,9 @@ def _find_keyword(words, run, keyword):
 
 
 def _clip_duration(clip):
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(clip)],
-        capture_output=True, text=True)
     try:
-        return float(proc.stdout.strip())
-    except ValueError:
+        return ff.probe(clip)["duration"]
+    except ff.FFError:
         return None
 
 

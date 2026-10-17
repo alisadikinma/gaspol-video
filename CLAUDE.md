@@ -83,7 +83,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/viral_checklist.py` | `check` the `## Viral Checklist` block of `av-script.md` (7 stages, exit 1 on a missing/empty/`FAIL:` cell); `rate` a `calibration.json` entry against the course analytics thresholds (`unknown` when a key is absent). Test: `tests/py/test_viral_checklist.py` |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
 | `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: `audiostudy` (SFX/speech onsets, tempo, energy, word and cut relation of a reference clip), A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, track smoothing, motion-tracked print bond (cv2). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
-| `tools/vidkit/js/` | Node helpers: `env.mjs` (.env loading, keys never printed), `eleven.mjs` (`tts` with settings + seed, `stt` word timings, `sfx`), `cast_voice.mjs` (voice change with per-character settings and seed, spans only). Test: `tests/node/vidkit-js.test.mjs` |
+| `tools/vidkit/js/` | Node helpers: `env.mjs` (.env loading, keys never printed), `eleven.mjs` (`tts` with settings + seed, `stt` word timings, `sfx`), `cast_voice.mjs` (voice change with per-character settings and seed, spans only), `ff.mjs` (`probeDuration`, the only Node file that runs ffprobe). Test: `tests/node/vidkit-js.test.mjs` |
 | `templates/remotion/scripts/frames.mjs`, `qa-end.mjs` | Multi-frame and end-state Remotion QA, copied into every scaffolded workspace |
 | `templates/remotion/Overlay.template.tsx`, `lib/{overlay-fx.tsx,overlayFx.mjs}` | `KineticOverlay` (GV-17): clip, behind layer, person cut out by mask, front text, source box; six text effects as zero-import maths in `overlayFx.mjs` (unit-tested), drawn by `overlay-fx.tsx` |
 | `templates/remotion/lib/{brand.ts,kit.tsx,browser.tsx,screencast.tsx}` | Generic Remotion components ported from `claude-youtube-editor`, brand tokens only from the project's `brand.json` |
@@ -641,8 +641,13 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.18.0
+**Version:** 3.18.1
 **Last Updated:** 2026-10-17
+
+### v3.18.1 Changelog
+
+- **ffprobe callers moved to vidkit (GV-22).** 12 of the 17 files on `ffprobe_allow` now probe through `tools/vidkit/ff.py` (`burn_subs`, `clean_voice`, `composite`, `edit_render`, `gen_music`, `make_stems`, `mix_music`, `mix_sfx`, `overlay_plan`, `qa_frames`) or the new Node helper `tools/vidkit/js/ff.mjs` (`gen_vo.mjs`, `voice_changer.mjs`). Each wrapper keeps its name and return, including what it does when ffprobe is missing or a file is unreadable (`tests/py/test_probe_migration.py`). `ff.probe` returns `pix_fmt`; a missing binary raises `ff.FFMissing` (a subclass of `FFError`, message `<binary> not found on PATH`); `ff.missing()` lists absent tools. The ratchet accepts `vidkit/js/ff.mjs` as the second owner. `ffprobe_allow` is down to 5, each needing fields `ff.probe` does not return or never calling ffprobe: `person_mask.py`, `probe_clips.py`, `vidkit/color.py`, `registry_build.py`, `retention_gate.py`.
+- **Escaped pipes in routes.** A route cell may contain `|` only as `\|` (GitHub table syntax); a bare `|` is refused even inside a code span. The `vidkit synth notification\|alarm` row renders correctly now.
 
 ### v3.18.0 Changelog
 
@@ -974,7 +979,7 @@ All configurable values live in `reference/global-promo-config.md` — single so
 ## gaspol Ticket Counter
 
 Prefix: GV
-Last ticket: GV-20
+Last ticket: GV-22
 
 ## Tool-first rule (library)
 

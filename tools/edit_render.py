@@ -29,7 +29,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tools.vidkit import color, encoder, ff, stages  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 
 # One frame at 25fps. See probe_clips for why this is equality and not a growing budget.
 AV_TOLERANCE_S = 0.04
@@ -94,15 +93,9 @@ def _segment_length(seg):
 
 
 def _probe_duration(path):
-    if FFPROBE is None:
-        return None
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    )
     try:
-        return float(proc.stdout.strip())
-    except ValueError:
+        return ff.probe(path)["duration"]
+    except ff.FFError:
         return None
 
 
@@ -491,20 +484,12 @@ def av_durations(path):
 
 
 def _probe_duration_stream(path, stream):
-    if FFPROBE is None:
-        return None
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-select_streams", stream,
-         "-show_entries", "stream=duration", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    )
-    line = proc.stdout.strip().splitlines()
-    if not line or line[0] in ("", "N/A"):
-        return None
     try:
-        return float(line[0])
-    except ValueError:
+        info = ff.probe(path)
+    except ff.FFError:
         return None
+    side = info["video" if stream.startswith("v") else "audio"]
+    return None if side is None else side["duration"]
 
 
 def check_av_gate(path):

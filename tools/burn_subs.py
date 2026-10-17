@@ -20,8 +20,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.vidkit import ff  # noqa: E402
+
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 
 MIN_CONTRAST_RATIO = 4.5
 
@@ -85,17 +89,13 @@ def force_style(style, video_height):
 
 
 def video_height_of(path):
-    if FFPROBE is None:
-        return 1080
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=height", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    )
     try:
-        return int(proc.stdout.strip())
-    except ValueError:
+        video = ff.probe(path)["video"]
+    except ff.FFError:
         return 1080
+    if video is None or video["height"] is None:
+        return 1080
+    return int(video["height"])
 
 
 def build_command(master, srt, out, style, video_height):

@@ -17,7 +17,8 @@
  * fingerprint, so nothing already generated is requested (and billed) twice. --force skips both.
  * The fingerprint carries a hash of the voice id; the id itself is never written anywhere.
  *
- * No dependencies: global fetch, node:fs, and ffprobe when it happens to be installed.
+ * No dependencies: global fetch, node:fs, and duration measurement through vidkit/js/ff.mjs when
+ * the media tools happen to be installed.
  * A missing key degrades loudly and returns; it never throws and never picks a voice.
  */
 
@@ -27,6 +28,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
+import { probeDuration } from "./vidkit/js/ff.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -169,16 +171,9 @@ function wordsFromAlignment(alignment) {
   return words;
 }
 
-async function probeDuration(file) {
-  try {
-    const { stdout } = await execFileAsync("ffprobe", [
-      "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file,
-    ]);
-    const value = Number.parseFloat(stdout.trim());
-    return Number.isFinite(value) ? Number(value.toFixed(3)) : null;
-  } catch {
-    return null; // ffprobe absent: the manifest simply carries no measured duration
-  }
+async function measuredDuration(file) {
+  const measured = await probeDuration(file);
+  return measured === null ? null : Number(measured.toFixed(3));
 }
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -414,7 +409,7 @@ export async function synthesize({
       voice_env: item.voice_env,      // the NAME, never the id
       fingerprint: fp,
       chars: item.plain.length,
-      duration_s: await probeDuration(outPath),
+      duration_s: await measuredDuration(outPath),
       words,
     });
   }
