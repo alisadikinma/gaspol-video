@@ -69,9 +69,15 @@ over-split (change `--threshold`: 0.2 sensitive, 0.5 hard cuts only).
 ### 2. Read the source
 - Transcript with timings, per source: extract mono audio with ffmpeg, then call
   `transcribe_assemblyai` from `tools/gen_subs.py` (AssemblyAI, key `ASSEMBLYAI_API_KEY` from `.env`,
-  never printed; `gen_subs.py` has no file CLI, it is imported):
-  `python3 -c "from tools.gen_subs import transcribe_assemblyai as t; ..."`. Text is for reading the
-  source and for timing only. Write the original script down.
+  never printed; `gen_subs.py` has no file CLI, it is imported). Run from the plugin root, once per
+  source (`N` = 1 or 2):
+  ```bash
+  ffmpeg -y -i {output_folder}/ref/sumber-N/<video>.mp4 -vn -ac 1 -ar 16000 {output_folder}/.tmp/sumber-N.wav
+  set -a; . ./.env; set +a
+  python3 -c "import json,os,sys; from tools.gen_subs import transcribe_assemblyai as t; json.dump(t(sys.argv[1], os.environ['ASSEMBLYAI_API_KEY']), open(sys.argv[2], 'w'), ensure_ascii=False)" {output_folder}/.tmp/sumber-N.wav {output_folder}/work/sumber-N-words.json
+  ```
+  The json is `{"words": [{"text", "start_ms", "end_ms", ...}]}`. Text is for reading the source and
+  for timing only. Write the original script down.
 - For each scene note: what is said, what is shown, why it is there (hook, proof, step, CTA).
 - Who is in it, what they wear, where, and who the product is for. Decide the localisation
   (rule 2) and ask the user only when the product's market is unclear.

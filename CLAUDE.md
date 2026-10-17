@@ -120,6 +120,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `storytelling_script_gen/F10_Modular_Asset_and_AB_Testing.md` | Modular asset creation and A/B testing strategy |
 | `storytelling_script_gen/F11_Pattern_Interrupt_and_Retention.md` | Pattern interrupt techniques and retention optimization |
 | `storytelling_script_gen/F12_Viral_Framework.md` | Short-form only — 7-stage viral framework with pass/fail checklist, title formula, loop ending, analytics thresholds (course advice) |
+| `storytelling_script_gen/F13_Short_Form_Timeline.md` | 9:16 only — Thumbnail 0-1 / Hook 0-3 / Foreshadow 3-6 / Body 6-50 / CTA last 2-4 s timeline (notebook `fd70ee32`), checked by `viral_checklist.py timeline`; adds timing to F12, never overrides it |
 
 #### Image & Video Production (9 files)
 
