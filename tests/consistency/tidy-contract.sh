@@ -57,7 +57,7 @@ for f in reference/post-production/10-post-production-pipeline.md skills/video-i
   done
 done
 # No instruction may create a forbidden subfolder. Only the "Instead of | Write" table may show one.
-bad="$(grep -rnE '(clips|keyframes|ref|vo|sfx)/_' skills reference \
+bad="$(grep -rnE '(clips|keyframes|ref|vo|sfx)/_' skills reference agents templates \
   | grep -vE '^reference/post-production/10-post-production-pipeline\.md:[0-9]+:\| `')"
 if [ -n "$bad" ]; then
   echo "FAIL forbidden subfolder path outside the Instead-of table:"
