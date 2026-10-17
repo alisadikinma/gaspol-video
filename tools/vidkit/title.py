@@ -162,5 +162,6 @@ def stamp(img, text, out, profile="short-organic", y_pct=None):
                 "-vf", _filter(textfiles, font, size, pad, cy, "black@0.85", cx),
                 "-frames:v", "1", out])
     Path(str(out) + ".box.json").write_text(json.dumps(
-        {"box": box, "profile": profile, "text": " ".join(words), "font": font, "lines": lines}, indent=1))
+        {"box": box, "profile": profile, "text": " ".join(words), "font": font, "lines": lines,
+         "source": str(Path(img).resolve())}, indent=1))
     return box

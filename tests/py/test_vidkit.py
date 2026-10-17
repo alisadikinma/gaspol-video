@@ -2369,6 +2369,8 @@ class TitleTest(unittest.TestCase):
         self.assertEqual(doc["text"], "RUMAH 70 MILIAR")
         self.assertEqual(doc["profile"], "short-organic")
         self.assertTrue(Path(doc["font"]).exists())
+        self.assertEqual(doc["source"], str(self.img.resolve()))
+        self.assertTrue(os.path.isabs(doc["source"]))
 
     def test_box_is_centred_on_x_and_near_center_y(self):
         box = title.stamp(self.img, "RUMAH 70 MILIAR", self.out)

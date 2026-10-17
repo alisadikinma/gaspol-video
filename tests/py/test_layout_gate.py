@@ -332,6 +332,53 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("title", out)
 
+    def _clean_and_stamped(self, tmp, with_source=True, source_exists=True):
+        proj = self.project(tmp)
+        (proj / "packaging").mkdir()
+        clean = proj / "packaging" / "clean.png"
+        thumb = proj / "packaging" / "thumb-a.png"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=white:s=180x320",
+                        "-frames:v", "1", str(clean)], check=True)
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=black:s=180x320",
+                        "-frames:v", "1", str(thumb)], check=True)
+        doc = {"box": [30, 100, 150, 140]}
+        if with_source:
+            doc["source"] = str(clean)
+        Path(str(thumb) + ".box.json").write_text(json.dumps(doc))
+        if with_source and not source_exists:
+            clean.unlink()
+        return proj
+
+    @staticmethod
+    def face_only_in_white(face):
+        """A detector that sees the face only in the clean (white) image, not the stamped (black) one."""
+        return lambda rgb, i, w, h: face if bytes(rgb[:1].tobytes() if hasattr(rgb, "tobytes") else rgb[:1])[0] > 128 else None
+
+    def test_title_checked_against_face_in_the_clean_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self._clean_and_stamped(tmp)
+            code, out, _ = run_cli(["check", str(proj), "--thumb", "packaging/thumb-*.png"],
+                                   detect=self.face_only_in_white([60, 90, 120, 160]))
+        self.assertEqual(code, 1, out)
+        self.assertIn("title overlaps face", out)
+        self.assertNotIn("face checked on stamped image", out)
+
+    def test_title_clear_of_the_face_in_the_source_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self._clean_and_stamped(tmp)
+            code, out, _ = run_cli(["check", str(proj), "--thumb", "packaging/thumb-*.png"],
+                                   detect=self.face_only_in_white([60, 200, 120, 280]))
+        self.assertEqual(code, 0, out)
+
+    def test_missing_source_falls_back_to_stamped_image_with_a_note(self):
+        for with_source, exists in ((False, True), (True, False)):
+            with tempfile.TemporaryDirectory() as tmp:
+                proj = self._clean_and_stamped(tmp, with_source=with_source, source_exists=exists)
+                code, out, _ = run_cli(["check", str(proj), "--thumb", "packaging/thumb-*.png"],
+                                       detect=self.face_only_in_white([60, 90, 120, 160]))
+            self.assertIn("face checked on stamped image; source missing", out)
+            self.assertEqual(code, 0, out)
+
     def test_exit_2_cases(self):
         with tempfile.TemporaryDirectory() as tmp:
             proj = self.project(tmp)

@@ -58,4 +58,20 @@ A single 20-letter word still refuses: `usable width 907 px, widest line 1062 px
 
 Gate re-run with "Alisha Superstar Sekolah" as the cover, same video and ASS: **exit 1**, same single finding (subtitle at 39.30 s, 108 px under the face, needs 192), 1 skipped sample (`no face detected on thumbnail cover2.png`). The title adds no finding.
 
-Cover look: three stacked lines ALISHA / SUPERSTAR / SEKOLAH, white bold caps on black boxes, each line centred on the safe area, the widest (SUPERSTAR) nearly edge to edge of the safe box. The block sits at about 26-50 % of the height and covers the child's lower face and the snack she holds. That is the profile's `center_y_pct` 0.38 (tafsiran) on this frame; the gate does not catch it because it finds no face on the cover (the face is partly hidden by the title itself). A risk to keep: a 3-line title is tall.
+Cover look: three stacked lines ALISHA / SUPERSTAR / SEKOLAH, white bold caps on black boxes, each line centred on the safe area, the widest (SUPERSTAR) nearly edge to edge of the safe box. The block sits at about 26-50 % of the height and covers the child's lower face and the snack she holds. That is the profile's `center_y_pct` 0.38 (tafsiran) on this frame; the gate did not catch it at that point because it ran face detection on the stamped cover, where the title itself hides the face (fixed below). A risk to keep: a 3-line title is tall.
+
+## After the second fix: the face is detected on the clean image
+
+Defect: the gate looked for the face on the stamped cover, so a title that hides the face made the face vanish and the title passed. Fix: `vidkit title` writes the absolute path of the clean input as `source` in `<out>.box.json`; the gate detects the face on `source` and flags `title overlaps face`. If `source` is missing or unreadable the gate falls back to the stamped image and notes `face checked on stamped image; source missing`.
+
+Same video, ASS and frame (face on the clean frame: [447, 206, 913, 708]), title "Alisha Superstar Sekolah":
+
+| cover | gate | cover part |
+|---|---|---|
+| before the fix (old stamp, no `source`, box [106, 498, 930, 960]) | exit 1 | face not found, 1 skipped sample, note `face checked on stamped image; source missing`, no title finding |
+| default `--y-pct` (0.38), new stamp | exit 1 | `title overlaps face`, box [106, 498, 930, 960] |
+| `--y-pct 0.50`, box [106, 729, 930, 1191] | exit 1 (only the subtitle finding) | **no title finding**, no skipped sample, no note |
+
+`--y-pct 0.52` also clears. The remaining exit 1 is the subtitle at 39.30 s, 108 px under the face, unchanged. `center_y_pct` in the profile is not changed: the finding is the right outcome and the user picks `--y-pct` or another frame.
+
+Cover at `--y-pct 0.50`, seen with Read: ALISHA / SUPERSTAR / SEKOLAH in three white-on-black lines across the lower half of the picture. The child's eyes and face stay free; the block covers her hands, the snack and the shirt.

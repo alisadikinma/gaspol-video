@@ -138,6 +138,16 @@ def watermark_box(ass_path, size=None):
         return _render_box(lines, round((s + e) / 2, 3), _size_for(ass_text, size), tmp, background="black")
 
 
+def title_source(thumb_path):
+    """Absolute path of the clean image the title was stamped on, when `vidkit title` recorded
+    it and the file is still readable; else None."""
+    try:
+        src = json.loads(Path(str(thumb_path) + ".box.json").read_text()).get("source")
+    except (OSError, ValueError):
+        return None
+    return src if src and Path(src).is_file() else None
+
+
 def title_box(thumb_path):
     """Box written by `vidkit title` next to the thumbnail (<thumb>.box.json)."""
     box_file = Path(str(thumb_path) + ".box.json")
@@ -212,7 +222,7 @@ def check_title_face(title, face):
     """Findings when the thumbnail title box touches the face box of the cover image."""
     if title is None or face is None or not _intersects(title, face):
         return []
-    return [{"what": "title", "t": None, "box": title, "face": face, "kind": "overlaps face"}]
+    return [{"what": "title", "t": None, "box": title, "face": face, "kind": "title overlaps face"}]
 
 
 # ------------------------------------------------------------------ platform previews
@@ -423,10 +433,15 @@ def run_check(args, detect=None):
             tbox = title_box(th)
             tprof = {**base, "width": tsize[0], "height": tsize[1]}
             info["findings"] += check_safe([{"what": "title", "t": None, "box": tbox}], tprof)
-            recs = face_box.boxes(th, 1, detector())
+            clean = title_source(th)
+            if clean is None:
+                info["notes"].append(f"{Path(th).name}: face checked on stamped image; source missing")
+            face_img = clean or th
+            recs = face_box.boxes(face_img, 1, detector())
             face = recs[0]["box"] if recs else None
             if face is None:
-                info["skipped"].append({"frame": 0, "t": 0.0, "reason": f"no face detected on thumbnail {Path(th).name}"})
+                info["skipped"].append({"frame": 0, "t": 0.0,
+                                        "reason": f"no face detected on {'source of ' if clean else ''}thumbnail {Path(th).name}"})
             info["findings"] += check_title_face(tbox, face)
             if size is None:
                 size = tsize
