@@ -2480,3 +2480,75 @@ class TitleTest(unittest.TestCase):
         with contextlib.redirect_stderr(err):
             rc = vcli.main(["title", str(self.img), "HALO", str(self.out), "--profile", "nope"])
         self.assertEqual(rc, 2)
+
+
+class ScreenInsertCliTest(unittest.TestCase):
+    def _run(self, argv, **patches):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vcli.main(argv)
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_success_prints_one_json_line(self):
+        res = {"frames": 3, "mode": "green", "min_inlier": 1.0, "max_jump_px": 0.5, "lost_frames": 0}
+        with mock.patch.object(vcli, "_ensure_ml"), mock.patch.object(vcli.screen, "insert", return_value=res) as ins:
+            rc, out, _ = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "green", "--qa", "qa"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out), res)
+        self.assertEqual(len(out.strip().splitlines()), 1)
+        self.assertEqual(ins.call_args.args, ("a.mp4", "p.png", "o.mp4", "green"))
+        self.assertEqual(ins.call_args.kwargs["qa_dir"], "qa")
+
+    def test_track_arguments_parsed(self):
+        with mock.patch.object(vcli, "_ensure_ml") as ens, mock.patch.object(vcli.screen, "insert", return_value={}) as ins:
+            rc, _, _ = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "track",
+                                  "--corners", "1,2,3,4,5,6,7,8", "--occluder", "9.5,10"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(ins.call_args.kwargs["corners"], [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+        self.assertEqual(ins.call_args.kwargs["occluder_point"], [9.5, 10.0])
+        self.assertTrue(ens.call_args.kwargs["need_torch"])
+
+    def test_refused_exit_2(self):
+        with mock.patch.object(vcli, "_ensure_ml"), mock.patch.object(
+                vcli.screen, "insert", side_effect=vcli.screen.Refused("green key missing on 4 frames")):
+            rc, out, err = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "green"])
+        self.assertEqual((rc, out), (2, ""))
+        self.assertEqual(err.strip(), "refused: green key missing on 4 frames")
+
+    def test_ml_missing_exit_2(self):
+        with mock.patch.object(vcli, "_ensure_ml", side_effect=vcli.ml.MLMissing("missing torch: run tools/setup.sh --ml")):
+            rc, _, err = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "track", "--corners", "0,0,1,0,1,1,0,1"])
+        self.assertEqual(rc, 2)
+        self.assertEqual(err.strip(), "refused: missing torch: run tools/setup.sh --ml")
+
+    def test_bad_corners_is_a_failure_not_a_crash(self):
+        with mock.patch.object(vcli, "_ensure_ml"):
+            rc, _, err = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "track", "--corners", "1,2,3"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--corners needs 8", err)
+
+    def test_track_without_corners_is_usage_error(self):
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+            vcli.main(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "track"])
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_reexec_under_ml_venv_when_deps_missing(self):
+        import sys
+        real = __import__
+        def fake(name, *a, **k):
+            if name in ("cv2", "numpy", "torch"):
+                raise ImportError(name)
+            return real(name, *a, **k)
+        with tempfile.TemporaryDirectory() as d:
+            py = Path(d) / "venv-ml" / "bin" / "python"
+            py.parent.mkdir(parents=True)
+            py.write_text("")
+            env = {"GASPOL_VIDEO_HOME": d}
+            with mock.patch.dict(os.environ, env), mock.patch("builtins.__import__", fake), \
+                    mock.patch.object(os, "execv") as ex:
+                vcli._ensure_ml(["screen-insert", "a"], need_torch=False)
+            self.assertEqual(ex.call_args.args[1], [str(py), "-m", "tools.vidkit", "screen-insert", "a"])
+            os.environ.pop("GASPOL_VIDEO_ML_REEXEC", None)
+            with mock.patch.dict(os.environ, {**env, "GASPOL_VIDEO_ML_REEXEC": "1"}), \
+                    mock.patch("builtins.__import__", fake), self.assertRaises(vcli.ml.MLMissing):
+                vcli._ensure_ml(["x"], need_torch=True)

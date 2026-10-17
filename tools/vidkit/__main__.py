@@ -1,14 +1,45 @@
 """``python3 -m tools.vidkit <command>`` from the plugin root."""
 import argparse
 import json
+import os
 import sys
+from pathlib import Path
 
+from . import ml, screen
 from . import audiostudy, beats, colormatch, cover, ff, gates, ingest, join, karaoke, layout, mixdown, loudness, patch, sheet, speech, synth, tidy, title, track, unwhite
 
 
 def _json(p):
     with open(p) as fh:
         return json.load(fh)
+
+
+def _floats(text, count, what):
+    try:
+        vals = [float(v) for v in text.split(",")]
+    except ValueError:
+        vals = []
+    if len(vals) != count:
+        raise ValueError(f"{what} needs {count} comma-separated numbers, got {text!r}")
+    return vals
+
+
+def _ensure_ml(argv, need_torch):
+    """The screen tools need cv2 and numpy (and torch for tracking). When this interpreter lacks
+    them, re-run the same command under the ML venv; refuse when that is not possible."""
+    try:
+        import cv2  # noqa: F401
+        import numpy  # noqa: F401
+        if need_torch:
+            import torch  # noqa: F401
+        return
+    except ImportError:
+        pass
+    python = ml.ml_python()
+    if os.environ.get("GASPOL_VIDEO_ML_REEXEC") == "1" or not python.exists() or Path(sys.executable) == python:
+        raise ml.MLMissing(f"missing {'torch, ' if need_torch else ''}cv2 or numpy: {ml.FIX}")
+    os.environ["GASPOL_VIDEO_ML_REEXEC"] = "1"
+    os.execv(str(python), [str(python), "-m", "tools.vidkit", *argv])
 
 
 def main(argv=None):
@@ -162,7 +193,17 @@ def main(argv=None):
     s.add_argument("--width", type=float, required=True)
     s.add_argument("--rot", type=float, default=-1.2)
 
+    s = sub.add_parser("screen-insert", help="put a panel on a phone/monitor screen in a clip (green key or tracked)")
+    s.add_argument("clip")
+    s.add_argument("panel", help="PNG (held) or mp4 (looped / cut to the clip)")
+    s.add_argument("out")
+    s.add_argument("--mode", choices=["green", "track"], required=True)
+    s.add_argument("--corners", help="track mode: x,y,x,y,x,y,x,y clockwise from top-left at frame 0")
+    s.add_argument("--occluder", help="track mode: x,y of a point on whatever covers the screen at frame 0")
+    s.add_argument("--qa", help="folder for qa-screen.jpg")
+
     a = ap.parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
     rc = 0
     if a.cmd == "tidy" and a.include_mcp and not a.empty_tmp:
         ap.error("--include-mcp needs --empty-tmp")
@@ -275,9 +316,23 @@ def main(argv=None):
             with open(a.track_json, "w") as fh:
                 json.dump(track.smooth_track(pts, a.window, a.shrink), fh, indent=1)
             print(f"{a.track_json}: {len(pts)} points smoothed")
+        elif a.cmd == "screen-insert":
+            if a.mode == "track" and not a.corners:
+                ap.error("--mode track needs --corners")
+            corners = None
+            if a.corners:
+                v = _floats(a.corners, 8, "--corners")
+                corners = [v[0:2], v[2:4], v[4:6], v[6:8]]
+            point = _floats(a.occluder, 2, "--occluder") if a.occluder else None
+            _ensure_ml(raw_argv, need_torch=a.mode == "track")
+            print(json.dumps(screen.insert(a.clip, a.panel, a.out, a.mode, corners=corners,
+                                           occluder_point=point, qa_dir=a.qa)))
         elif a.cmd == "bond":
             from . import bond
             print(json.dumps(bond.bond_print(a.clip, a.out, a.print_png, a.cx, a.top, a.width, a.rot)))
+    except (screen.Refused, ml.MLMissing) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
     except loudness.ProfileError as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 2
