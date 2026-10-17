@@ -55,7 +55,7 @@ Tests: `tests/py/test_vidkit.py`, `tests/node/vidkit-js.test.mjs` (run with the 
 
 | Function | What |
 |---|---|
-| `download(url, dir)` | yt-dlp, best mp4 with audio |
+| `download(url, dir, name, cookies_from_browser)` | yt-dlp, best mp4 with audio; `cookies_from_browser="chrome"` reads that browser's login (Instagram refuses anonymous downloads) |
 | `scenes_from_cuts(cuts, duration, min_len)` | cut times to scene spans; flash cuts under `min_len` are dropped |
 | `split_scenes(video, dir, threshold, min_len)` | scene clips, first/mid/last stills, `scenes.json` |
 
@@ -72,6 +72,21 @@ Used by `skills/video-repackage`. CLI: `vidkit ingest`, `vidkit scenes`.
 | `relate(onsets, words, cuts)` | each onset labelled `on-word`, `on-cut`, `both` or `free` |
 
 Onsets cannot tell a sound effect from a consonant: read results with word timings, never as music tempo on its own (`docs/evals/viral-audio-study.md`). CLI: `vidkit audiostudy`.
+
+## Prosody (`tools/vidkit/prosody.py`)
+
+How a voice is delivered, so a new take can copy the delivery of a reference voice without copying the voice. Pure Python (no numpy).
+
+| Function | What |
+|---|---|
+| `load_words(path)` | gen_subs `{"words":[{text,start_ms,end_ms}]}`, raw AssemblyAI `{"words":[{text,start,end}]}` (ms), `[[word,start,end]]` or `[{word,start,end}]` to `[(word, start_s, end_s)]` |
+| `sentences(words)` | split on `. ? !`; per sentence `wps` and `pause_after` |
+| `read_wav(path)` | mono 16-bit PCM only (`ffmpeg -ac 1 -c:a pcm_s16le`); stereo raises |
+| `pitch_hz(samples, sr, t0, t1)` | autocorrelation at the word's middle; `None` when unvoiced |
+| `report(wav, words, stress_z)` | `overall` (wps, mean pause, median pitch, p10-p90 pitch range in semitones), `sentences`, `emphasis` (loudness + pitch z-score ≥ `stress_z`), `words` |
+| `gate(rep, min_range_st, min_wps, max_pause_s)` | problems against targets; `[]` passes |
+
+Use: measure the reference (pace, pauses, stressed words), write per-line delivery direction, then gate every take before speech-to-speech: a voice changer keeps the input's pitch and pace, so a flat take stays flat. A music bed under the reference inflates stress on function words; pick the stressed words by hand from `emphasis`. Measure the reference first and derive the gate thresholds from it; there is no universal "engaging" number. CLI: `vidkit prosody <wav> <words> [--out] [--min-range-st] [--min-wps] [--max-pause]`, exit 1 on a gate failure.
 
 ## Finishing (`karaoke`, `cover`, `unwhite`, `mixdown`)
 

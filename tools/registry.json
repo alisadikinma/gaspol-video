@@ -473,6 +473,21 @@
       "internal_reason": ""
     },
     {
+      "id": "tools/vidkit/prosody.py",
+      "purpose": "Measure a voice's delivery (pace, pauses, pitch range, stressed words); gate a flat or slow take before voice change.",
+      "tasks": [
+        "prosody",
+        "intonation",
+        "delivery",
+        "voice-reference",
+        "flat-take-gate"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "audiostudy times SFX/music onsets against words and cuts; prosody measures the speaker's own pace, pitch and stress.",
+      "internal_reason": ""
+    },
+    {
       "id": "tools/vidkit/beats.py",
       "purpose": "Detect beats in a music file and snap cue times onto the nearest beat.",
       "tasks": [
@@ -888,8 +903,8 @@
   ],
   "routes": [
     {
-      "task": "Download someone's video from a link",
-      "use": "`python3 -m tools.vidkit ingest <url> <dir>`",
+      "task": "Download someone's video from a link (Instagram needs login)",
+      "use": "`python3 -m tools.vidkit ingest <url> <dir> [--cookies-from-browser chrome]`",
       "tools": [
         "tools/vidkit/ingest.py"
       ]
@@ -1165,6 +1180,13 @@
       "use": "`python3 -m tools.vidkit audiostudy <clip> [--words w.json] [--out r.json]`",
       "tools": [
         "tools/vidkit/audiostudy.py"
+      ]
+    },
+    {
+      "task": "Copy how a reference voice is delivered, or reject a flat/slow take before voice change",
+      "use": "`python3 -m tools.vidkit prosody <mono.wav> <words.json> [--out r.json] [--min-range-st 10 --min-wps 2.4 --max-pause 0.35]`",
+      "tools": [
+        "tools/vidkit/prosody.py"
       ]
     },
     {

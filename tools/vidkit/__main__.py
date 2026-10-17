@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import audiostudy, beats, colormatch, cover, ff, gates, ingest, join, karaoke, layout, mixdown, loudness, patch, sheet, speech, synth, tidy, title, track, unwhite
+from . import audiostudy, beats, colormatch, cover, ff, gates, ingest, join, karaoke, layout, mixdown, loudness, patch, prosody, sheet, speech, synth, tidy, title, track, unwhite
 
 
 def _json(p):
@@ -19,12 +19,23 @@ def main(argv=None):
     s.add_argument("url")
     s.add_argument("out_dir")
     s.add_argument("--name", default="source")
+    s.add_argument("--cookies-from-browser", default=None,
+                   help="browser whose login cookies yt-dlp reads (chrome, safari, firefox); Instagram needs it")
 
     s = sub.add_parser("scenes", help="cut a video into scenes with first/mid/last stills + scenes.json")
     s.add_argument("video")
     s.add_argument("out_dir")
     s.add_argument("--threshold", type=float, default=0.3)
     s.add_argument("--min-len", type=float, default=0.6)
+
+    s = sub.add_parser("prosody", help="delivery of a voice: pace per sentence, pauses, stressed words (mono wav + words json)")
+    s.add_argument("wav")
+    s.add_argument("words", help="AssemblyAI words json, [[word,start,end],...] or [{word,start,end}]")
+    s.add_argument("--out", help="write the full report as JSON")
+    s.add_argument("--min-range-st", type=float, help="gate: exit 1 if the pitch range is below this (flat take)")
+    s.add_argument("--min-wps", type=float, help="gate: exit 1 if the pace is below this many words/s")
+    s.add_argument("--max-pause", type=float, help="gate: exit 1 if the mean pause between sentences is above this")
+    s.add_argument("--stress-z", type=float, default=1.0)
 
     s = sub.add_parser("audiostudy", help="onsets, tempo, loudness, energy and word/cut relation of one clip")
     s.add_argument("clip")
@@ -168,10 +179,22 @@ def main(argv=None):
         ap.error("--include-mcp needs --empty-tmp")
     try:
         if a.cmd == "ingest":
-            print(ingest.download(a.url, a.out_dir, a.name))
+            print(ingest.download(a.url, a.out_dir, a.name, a.cookies_from_browser))
         elif a.cmd == "scenes":
             rows = ingest.split_scenes(a.video, a.out_dir, a.threshold, a.min_len)
             print(f"{len(rows)} scenes -> {a.out_dir}/scenes.json")
+        elif a.cmd == "prosody":
+            rep = prosody.report(a.wav, prosody.load_words(a.words), a.stress_z)
+            if a.out:
+                with open(a.out, "w") as fh:
+                    json.dump(rep, fh, indent=1, ensure_ascii=False)
+            o = rep["overall"]
+            print(f"{a.wav} {o['words']} words {o['wps']} w/s, pause {o['pause_mean_s']} s, "
+                  f"pitch {o['pitch_median_hz']} Hz range {o['pitch_range_st']} st, "
+                  f"stressed: {' '.join(e['word'] for e in rep['emphasis'])}")
+            for problem in prosody.gate(rep, a.min_range_st, a.min_wps, a.max_pause):
+                print(f"FAIL: {problem}", file=sys.stderr)
+                rc = 1
         elif a.cmd == "audiostudy":
             rep = audiostudy.study(a.clip, _json(a.words) if a.words else None)
             if a.out:

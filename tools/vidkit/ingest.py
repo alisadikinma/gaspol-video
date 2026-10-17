@@ -10,12 +10,17 @@ from pathlib import Path
 from . import ff
 
 
-def download(url, out_dir, name="source"):
-    """Download `url` with yt-dlp as `<out_dir>/<name>.mp4` (best mp4, audio kept). Returns the path."""
+def download(url, out_dir, name="source", cookies_from_browser=None):
+    """Download `url` with yt-dlp as `<out_dir>/<name>.mp4` (best mp4, audio kept). Returns the path.
+
+    `cookies_from_browser` (e.g. "chrome") lets yt-dlp read that browser's login cookies; Instagram
+    reels refuse anonymous downloads ("login required"). The cookies are read, never written to disk.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / f"{name}.mp4"
-    ff.run(["yt-dlp", "--no-playlist", "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+    cookies = ["--cookies-from-browser", cookies_from_browser] if cookies_from_browser else []
+    ff.run(["yt-dlp", "--no-playlist", *cookies, "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
             "--merge-output-format", "mp4", "-o", str(target), url])
     if not target.exists():
         raise ff.FFError(f"yt-dlp finished but {target} does not exist")
