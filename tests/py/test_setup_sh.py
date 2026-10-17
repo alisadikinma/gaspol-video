@@ -109,6 +109,40 @@ class SetupShMlFlagTest(unittest.TestCase):
         self.assertIn("SAM-2 @ git+https://github.com/facebookresearch/sam2.git@", req)
         self.assertIn("einops==", req)
 
+    def _fetch_pinned_body(self):
+        start = self.text.index("fetch_pinned() {")
+        return self.text[start:self.text.index("\n  }\n", start)]
+
+    def test_download_has_timeouts_and_retries(self):
+        body = self._fetch_pinned_body()
+        for flag in ("--connect-timeout 30", "--speed-time 60", "--speed-limit 1024", "--retry 3"):
+            self.assertIn(flag, body)
+
+    def test_partial_download_removed_on_failure_or_interrupt(self):
+        body = self._fetch_pinned_body()
+        self.assertIn("trap", body)
+        self.assertIn('rm -f "$tmp"', body)
+        for sig in ("EXIT", "INT", "TERM"):
+            self.assertIn(sig, body)
+
+    def test_interrupted_download_leaves_no_temp_file(self):
+        # Run the real function against a stub curl that writes bytes and then dies.
+        start = self.text.index("  fetch_pinned() {")
+        func = self.text[start:self.text.index("\n  }\n", start) + 5]
+        with tempfile.TemporaryDirectory() as tmp:
+            bindir = Path(tmp) / "bin"
+            bindir.mkdir()
+            curl = bindir / "curl"
+            curl.write_text('#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done\n'
+                            'echo partial > "$out"\nkill -TERM $PPID\nsleep 2\n', encoding="utf-8")
+            curl.chmod(0o755)
+            models = Path(tmp) / "models"
+            models.mkdir()
+            script = f'MODEL_DIR="{models}"\n{func}\nfetch_pinned "{models}/w.pt" http://x/w.pt deadbeef\n'
+            env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
+            subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(sorted(p.name for p in models.iterdir()), [])
+
     def test_unknown_option_refused(self):
         proc = subprocess.run(
             ["bash", str(SETUP_SH), "--bogus"], capture_output=True, text=True, timeout=30,

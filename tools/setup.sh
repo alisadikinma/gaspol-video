@@ -140,7 +140,11 @@ if [ "$WITH_ML" = "1" ]; then
     fi
     local tmp
     tmp="$(mktemp "$MODEL_DIR/.ml.XXXXXX")"
-    if ! curl -fSL -o "$tmp" "$url"; then
+    FETCH_TMP="$tmp"
+    trap 'rm -f "$FETCH_TMP"' EXIT
+    trap 'rm -f "$FETCH_TMP"; exit 130' INT
+    trap 'rm -f "$FETCH_TMP"; exit 143' TERM
+    if ! curl -fSL --connect-timeout 30 --speed-time 60 --speed-limit 1024 --retry 3 -o "$tmp" "$url"; then
       rm -f "$tmp"
       echo "model download failed: $url" >&2
       exit 1
@@ -153,6 +157,7 @@ if [ "$WITH_ML" = "1" ]; then
       exit 1
     fi
     mv "$tmp" "$dest"
+    FETCH_TMP=""
     echo "model downloaded $dest"
   }
   fetch_pinned "$MODEL_DIR/tapnextpp_ckpt.pt" \

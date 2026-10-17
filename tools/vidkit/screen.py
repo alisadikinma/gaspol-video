@@ -13,8 +13,10 @@ tracks. ``cv2`` and ``numpy`` are imported lazily so importing this module works
 """
 import math
 import os
+import struct
 import subprocess
 import tempfile
+from pathlib import Path
 
 MIN_SCREEN_WIDTH_PX = 40
 RANSAC_TOL_PX = 1.5
@@ -33,8 +35,10 @@ ASPECT_TOL = 0.02         # panel aspect within 2% of the quad's is stretched, o
 FEATHER_SIGMA = 0.75      # gaussian sigma of the quad mask edge: about 1.5 px wide transition
 GAIN_RANGE = (0.6, 1.4)   # clamp of the luminance gain that matches the panel to the screen
 GREEN_MISSING_MAX = 0.05
+OCCLUDER_MAX_SHARE = 0.60  # an occluder or hand mask covering more of the screen or design than this is a wrong click
 OCCLUDER_ERODE_PX = 4     # key-inverse is read this far inside the quad so the screen's own edge is not an occluder
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff")
+ALPHA_PIX_FMT_PREFIXES = ("yuva", "gbrap", "ya8", "ya16", "argb", "abgr", "rgba", "bgra", "ayuv")
 
 
 class Refused(RuntimeError):
@@ -279,6 +283,30 @@ def corners_track(frames, init_corners, ring=24, fps=30.0, min_cutoff=1.0, beta=
     return out, ratio
 
 
+def bad_runs(bad, fps):
+    """``(first, last)`` frame indices of every run of True in ``bad`` that lasts LOST_SECONDS or more.
+
+    The one rule behind every "bad for half a second" refusal: ``check_lost``, a missing green
+    key, a screen that is not green, a lost shirt, a track that fell back.
+    """
+    _, np = _deps()
+    bad = np.asarray(bad, dtype=bool)
+    need = LOST_SECONDS * fps - 1e-9
+    runs = []
+    t = 0
+    while t < len(bad):
+        if not bad[t]:
+            t += 1
+            continue
+        end = t
+        while end + 1 < len(bad) and bad[end + 1]:
+            end += 1
+        if end - t + 1 >= need:
+            runs.append((t, end))
+        t = end + 1
+    return runs
+
+
 def check_lost(visible, fps):
     """Raise ``Refused`` when more than 30% of points are hidden for 0.5 s or longer.
 
@@ -288,19 +316,22 @@ def check_lost(visible, fps):
     visible = np.asarray(visible, dtype=bool)
     n_pts = visible.shape[1]
     lost = (~visible).sum(axis=1) * 10 > LOST_POINT_SHARE * 10 * n_pts
-    need = LOST_SECONDS * fps - 1e-9
-    t = 0
-    while t < len(lost):
-        if not lost[t]:
-            t += 1
-            continue
-        end = t
-        while end + 1 < len(lost) and lost[end + 1]:
-            end += 1
-        if end - t + 1 >= need:
-            pct = round(100.0 * float((~visible[t:end + 1]).sum(axis=1).max()) / n_pts)
-            raise Refused(f"track lost on frames {t}-{end} ({pct}% points hidden)")
-        t = end + 1
+    runs = bad_runs(lost, fps)
+    if runs:
+        t, end = runs[0]
+        pct = round(100.0 * float((~visible[t:end + 1]).sum(axis=1).max()) / n_pts)
+        raise Refused(f"track lost on frames {t}-{end} ({pct}% points hidden)")
+
+
+def check_jump(corners, diag):
+    """Raise ``Refused`` when a corner moves more than 8% of ``diag`` between two frames."""
+    _, np = _deps()
+    corners = np.asarray(corners, dtype=np.float64)
+    if len(corners) > 1:
+        step = np.linalg.norm(np.diff(corners, axis=0), axis=2).max(axis=1)
+        bad = np.nonzero(step > JUMP_DIAG_SHARE * diag)[0]
+        if len(bad):
+            raise Refused(f"corner jump {step[bad[0]]:.1f} px at frame {bad[0] + 1}")
 
 
 def check_track(corners, inliers, visible, fps, diag):
@@ -315,11 +346,7 @@ def check_track(corners, inliers, visible, fps, diag):
     inliers = np.asarray(inliers, dtype=np.float64)
     check_lost(visible, fps)
 
-    if len(corners) > 1:
-        step = np.linalg.norm(np.diff(corners, axis=0), axis=2).max(axis=1)
-        bad = np.nonzero(step > JUMP_DIAG_SHARE * diag)[0]
-        if len(bad):
-            raise Refused(f"corner jump {step[bad[0]]:.1f} px at frame {bad[0] + 1}")
+    check_jump(corners, diag)
 
     weak = np.nonzero(inliers < MIN_INLIER_RATIO)[0]
     if len(weak):
@@ -466,24 +493,66 @@ def composite(frame, panel, corners, occluder=None, prev_corners=None, glass=0.0
     return out
 
 
-def _decode(path, width, height, fps=None):
-    """All frames of a video as BGR uint8 [T, H, W, 3] through an ffmpeg rawvideo pipe."""
+def _fps_of(info, clip):
+    """Frame rate of a probed video stream: ``fps``, else the average rate; never a guess."""
+    fps = info.get("fps") or info.get("avg_fps")
+    if not fps or fps <= 0:
+        raise ValueError(f"cannot read fps of {clip}")
+    return float(fps)
+
+
+def _first_frame_size(path):
+    """Width and height ffmpeg really decodes (display rotation applied), read off a PNG header."""
+    from . import ff
+    png = ff.run_bytes(["ffmpeg", "-v", "error", "-i", path, "-an", "-frames:v", "1",
+                        "-f", "image2pipe", "-c:v", "png", "-"])
+    if png[:8] != b"\x89PNG\r\n\x1a\n" or len(png) < 24:
+        raise ff.FFError(f"could not read the first frame of {path}")
+    return struct.unpack(">II", png[16:24])
+
+
+def _decode(path, width, height, fps=None, alpha=False):
+    """All frames of a video as BGR uint8 [T, H, W, 3] (BGRA [T, H, W, 4] with ``alpha``) through
+    an ffmpeg rawvideo pipe. ``width`` and ``height`` are the displayed size, as ``ff.probe``
+    reports it; a clip whose real frame size differs raises ``ff.FFError``."""
     _, np = _deps()
     from . import ff
+    channels = 4 if alpha else 3
     cmd = ["ffmpeg", "-v", "error", "-i", path, "-an"]
     if fps:
         cmd += ["-vf", f"fps={fps}"]
-    cmd += ["-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
+    cmd += ["-f", "rawvideo", "-pix_fmt", "bgra" if alpha else "bgr24", "-"]
     data = ff.run_bytes(cmd)
-    size = width * height * 3
-    n = len(data) // size
-    if n == 0:
+    size = width * height * channels
+    if not data:
         raise RuntimeError(f"no frames decoded from {path}")
-    return np.frombuffer(data, np.uint8, n * size).reshape(n, height, width, 3)
+    if len(data) % size:
+        raise ff.FFError(f"{path}: {len(data)} decoded bytes are not whole frames of the frame size "
+                         f"{width}x{height}")
+    seen = _first_frame_size(path)
+    if tuple(seen) != (width, height):
+        raise ff.FFError(f"{path}: frame size mismatch, ffmpeg decodes {seen[0]}x{seen[1]} but "
+                         f"{width}x{height} was expected (display rotation?)")
+    return np.frombuffer(data, np.uint8).reshape(len(data) // size, height, width, channels)
+
+
+def to_uint8(img, what):
+    """``img`` as uint8: 16-bit is scaled down (``>> 8``), any other non-uint8 dtype is refused."""
+    _, np = _deps()
+    if img.dtype == np.uint8:
+        return img
+    if img.dtype == np.uint16:
+        return (img >> 8).astype(np.uint8)
+    raise ValueError(f"{what} must be an 8-bit or 16-bit image, got {img.dtype}")
+
+
+def _has_alpha(pix_fmt):
+    return bool(pix_fmt) and pix_fmt.startswith(ALPHA_PIX_FMT_PREFIXES)
 
 
 def _load_panel(panel, width, height, fps):
-    """List-like of panel frames: one held image for a still, decoded frames for a video."""
+    """List-like of panel frames: one held image for a still, decoded frames for a video
+    (BGRA when the video has an alpha channel, BGR otherwise)."""
     cv2, np = _deps()
     from . import ff
     path = str(panel)
@@ -493,89 +562,138 @@ def _load_panel(panel, width, height, fps):
         img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         if img is None:
             raise ValueError(f"panel is not a readable image: {path}")
-        return [img]
+        return [to_uint8(img, f"panel {path}")]
     info = ff.probe(path)["video"]
     if not info:
         raise ValueError(f"panel has no video stream: {path}")
-    return _decode(path, info["width"], info["height"], fps)
+    return _decode(path, info["width"], info["height"], fps, alpha=_has_alpha(info.get("pix_fmt")))
 
 
 def _green_corners(frames, fps, np, cv2):
-    """Per-frame smoothed green-key corners [T, 4, 2] and the number of frames without a key."""
+    """Per-frame smoothed green-key corners [T, 4, 2] and the number of frames without a key.
+
+    Refuses when the key is missing on more than 5% of the frames or for 0.5 s running, or when a
+    smoothed corner jumps by more than 8% of the screen diagonal."""
     raw = [corners_green(f) for f in frames]
-    missing = sum(1 for c in raw if c is None)
+    gone = np.array([c is None for c in raw])
+    missing = int(gone.sum())
     if missing == len(raw) or missing > GREEN_MISSING_MAX * len(raw):
         raise Refused(f"green key missing on {missing} frames")
+    runs = bad_runs(gone, fps)
+    if runs:
+        raise Refused(f"green key missing on frames {runs[0][0]}-{runs[0][1]}")
     first = next(c for c in raw if c is not None)
     smooth = OneEuro(fps, min_cutoff=1.0, beta=0.5)
     out, last = [], first
     for c in raw:
         last = last if c is None else c
         out.append(smooth(last))
-    return np.stack(out), missing
+    out = np.stack(out)
+    diag = float(np.median([np.hypot(*(c[0] - c[2])) for c in raw if c is not None]))
+    check_jump(out, diag)
+    return out, missing
+
+
+def _quad_share(mask, quad, cv2, np):
+    """Share of the filled ``quad`` covered by bool ``mask`` [H, W]."""
+    region = np.zeros(mask.shape, np.uint8)
+    cv2.fillConvexPoly(region, np.round(np.asarray(quad)).astype(np.int32), 255)
+    inside = region > 0
+    return float((mask & inside).sum()) / max(float(inside.sum()), 1.0)
 
 
 def _green_occluders(frames, corners, hue=(40, 85), sat_min=80, val_min=60):
-    """Per-frame bool masks: non-green pixels inside the quad, read OCCLUDER_ERODE_PX inside it."""
+    """Per-frame bool masks (non-green pixels inside the quad, read OCCLUDER_ERODE_PX inside it)
+    and the share of that inner quad they cover [T]."""
     cv2, np = _deps()
     k = 2 * OCCLUDER_ERODE_PX + 1
     dil = np.ones((3, 3), np.uint8)
     out = np.zeros(frames.shape[:3], bool)
+    share = np.zeros(len(frames))
     for t, f in enumerate(frames):
         quad = np.zeros(f.shape[:2], np.uint8)
         cv2.fillConvexPoly(quad, np.round(corners[t]).astype(np.int32), 255)
         quad = cv2.erode(quad, np.ones((k, k), np.uint8))
         hsv = cv2.cvtColor(f, cv2.COLOR_BGR2HSV)
         key = cv2.inRange(hsv, (hue[0], sat_min, val_min), (hue[1], 255, 255))
-        out[t] = cv2.dilate(((key == 0) & (quad > 0)).astype(np.uint8), dil) > 0
-    return out
+        raw = ((key == 0) & (quad > 0)).astype(np.uint8)
+        share[t] = min(float(raw.sum()) / max(float((quad > 0).sum()), 1.0), 1.0)
+        out[t] = cv2.dilate(raw, dil) > 0
+    return out, share
 
 
 def _encode(frames_iter, clip, out, width, height, fps):
+    """Pipe BGR frames and the clip's audio into H.264 yuv420p at ``out``.
+
+    Written to a hidden temp file beside ``out`` and moved over it only after the encode succeeded
+    and the output has as many frames as were written; any failure leaves a previous ``out`` alone
+    and no temp file behind. Audio is padded with silence and encoded to AAC, so audio that is
+    shorter than the video never cuts the video short.
+    """
     from . import ff
+    out = Path(out)
     ff.ensure_parent(out)
+    tmp = out.with_name("." + out.name + ".tmp" + out.suffix)
+    has_audio = ff.probe(str(clip))["audio"] is not None
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{width}x{height}",
-           "-r", f"{fps:.6f}", "-i", "-", "-i", str(clip), "-map", "0:v", "-map", "1:a?",
-           "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "15",
-           "-c:a", "copy", "-shortest", "-movflags", "+faststart", str(out)]
-    with tempfile.TemporaryFile() as errf:
-        try:
-            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=errf)
-        except FileNotFoundError:
-            raise ff.FFMissing("ffmpeg not found on PATH") from None
-        try:
-            for f in frames_iter:
-                proc.stdin.write(f.tobytes())
-        except BrokenPipeError:
-            pass
-        except BaseException:
-            proc.kill()
-            proc.wait()
-            raise
-        finally:
+           "-r", f"{fps:.6f}", "-i", "-"]
+    if has_audio:
+        cmd += ["-i", str(clip), "-map", "0:v", "-map", "1:a", "-af", "apad", "-c:a", "aac", "-b:a", "192k"]
+    cmd += ["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "15",
+            "-shortest", "-movflags", "+faststart", str(tmp)]
+    written, broken = 0, False
+    try:
+        with tempfile.TemporaryFile() as errf:
             try:
-                proc.stdin.close()
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=errf)
+            except FileNotFoundError:
+                raise ff.FFMissing("ffmpeg not found on PATH") from None
+            try:
+                for f in frames_iter:
+                    proc.stdin.write(f.tobytes())
+                    written += 1
             except BrokenPipeError:
-                pass
-        rc = proc.wait()
-        errf.seek(0)
-        err = errf.read().decode(errors="replace")
-    if rc != 0:
-        raise ff.FFError(f"ffmpeg failed ({rc}):\n{err.strip()[-900:]}")
+                broken = True
+            except BaseException:
+                proc.kill()
+                proc.wait()
+                raise
+            finally:
+                try:
+                    proc.stdin.close()
+                except BrokenPipeError:
+                    pass
+            rc = proc.wait()
+            errf.seek(0)
+            err = errf.read().decode(errors="replace")
+        if rc != 0 or broken:
+            raise ff.FFError(f"ffmpeg failed ({rc}):\n{err.strip()[-900:]}")
+        info = ff.probe(str(tmp))
+        duration = (info["video"] or {}).get("duration") or info["duration"]
+        if duration is None or abs(duration - written / fps) > 1.0 / fps:
+            raise ff.FFError(f"encoded video is {duration}s but {written} frames at {fps:g} fps "
+                             f"are {written / fps:.3f}s")
+        os.replace(tmp, out)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 def insert(clip, panel, out, mode, seed=None, corners=None, occluder_point=None, qa_dir=None):
     """Replace the screen in ``clip`` with ``panel`` (PNG held, or mp4 looped / truncated) -> ``out``.
 
     ``mode="green"``: corners from the green key per frame, a frame without a key holds the
-    previous corners (more than 5% of them refuses), smoothed with One-Euro; the occluder is
-    whatever is not green inside the quad. ``mode="track"``: ``corners`` (4x2, clockwise from
+    previous corners (more than 5% of them, or 0.5 s running, refuses), smoothed with One-Euro and
+    refused on a corner jump; the occluder is whatever is not green inside the quad, and a screen
+    that is mostly not green for 0.5 s refuses. ``mode="track"``: ``corners`` (4x2, clockwise from
     top-left, at frame 0) are followed with ``corners_track`` and vetted by ``check_track``; the
-    occluder is the SAM 2.1 mask of ``occluder_point`` ([x, y] at frame 0) when given, else none.
+    occluder is the SAM 2.1 mask of ``occluder_point`` ([x, y] at frame 0) when given, else none,
+    and an empty mask, or one covering more than 60% of the screen at frame 0, refuses.
     The clip is decoded whole into memory (BGR uint8), fine for the short clips this serves.
     ``seed`` is accepted for the CLI's contract and unused: nothing here is random.
-    The output is H.264 yuv420p crf 15, the clip's audio copied, the same number of frames.
-    Returns ``{"frames", "mode", "min_inlier", "max_jump_px", "lost_frames"}``.
+    The output is H.264 yuv420p crf 15, the clip's audio re-encoded to AAC and padded to the video
+    length, the same number of frames.
+    Returns ``{"frames", "mode", "min_inlier", "max_jump_px", "lost_frames", "occluder_share_max"}``.
     """
     cv2, np = _deps()
     from . import ff
@@ -584,15 +702,18 @@ def insert(clip, panel, out, mode, seed=None, corners=None, occluder_point=None,
     info = ff.probe(str(clip))["video"]
     if not info:
         raise ValueError(f"clip has no video stream: {clip}")
-    width, height, fps = info["width"], info["height"], info["fps"] or 30.0
+    width, height, fps = info["width"], info["height"], _fps_of(info, clip)
     frames = _decode(str(clip), width, height)
     n = len(frames)
     pframes = _load_panel(panel, width, height, fps)
 
     if mode == "green":
         quads, missing = _green_corners(frames, fps, np, cv2)
-        occ = _green_occluders(frames, quads)
-        min_inlier, lost = 1.0, missing
+        occ, share = _green_occluders(frames, quads)
+        runs = bad_runs(share > OCCLUDER_MAX_SHARE, fps)
+        if runs:
+            raise Refused(f"screen mostly not green on frames {runs[0][0]}-{runs[0][1]}")
+        min_inlier, lost, share_max = 1.0, missing, float(share.max())
     else:
         if corners is None:
             raise ValueError("track mode needs corners (4x2, clockwise from top-left, at frame 0)")
@@ -603,10 +724,16 @@ def insert(clip, panel, out, mode, seed=None, corners=None, occluder_point=None,
         check_track(quads, inl, vis, fps, diag)
         min_inlier = float(inl.min())
         lost = int(((~vis).sum(axis=1) * 10 > LOST_POINT_SHARE * 10 * vis.shape[1]).sum())
-        occ = None
+        occ, share_max = None, 0.0
         if occluder_point is not None:
             from . import segment
             occ = segment.masks(rgb, 0, points=[list(occluder_point)])
+            if not occ[0].any():
+                raise Refused("occluder mask is empty at frame 0")
+            first = _quad_share(occ[0], quads[0], cv2, np)
+            if first > OCCLUDER_MAX_SHARE:
+                raise Refused(f"occluder covers {round(100 * first)}% of the screen (click landed on the screen?)")
+            share_max = max(_quad_share(occ[t], quads[t], cv2, np) for t in range(n))
 
     jump = float(np.linalg.norm(np.diff(quads, axis=0), axis=2).max()) if n > 1 else 0.0
 
@@ -621,4 +748,5 @@ def insert(clip, panel, out, mode, seed=None, corners=None, occluder_point=None,
         from . import sheet
         os.makedirs(qa_dir, exist_ok=True)
         sheet.contact_sheet(str(out), os.path.join(str(qa_dir), "qa-screen.jpg"))
-    return {"frames": n, "mode": mode, "min_inlier": min_inlier, "max_jump_px": jump, "lost_frames": lost}
+    return {"frames": n, "mode": mode, "min_inlier": min_inlier, "max_jump_px": jump, "lost_frames": lost,
+            "occluder_share_max": round(share_max, 3)}

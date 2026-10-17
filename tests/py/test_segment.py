@@ -171,5 +171,21 @@ class ImportSafe(unittest.TestCase):
         self.assertTrue(callable(segment.masks))
 
 
+@needs_numpy
+class MissingTorchTest(unittest.TestCase):
+    def test_valid_inputs_without_torch_raise_mlmissing(self):
+        import os
+        import sys
+        from unittest import mock
+        import numpy as np
+        from tools.vidkit import ml, segment
+        frames = np.zeros((2, 16, 16, 3), np.uint8)
+        env = {"GASPOL_VIDEO_ML_REEXEC": "1"}     # no re-exec into venv-ml: it would replace this process
+        with mock.patch.dict(sys.modules, {"torch": None}), mock.patch.dict(os.environ, env):
+            os.environ.pop("GASPOL_ML_DEVICE", None)
+            with self.assertRaises(ml.MLMissing):
+                segment.masks(frames, 0, points=[[4, 4]])
+
+
 if __name__ == "__main__":
     unittest.main()

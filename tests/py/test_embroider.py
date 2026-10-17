@@ -665,5 +665,132 @@ class EmbroiderE2ETest(unittest.TestCase):
         self._run(False)
 
 
+# ---- silent-failure review (GV-24): tracker and SAM are mocked, so these run on any cv2 interpreter ----
+
+def _still_tracker(rgb, queries):
+    import numpy as np
+    pts = queries[:, 1:3].astype(np.float32)
+    return np.repeat(pts[None], len(rgb), axis=0), np.ones((len(rgb), len(pts)), bool)
+
+
+@needs_cv
+class EmbroiderReviewTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tools.vidkit import embroider
+        cls.e = embroider
+        cls.frames, cls.shirt, cls.hand = _synthetic_clip()
+
+    def _render(self, shirt, hand=None, hand_points=None, grid_warp=None, grid_points=None):
+        from unittest import mock
+        masks = [shirt] if hand is None else [shirt, hand]
+        patches = [mock.patch("tools.vidkit.segment.masks", side_effect=masks),
+                   mock.patch("tools.vidkit.pointtrack.track", side_effect=_still_tracker)]
+        if grid_warp is not None:
+            patches.append(mock.patch("tools.vidkit.embroider.grid_warp", side_effect=grid_warp))
+        if grid_points is not None:
+            patches.append(mock.patch("tools.vidkit.embroider._grid_points", return_value=grid_points))
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        return self.e._render(self.frames, _red_bar(), AT, 60, 0.0, hand_points, 24.0)
+
+    def _shirt_without(self, first, stop):
+        shirt = self.shirt.copy()
+        shirt[first:stop] = False
+        return shirt
+
+    # 4 -------------------------------------------------------------------------------------
+    def test_shirt_lost_for_0p6_seconds_refused(self):
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"^shirt lost on frames 8-22$"):
+            self._render(self._shirt_without(8, 23))
+
+    def test_shirt_lost_for_0p2_seconds_counted(self):
+        _, info = self._render(self._shirt_without(8, 13))
+        self.assertGreaterEqual(info["lost_frames"], 5)
+
+    def test_hand_over_the_design_is_not_a_lost_shirt(self):
+        shirt = self.shirt.copy()
+        hand = self.hand.copy()
+        shirt[3:20] = False                  # the segmenter drops the shirt under the hand ...
+        hand[3:20] = True                    # ... and the hand mask covers it
+        _, info = self._render(shirt, hand, hand_points=[[25, 165]])
+        self.assertEqual(info["frames"], FRAMES)
+
+    # 6 -------------------------------------------------------------------------------------
+    def _failing_warp(self, bad):
+        real = self.e.grid_warp
+        calls = {"n": 0}
+
+        def warp(*args, **kwargs):
+            i = calls["n"]
+            calls["n"] += 1
+            if i in bad:
+                from tools.vidkit.screen import Refused
+                raise Refused("track lost: 3 visible points")
+            return real(*args, **kwargs)
+        return warp
+
+    def test_warp_fallback_for_0p6_seconds_refused(self):
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"^track lost on frames 5-19 \(mesh warp failed\)$"):
+            self._render(self.shirt, grid_warp=self._failing_warp(range(5, 20)))
+
+    def test_warp_fallback_for_0p2_seconds_counted(self):
+        _, info = self._render(self.shirt, grid_warp=self._failing_warp(range(5, 10)))
+        self.assertGreaterEqual(info["lost_frames"], 5)
+
+    def test_fewer_than_nine_grid_points_refused(self):
+        import numpy as np
+        from tools.vidkit.screen import Refused
+        pts = np.array([[150, 150], [160, 150], [170, 150], [150, 160], [160, 160], [170, 160]], float)
+        with self.assertRaisesRegex(Refused, r"^track lost: only 6 grid points on the shirt$"):
+            self._render(self.shirt, grid_points=pts)
+
+    # 8 -------------------------------------------------------------------------------------
+    def test_empty_hand_mask_refused(self):
+        import numpy as np
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"^hand mask is empty at frame 0$"):
+            self._render(self.shirt, np.zeros_like(self.hand), hand_points=[[25, 165]])
+
+    def test_hand_mask_over_the_design_refused(self):
+        import numpy as np
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(
+                Refused, r"^hand mask covers 100% of the design \(click landed on the shirt\?\)$"):
+            self._render(self.shirt, np.ones_like(self.hand), hand_points=[[160, 160]])
+
+    # 7, 9 ----------------------------------------------------------------------------------
+    def test_logo_16_bit_is_scaled_and_float_refused(self):
+        import tempfile
+        import cv2
+        import numpy as np
+        with tempfile.TemporaryDirectory() as d:
+            p16 = d + "/l16.png"
+            cv2.imwrite(p16, np.full((4, 6, 4), 0x8000, np.uint16))
+            got = self.e._read_logo(p16)
+            self.assertEqual(got.dtype, np.uint8)
+            self.assertEqual(int(got.min()), 0x80)
+            pf = d + "/lf.tif"
+            cv2.imwrite(pf, np.full((4, 6, 4), 0.5, np.float32))
+            with self.assertRaises(ValueError):
+                self.e._read_logo(pf)
+
+    def test_unreadable_frame_rate_refused(self):
+        import tempfile
+        import cv2
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            logo = d + "/logo.png"
+            cv2.imwrite(logo, _red_bar())
+            info = {"duration": 1.0, "audio": None,
+                    "video": {"width": SIZE, "height": SIZE, "fps": None, "avg_fps": 0, "duration": 1.0}}
+            with mock.patch("tools.vidkit.ff.probe", return_value=info):
+                with self.assertRaisesRegex(ValueError, "cannot read fps of"):
+                    self.e.embroider(d + "/c.mp4", logo, d + "/o.mp4", AT, 60)
+
+
 if __name__ == "__main__":
     unittest.main()

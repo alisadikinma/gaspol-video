@@ -98,7 +98,7 @@ def _write_jpegs(frames, folder):
 def masks(frames, frame_idx, points=None, labels=None, box=None):
     frames, pts, lbl, bx = _validate(frames, frame_idx, points, labels, box)
     import numpy as np
-    import torch
+    torch = ml.require()
     device = ml.device()
     model = _load(device)
     started = time.time()

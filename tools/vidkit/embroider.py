@@ -49,6 +49,7 @@ MIN_SHIRT_RATIO = 1.5      # shirt area at frame 0 must be at least this times t
 GRID_COARSE = 7            # tracking grid over the design box
 GRID_DENSE = 11            # used when the coarse grid keeps fewer than MIN_GRID_POINTS on the shirt
 MIN_GRID_POINTS = 9
+SHIRT_KEEP_SHARE = 0.5     # a frame whose shirt under the design falls below this share of frame 0's is a bad frame
 
 
 def _deps():
@@ -621,7 +622,7 @@ def _render(frames_bgr, logo, at, width, rot, hand_points, fps):
     None. Returns ``(frames uint8 [T, H, W, 3], info)``; ``embroider`` encodes the frames.
     """
     from . import pointtrack, segment
-    from .screen import Refused, check_lost
+    from .screen import LOST_POINT_SHARE, OCCLUDER_MAX_SHARE, Refused, bad_runs, check_lost
     cv2, np = _deps()
     if logo is None or logo.ndim != 3 or logo.shape[2] != 4:
         raise ValueError("logo must be a 4-channel image with alpha (BGRA PNG)")
@@ -647,33 +648,64 @@ def _render(frames_bgr, logo, at, width, rot, hand_points, fps):
         raise Refused(f"shirt area too small for design ({ratio:.2f})")
     if hand_points:
         hand = segment.masks(rgb, 0, points=[[float(x), float(y)] for x, y in hand_points])
+        if not hand[0].any():
+            raise Refused("hand mask is empty at frame 0")
+        covered = float((hand[0] & opaque).sum()) / design_area
+        if covered > OCCLUDER_MAX_SHARE:
+            raise Refused(f"hand mask covers {round(100 * covered)}% of the design (click landed on the shirt?)")
     else:
         hand = np.zeros_like(shirt)
 
     src = _grid_points(box, shirt[0], np)
-    if len(src) < MIN_VISIBLE_POINTS:
-        raise Refused(f"track lost: {len(src)} tracking points on the shirt")
+    if len(src) < MIN_GRID_POINTS:
+        raise Refused(f"track lost: only {len(src)} grid points on the shirt")
     queries = np.concatenate([np.zeros((len(src), 1)), src], axis=1)
     tracks, visible = pointtrack.track(rgb, queries)
     check_lost(visible, fps)
 
-    out, lost, prev = [], 0, None
-    hidden_share = (~visible).mean(axis=1)
+    out, prev = [], None
+    hidden = (~visible).mean(axis=1) > LOST_POINT_SHARE
+    fallback = np.zeros(n, bool)
+    shirt_bad = np.zeros(n, bool)
+    share0 = 0.0
     for t in range(n):
         try:
             warped = grid_warp(layer, src, tracks[t], visible[t], size)
             prev = warped
-            if hidden_share[t] > 0.30:
-                lost += 1
         except Refused:
             if prev is None:
                 raise
             warped = prev
-            lost += 1
+            fallback[t] = True
         valid = shirt[t] & ~hand[t]
         design = warped[..., 3]
+        footprint = design > 0.5
+        if footprint.any():
+            share = float((footprint & (shirt[t] | hand[t])).sum()) / float(footprint.sum())
+            if t == 0:
+                share0 = share
+            elif share < SHIRT_KEEP_SHARE * share0:
+                shirt_bad[t] = True
         out.append(_shade_layer(frames[t], warped, design * valid, raised_shadow(frames[t], design, valid)))
+    for flags, text in ((fallback, "track lost on frames {a}-{b} (mesh warp failed)"),
+                        (shirt_bad, "shirt lost on frames {a}-{b}")):
+        runs = bad_runs(flags, fps)
+        if runs:
+            raise Refused(text.format(a=runs[0][0], b=runs[0][1]))
+    lost = int((hidden | fallback | shirt_bad).sum())
     return np.stack(out), {"frames": n, "lost_frames": lost, "shirt_area_ratio": round(ratio, 3)}
+
+
+def _read_logo(path):
+    """The logo as a BGRA uint8 array; 16-bit is scaled down, other dtypes and non-alpha files refused."""
+    cv2, _ = _deps()
+    from . import screen
+    img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise ValueError(f"logo is not a readable image: {path}")
+    if img.ndim != 3 or img.shape[2] != 4:
+        raise ValueError(f"logo must be a 4-channel PNG with alpha: {path}")
+    return screen.to_uint8(img, f"logo {path}")
 
 
 def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None):
@@ -684,21 +716,20 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
     (``grid_warp``), lit like the cloth around it with its own colour kept (``shade``), given a
     soft raised shadow on the cloth (``raised_shadow``) and shown only where SAM 2.1 says shirt
     and not hand. ``hand_points`` are ``[x, y]`` clicks on one occluding hand at frame
-    0. The clip is decoded whole into memory; output is H.264 crf 15 with the audio copied.
+    0. The clip is decoded whole into memory; output is H.264 crf 15 with the audio re-encoded to AAC
+    and padded to the video length.
     Returns ``{"frames", "lost_frames", "shirt_area_ratio"}``; raises ``screen.Refused`` when the
-    track or the shirt cannot be trusted.
+    track or the shirt cannot be trusted: the hand mask empty or covering over 60% of the design
+    at frame 0, fewer than ``MIN_GRID_POINTS`` tracking points, the mesh warp failing, or the
+    shirt under the design shrinking below half its frame-0 share, the last two for 0.5 s running.
     """
     cv2, _ = _deps()
     from . import ff, screen
-    logo_img = cv2.imread(str(logo), cv2.IMREAD_UNCHANGED)
-    if logo_img is None:
-        raise ValueError(f"logo is not a readable image: {logo}")
-    if logo_img.ndim != 3 or logo_img.shape[2] != 4:
-        raise ValueError(f"logo must be a 4-channel PNG with alpha: {logo}")
+    logo_img = _read_logo(logo)
     info = ff.probe(str(clip))["video"]
     if not info:
         raise ValueError(f"clip has no video stream: {clip}")
-    w, h, fps = info["width"], info["height"], info["fps"] or 30.0
+    w, h, fps = info["width"], info["height"], screen._fps_of(info, clip)
     frames = screen._decode(str(clip), w, h)
     rendered, res = _render(frames, logo_img, at, width, rot, hand_points, fps)
     screen._encode(iter(rendered), clip, out, w, h, fps)

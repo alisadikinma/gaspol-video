@@ -25,6 +25,16 @@ for stem in \
   "corner jump" \
   "homography unstable at frame" \
   "green key missing on" \
+  "screen mostly not green on frames" \
+  "occluder mask is empty at frame 0" \
+  "occluder covers" \
+  "hand mask is empty at frame 0" \
+  "hand mask covers" \
+  "shirt lost on frames" \
+  "mesh warp failed" \
+  "grid points on the shirt" \
+  "cannot read fps of" \
+  "frame size mismatch" \
   "shirt area too small for design" \
   "--at is not on the shirt" \
   "run tools/setup.sh --ml"; do

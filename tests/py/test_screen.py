@@ -564,14 +564,364 @@ class InsertTrackTest(unittest.TestCase):
         from tools.vidkit import ff
         from tools.vidkit.screen import insert
         frames, truth = _synthetic(n=20)
+        frames = frames.copy()
+        for f, quad in zip(frames, truth):      # a fingertip on the screen, riding with it
+            cv2.circle(f, tuple(int(v) for v in quad.mean(axis=0) + (30, 10)), 14, (220, 170, 120), -1)
+        centre = truth[0].mean(axis=0) + (30, 10)
         with tempfile.TemporaryDirectory() as d:
             clip = _write_clip(Path(d) / "t.mp4", [f[..., ::-1].copy() for f in frames], audio=False)
             panel = str(Path(d) / "p.png")
             cv2.imwrite(panel, _panel(w=170, h=110))
             out = str(Path(d) / "o.mp4")
             t0 = time.time()
-            res = insert(clip, panel, out, "track", corners=truth[0].tolist(), occluder_point=[250, 180])
+            res = insert(clip, panel, out, "track", corners=truth[0].tolist(), occluder_point=centre.tolist())
             print("track e2e %.1fs %s" % (time.time() - t0, res))
             self.assertTrue(Path(out).is_file())
             self.assertEqual(res["frames"], 20)
             self.assertLessEqual(abs(ff.probe(out)["duration"] - ff.probe(clip)["duration"]), 1 / 30 + 1e-6)
+
+
+# ---- silent-failure review (GV-24) -------------------------------------------------------------
+
+def _run_ff(cmd, data=None):
+    import subprocess
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *cmd], input=data, check=True, capture_output=True)
+
+
+def _clip_with_audio(path, frames_bgr, fps, audio_s):
+    """Video of ``frames_bgr`` plus a sine track of ``audio_s`` seconds, no ``-shortest``."""
+    h, w = frames_bgr[0].shape[:2]
+    _run_ff(["-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}", "-r", str(fps), "-i", "-",
+             "-f", "lavfi", "-i", f"sine=frequency=440:duration={audio_s}",
+             "-c:v", "libx264", "-crf", "10", "-pix_fmt", "yuv420p", "-c:a", "aac", str(path)],
+            b"".join(f.tobytes() for f in frames_bgr))
+    return str(path)
+
+
+def _frame_count(path):
+    from tools.vidkit import ff, screen
+    v = ff.probe(path)["video"]
+    return len(screen._decode(path, v["width"], v["height"]))
+
+
+class _TmpDirTest(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+        import cv2
+        self.panel = str(self.dir / "panel.png")
+        cv2.imwrite(self.panel, _panel(w=200, h=134))
+
+
+@needs_cv
+class EncodeSafetyTest(_TmpDirTest):
+    def test_audio_shorter_than_video_keeps_every_frame(self):
+        from tools.vidkit.screen import insert
+        clip = _clip_with_audio(self.dir / "in.mp4", _green_frames(n=60), 30, 1.5)
+        self.assertEqual(_frame_count(clip), 60)
+        out = str(self.dir / "out.mp4")
+        res = insert(clip, self.panel, out, "green")
+        self.assertEqual(res["frames"], 60)
+        self.assertEqual(_frame_count(out), 60)
+
+    def test_exception_midstream_keeps_previous_output_and_leaves_no_temp(self):
+        from tools.vidkit import screen
+        clip = _write_clip(self.dir / "in.mp4", _green_frames(n=4), audio=False)
+        out = self.dir / "out.mp4"
+        out.write_bytes(b"previous good output")
+
+        def frames():
+            for t in range(30):
+                if t == 10:
+                    raise RuntimeError("boom at frame 10")
+                yield _green_frames(n=1)[0]
+
+        with self.assertRaisesRegex(RuntimeError, "boom at frame 10"):
+            screen._encode(frames(), clip, out, 480, 270, 30.0)
+        self.assertEqual(out.read_bytes(), b"previous good output")
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["in.mp4", "out.mp4", "panel.png"])
+
+    def test_wrong_output_duration_raises_and_keeps_previous_output(self):
+        from unittest import mock
+        from tools.vidkit import ff, screen
+        clip = _write_clip(self.dir / "in.mp4", _green_frames(n=4), audio=False)
+        out = self.dir / "out.mp4"
+        out.write_bytes(b"previous good output")
+        real = ff.probe
+
+        def probe(path):
+            info = real(path)
+            if ".tmp" in str(path):
+                info["video"]["duration"] = 0.2
+            return info
+
+        with mock.patch("tools.vidkit.ff.probe", side_effect=probe):
+            with self.assertRaises(ff.FFError):
+                screen._encode(iter(_green_frames(n=30)), clip, out, 480, 270, 30.0)
+        self.assertEqual(out.read_bytes(), b"previous good output")
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["in.mp4", "out.mp4", "panel.png"])
+
+
+@needs_cv
+class RotationTest(_TmpDirTest):
+    W, H = 160, 96
+
+    def _clips(self):
+        import numpy as np
+        x = np.tile(np.linspace(0, 255, self.W, dtype=np.uint8), (self.H, 1))
+        y = np.tile(np.linspace(0, 255, self.H, dtype=np.uint8)[:, None], (1, self.W))
+        frames = [np.dstack([x, y, np.full_like(x, 20 * t)]) for t in range(6)]
+        base = _write_clip(self.dir / "base.mp4", frames, fps=10, audio=False)
+        rot = str(self.dir / "rot.mp4")
+        _run_ff(["-display_rotation", "90", "-i", base, "-c", "copy", rot])
+        return base, rot
+
+    def test_probe_reports_display_size_and_rotation(self):
+        from tools.vidkit import ff
+        base, rot = self._clips()
+        v = ff.probe(base)["video"]
+        self.assertEqual((v["width"], v["height"], v["rotation"]), (self.W, self.H, 0))
+        v = ff.probe(rot)["video"]
+        self.assertEqual((v["width"], v["height"], v["rotation"]), (self.H, self.W, 90))
+
+    def test_decode_of_rotated_clip_is_upright(self):
+        import numpy as np
+        from tools.vidkit import ff, screen
+        base, rot = self._clips()
+        ref = ff.run_bytes(["ffmpeg", "-v", "error", "-noautorotate", "-i", base, "-vf", "transpose=2",
+                            "-f", "rawvideo", "-pix_fmt", "bgr24", "-"])
+        want = np.frombuffer(ref, np.uint8).reshape(-1, self.W, self.H, 3)
+        v = ff.probe(rot)["video"]
+        got = screen._decode(rot, v["width"], v["height"])
+        self.assertEqual(got.shape, want.shape)
+        self.assertEqual(int(np.abs(got.astype(int) - want.astype(int)).max()), 0)
+
+    def test_decode_with_unrotated_size_refused(self):
+        from tools.vidkit import ff, screen
+        _, rot = self._clips()
+        with self.assertRaisesRegex(ff.FFError, "frame size"):
+            screen._decode(rot, self.W, self.H)
+
+    def test_decode_with_partial_frame_bytes_refused(self):
+        from unittest import mock
+        from tools.vidkit import ff, screen
+        base, _ = self._clips()
+        with mock.patch("tools.vidkit.ff.run_bytes", return_value=b"\0" * (self.W * self.H * 3 + 7)):
+            with self.assertRaisesRegex(ff.FFError, "frame size"):
+                screen._decode(base, self.W, self.H)
+
+    def test_legacy_rotate_tag(self):
+        import json
+        from unittest import mock
+        from tools.vidkit import ff
+        for tag, want in (("90", 90), ("-90", 270), ("180", 180)):
+            out = json.dumps({"format": {"duration": "1"}, "streams": [
+                {"codec_type": "video", "width": 160, "height": 96, "r_frame_rate": "10/1",
+                 "tags": {"rotate": tag}}]})
+            with mock.patch("tools.vidkit.ff.run", return_value=out):
+                v = ff.probe("x.mp4")["video"]
+            self.assertEqual(v["rotation"], want)
+            swapped = want in (90, 270)
+            self.assertEqual((v["width"], v["height"]), (96, 160) if swapped else (160, 96))
+
+
+def _green_frames_gap(n, gap, fps_unused=None, w=480, h=270):
+    frames = _green_frames(n=n, w=w, h=h)
+    plain = _green_frames(n=n, w=w, h=h, green=False)
+    for t in gap:
+        frames[t] = plain[t]
+    return frames
+
+
+@needs_cv
+class GreenSafetyTest(_TmpDirTest):
+    """fps 5 and 120 frames: a run of 3 frames is 0.6 s, yet only 2.5% of the clip."""
+
+    def _insert(self, frames, fps):
+        from tools.vidkit.screen import insert
+        clip = _write_clip(self.dir / "g.mp4", frames, fps=fps, audio=False)
+        return insert(clip, self.panel, str(self.dir / "o.mp4"), "green")
+
+    def test_missing_key_run_of_half_a_second_refused(self):
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"^green key missing on frames 40-42$"):
+            self._insert(_green_frames_gap(120, range(40, 43)), 5)
+
+    def test_missing_key_shorter_than_half_a_second_counted(self):
+        res = self._insert(_green_frames_gap(120, range(40, 42)), 5)
+        self.assertEqual(res["lost_frames"], 2)
+
+    def test_whole_clip_rule_still_applies(self):
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"^green key missing on 30 frames$"):
+            self._insert(_green_frames_gap(60, range(10, 40)), 30)
+
+    def test_corner_jump_refused(self):
+        import cv2
+        import numpy as np
+        from tools.vidkit.screen import Refused
+        frames = []
+        rng = np.random.default_rng(3)
+        bg = cv2.GaussianBlur(rng.integers(80, 170, (270, 480, 3), dtype=np.uint8), (0, 0), 2.0)
+        for t in range(60):
+            f = bg.copy()
+            dx = 0 if t < 30 else 48          # 20% of the ~240 px diagonal in one frame
+            quad = np.array([[100 + dx, 60], [300 + dx, 66], [294 + dx, 200], [96 + dx, 192]])
+            cv2.fillPoly(f, [np.round(quad).astype(np.int32)], (0, 255, 0), cv2.LINE_AA)
+            frames.append(f)
+        with self.assertRaisesRegex(Refused, r"^corner jump [\d.]+ px at frame \d+$"):
+            self._insert(frames, 30)
+
+    def _covered(self, n, cover):
+        import cv2
+        import numpy as np
+        out = _green_frames(n=n)
+        for t in cover:
+            dx = t * 0.5
+            quad = np.array([[140 + dx, 60], [340 + dx, 66], [334 + dx, 200], [136 + dx, 192]])
+            c = quad.mean(axis=0)
+            inner = c + (quad - c) * 0.85          # a green rim stays round the hand
+            cv2.fillPoly(out[t], [np.round(inner).astype(np.int32)], SKIN, cv2.LINE_AA)
+        return out
+
+    def test_screen_mostly_covered_for_half_a_second_refused(self):
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"^screen mostly not green on frames 10-30$"):
+            self._insert(self._covered(60, range(10, 31)), 30)
+
+    def test_short_cover_reports_share(self):
+        res = self._insert(self._covered(60, range(10, 15)), 30)
+        self.assertGreater(res["occluder_share_max"], 0.6)
+        self.assertLessEqual(res["occluder_share_max"], 1.0)
+
+
+@needs_cv
+class OccluderMaskTest(_TmpDirTest):
+    """Track mode with a mocked tracker and mocked SAM: only the mask checks are under test."""
+    INIT = [[140, 60], [340, 66], [334, 200], [136, 192]]
+    N = 6
+
+    def _insert(self, mask):
+        import numpy as np
+        from unittest import mock
+        from tools.vidkit.screen import insert
+        clip = _write_clip(self.dir / "t.mp4", _green_frames(n=self.N, green=False), audio=False)
+        quads = np.tile(np.array(self.INIT, float), (self.N, 1, 1))
+        track = (quads, np.ones(self.N), np.ones((self.N, 10), bool))
+        with mock.patch("tools.vidkit.screen.corners_track", return_value=track), \
+                mock.patch("tools.vidkit.segment.masks", return_value=mask):
+            return insert(clip, self.panel, str(self.dir / "o.mp4"), "track", corners=self.INIT,
+                          occluder_point=[240, 130])
+
+    def _mask(self, x0, y0, x1, y1):
+        import numpy as np
+        m = np.zeros((self.N, 270, 480), bool)
+        m[:, y0:y1, x0:x1] = True
+        return m
+
+    def test_empty_mask_refused(self):
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"^occluder mask is empty at frame 0$"):
+            self._insert(self._mask(0, 0, 0, 0))
+
+    def test_mask_covering_the_screen_refused(self):
+        from tools.vidkit.screen import Refused
+        with self.assertRaisesRegex(Refused, r"^occluder covers 100% of the screen \(click landed on the screen\?\)$"):
+            self._insert(self._mask(0, 0, 480, 270))
+
+    def test_small_mask_accepted(self):
+        res = self._insert(self._mask(200, 150, 240, 190))
+        self.assertEqual(res["frames"], self.N)
+        self.assertLess(res["occluder_share_max"], 0.2)
+
+
+@needs_cv
+class FpsTest(_TmpDirTest):
+    def test_falls_back_to_average_rate(self):
+        from tools.vidkit import screen
+        self.assertEqual(screen._fps_of({"fps": 0, "avg_fps": 25.0}, "c.mp4"), 25.0)
+        self.assertEqual(screen._fps_of({"fps": 24.0, "avg_fps": 25.0}, "c.mp4"), 24.0)
+
+    def test_unreadable_rate_refused(self):
+        from tools.vidkit import screen
+        with self.assertRaisesRegex(ValueError, "cannot read fps of c.mp4"):
+            screen._fps_of({"fps": None, "avg_fps": None}, "c.mp4")
+
+    def test_insert_with_unreadable_rate_refused(self):
+        from unittest import mock
+        from tools.vidkit.screen import insert
+        clip = _write_clip(self.dir / "c.mp4", _green_frames(n=4), audio=False)
+        info = {"duration": 1.0, "audio": None,
+                "video": {"width": 480, "height": 270, "fps": 0, "avg_fps": None, "duration": 1.0}}
+        with mock.patch("tools.vidkit.ff.probe", return_value=info):
+            with self.assertRaisesRegex(ValueError, "cannot read fps of"):
+                insert(clip, self.panel, str(self.dir / "o.mp4"), "green")
+
+
+@needs_cv
+class PanelPixelsTest(_TmpDirTest):
+    def test_16_bit_png_panel_is_not_white(self):
+        import cv2
+        import numpy as np
+        from tools.vidkit.screen import insert
+        p16 = str(self.dir / "p16.png")
+        cv2.imwrite(p16, np.full((134, 200, 3), 30000, np.uint16))
+        clip = _write_clip(self.dir / "c.mp4", _green_frames(n=4), audio=False)
+        out = str(self.dir / "o.mp4")
+        insert(clip, p16, out, "green")
+        cap = cv2.VideoCapture(out)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 2)
+        ok, f = cap.read()
+        self.assertTrue(ok)
+        px = f[133, 240].astype(int)
+        print("16-bit panel centre", px.tolist())
+        self.assertLess(int(px.max()), 200)
+        self.assertGreater(int(px.min()), 40)
+
+    def test_load_panel_converts_16_bit_and_refuses_float(self):
+        import cv2
+        import numpy as np
+        from tools.vidkit import screen
+        p16 = str(self.dir / "p16.png")
+        cv2.imwrite(p16, np.full((8, 8, 3), 0x8000, np.uint16))
+        got = screen._load_panel(p16, 480, 270, 30.0)[0]
+        self.assertEqual(got.dtype, np.uint8)
+        self.assertEqual(int(got.min()), 0x80)
+        pf = str(self.dir / "pf.tif")
+        cv2.imwrite(pf, np.full((8, 8, 3), 0.5, np.float32))
+        with self.assertRaises(ValueError):
+            screen._load_panel(pf, 480, 270, 30.0)
+
+
+@needs_cv
+class AlphaVideoPanelTest(_TmpDirTest):
+    def test_transparent_area_of_a_video_panel_shows_the_frame(self):
+        import cv2
+        import numpy as np
+        from tools.vidkit import screen
+        w, h = 200, 134
+        panel = np.zeros((h, w, 4), np.uint8)
+        panel[:, : w // 2] = (30, 40, 200, 255)           # left half opaque red, right half clear
+        raw = b"".join(panel.tobytes() for _ in range(6))
+        pv = str(self.dir / "pa.mov")
+        _run_ff(["-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{w}x{h}", "-r", "30", "-i", "-",
+                 "-c:v", "qtrle", pv], raw)
+        frames = screen._load_panel(pv, w, h, 30.0)
+        self.assertEqual(frames.shape[-1], 4)
+        self.assertEqual(int(frames[0][:, w // 2 + 5:, 3].max()), 0)
+        self.assertEqual(int(frames[0][:, : w // 2 - 5, 3].min()), 255)
+        frame = np.full((270, 480, 3), 77, np.uint8)
+        quad = np.array([[140, 60], [340, 60], [340, 194], [140, 194]], np.float32)
+        out = screen.composite(frame, frames[0], quad, glass=0.0)
+        right = out[100:150, 260:320].astype(int)
+        self.assertLess(int(np.abs(right - 77).max()), 6)
+        left = out[100:150, 150:210].astype(int)
+        self.assertGreater(int(left[..., 2].mean()), 120)
+
+    def test_opaque_video_panel_stays_three_channel(self):
+        from tools.vidkit import screen
+        pv = _write_clip(self.dir / "po.mp4", [_panel(w=200, h=134)] * 3, audio=False)
+        self.assertEqual(screen._load_panel(pv, 200, 134, 30.0).shape[-1], 3)

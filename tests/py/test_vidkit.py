@@ -307,6 +307,20 @@ class MediaTest(unittest.TestCase):
         info = ff.probe(self.clip("a.mp4", seconds=1.0))
         self.assertEqual(info["video"]["pix_fmt"], "yuv420p")
 
+    def test_probe_swaps_size_for_display_rotation(self):
+        src = self.clip("a.mp4", seconds=1.0)
+        self.assertEqual(ff.probe(src)["video"]["rotation"], 0)
+        for angle, swapped in ((90, True), (180, False), (270, True)):
+            rot = self.dir / f"r{angle}.mp4"
+            ff.ffmpeg("-display_rotation", str(angle), "-i", src, "-c", "copy", rot)
+            v = ff.probe(rot)["video"]
+            self.assertEqual(v["rotation"], angle)
+            self.assertEqual((v["width"], v["height"]), (240, 320) if swapped else (320, 240))
+
+    def test_probe_returns_average_rate(self):
+        v = ff.probe(self.clip("a.mp4", seconds=1.0, fps=25))["video"]
+        self.assertAlmostEqual(v["avg_fps"], 25.0)
+
     def test_probe_audio_only_has_no_video(self):
         wav = self.dir / "a.wav"
         ff.ffmpeg("-f", "lavfi", "-i", "sine=frequency=440:duration=1", wav)
