@@ -39,10 +39,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import asset_home, renders  # noqa: E402
+from tools.vidkit import ff  # noqa: E402
 from tools.mix_music import mood_for_tone  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 API_URL = "https://api.elevenlabs.io/v1/music"
 
 # Video-to-music (GV-8): a bed composed to the edited master's picture.
@@ -288,14 +288,11 @@ def _run_capture(cmd):
 
 
 def probe_duration(path):
-    if FFPROBE is None:
-        return None
-    out = _run_capture([FFPROBE, "-v", "error", "-show_entries", "format=duration",
-                        "-of", "default=nw=1:nk=1", str(path)]).strip()
     try:
-        return round(float(out), 3)
-    except ValueError:
+        value = ff.probe(path)["duration"]
+    except ff.FFError:
         return None
+    return None if value is None else round(value, 3)
 
 
 def measure_peak_dbfs(path):

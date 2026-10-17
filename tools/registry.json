@@ -1276,26 +1276,6 @@
       "reason": "format duration plus per-stream duration (-select_streams stream=duration) for the A/V gate; migrate under follow-up"
     },
     {
-      "id": "tools/gen_music.py",
-      "reason": "format=duration probe with its own missing-binary fallback; migrate under follow-up"
-    },
-    {
-      "id": "tools/make_stems.py",
-      "reason": "format=duration probe raising StemError when ffprobe is absent; migrate under follow-up"
-    },
-    {
-      "id": "tools/mix_music.py",
-      "reason": "format=duration probe returning None when ffprobe is absent; migrate under follow-up"
-    },
-    {
-      "id": "tools/mix_sfx.py",
-      "reason": "format=duration probe returning None when ffprobe is absent; migrate under follow-up"
-    },
-    {
-      "id": "tools/overlay_plan.py",
-      "reason": "format=duration probe of overlay clips; docstring says needs ffprobe; migrate under follow-up"
-    },
-    {
       "id": "tools/person_mask.py",
       "reason": "needs -count_packets with nb_read_packets and r_frame_rate as JSON, which ff.probe does not return"
     },

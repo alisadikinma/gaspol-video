@@ -32,9 +32,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import asset_home  # noqa: E402
+from tools.vidkit import ff  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 
 # The bed sits at least this far below the voice, measured, not assumed.
 MIN_HEADROOM_DB = 12.0
@@ -120,15 +120,9 @@ def gain_to_sit_under(voice_path, music_path, headroom_db=MIN_HEADROOM_DB):
 
 
 def duration_of(path):
-    if FFPROBE is None:
-        return None
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    )
     try:
-        return float(proc.stdout.strip())
-    except ValueError:
+        return ff.probe(path)["duration"]
+    except ff.FFError:
         return None
 
 

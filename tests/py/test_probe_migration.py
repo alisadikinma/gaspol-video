@@ -1,4 +1,6 @@
 """check_vo_duration and track_screen read media facts through vidkit.ff only."""
+import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -6,7 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tools import check_vo_duration, track_screen
+from tools import (check_vo_duration, gen_music, make_stems, mix_music, mix_sfx, overlay_plan,
+                   track_screen)
 from tools.vidkit import ff
 
 HAVE_FF = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
@@ -89,6 +92,85 @@ class RealFiles(unittest.TestCase):
     def test_missing_file_raises(self):
         with self.assertRaises(ff.FFError):
             check_vo_duration.duration(Path("/nonexistent/x.mp3"))
+
+
+DURATION_TOOLS = {
+    "gen_music": gen_music, "make_stems": make_stems, "mix_music": mix_music,
+    "mix_sfx": mix_sfx, "overlay_plan": overlay_plan,
+}
+
+
+class DurationToolsNoDirectProbe(unittest.TestCase):
+    def test_sources_do_not_name_the_probe_binary(self):
+        for name, mod in DURATION_TOOLS.items():
+            self.assertIsNone(re.search(r"\bffprobe\b", Path(mod.__file__).read_text()), name)
+
+    def test_modules_expose_vidkit_ff(self):
+        for name, mod in DURATION_TOOLS.items():
+            self.assertIs(mod.ff, ff, name)
+
+
+def _duration_calls():
+    """(label, call(path)) for the five wrappers; make_stems raises where the rest return None."""
+    return [
+        ("gen_music", gen_music.probe_duration),
+        ("mix_music", mix_music.duration_of),
+        ("mix_sfx", mix_sfx.master_duration),
+        ("overlay_plan", lambda p: overlay_plan._clip_duration(p)),
+    ]
+
+
+@unittest.skipUnless(HAVE_FF, "ffmpeg/ffprobe not installed")
+class DurationToolsReal(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = Path(self._tmp.name)
+        self.clip = self.dir / "c.mp4"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "color=c=white:s=160x90:d=1:r=25", "-f", "lavfi", "-i", "sine=d=1",
+                        "-shortest", "-pix_fmt", "yuv420p", str(self.clip)], check=True)
+        self.bad = self.dir / "bad.mp4"
+        self.bad.write_text("not media")
+        self.empty_path = self.dir / "emptybin"
+        self.empty_path.mkdir()
+
+    def test_value_on_real_clip(self):
+        for label, call in _duration_calls():
+            self.assertAlmostEqual(call(self.clip), 1.0, delta=0.1, msg=label)
+        self.assertAlmostEqual(make_stems._duration_of(self.clip), 1.0, delta=0.1)
+
+    def test_gen_music_rounds_to_three_places(self):
+        value = gen_music.probe_duration(self.clip)
+        self.assertEqual(value, round(value, 3))
+
+    def test_missing_binary_returns_none(self):
+        with mock.patch.dict(os.environ, {"PATH": str(self.empty_path)}):
+            for label, call in _duration_calls():
+                with self.subTest(label):
+                    self.assertIsNone(call(self.clip))
+
+    def test_make_stems_missing_binary_raises_stem_error(self):
+        with mock.patch.dict(os.environ, {"PATH": str(self.empty_path)}):
+            with self.assertRaises(make_stems.StemError) as cm:
+                make_stems._duration_of(self.clip)
+        self.assertEqual(str(cm.exception), "ffprobe not found on PATH")
+
+    def test_unreadable_returns_none(self):
+        for label, call in _duration_calls():
+            self.assertIsNone(call(self.bad), label)
+
+    def test_make_stems_unreadable_raises_stem_error(self):
+        with self.assertRaises(make_stems.StemError) as cm:
+            make_stems._duration_of(self.bad)
+        self.assertEqual(str(cm.exception), "bad.mp4: unreadable duration")
+
+    def test_make_stems_no_duration_raises_stem_error(self):
+        info = {"duration": None, "video": None, "audio": None}
+        with mock.patch.object(make_stems.ff, "probe", return_value=info):
+            with self.assertRaises(make_stems.StemError) as cm:
+                make_stems._duration_of(self.clip)
+        self.assertEqual(str(cm.exception), "c.mp4: unreadable duration")
 
 
 if __name__ == "__main__":

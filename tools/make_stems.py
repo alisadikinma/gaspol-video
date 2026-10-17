@@ -13,7 +13,7 @@ final mix's job (`mix_sfx.py --no-optional`, `mix_music.py`), not this one's. Pe
 `gain_db` from the SFX plan and per-segment `gain_db` from the music plan ARE baked in,
 because those are the shape of the pass, not a mix decision.
 
-Stdlib only: json, subprocess, tempfile. ffmpeg/ffprobe decode, mix and measure.
+Stdlib only: json, subprocess, tempfile. ffmpeg decodes, mixes and measures.
 """
 
 import argparse
@@ -31,9 +31,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import asset_home, mix_music
+from tools.vidkit import ff
 
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 
 SAMPLE_RATE = 48000
 CHANNELS = 2
@@ -99,16 +99,15 @@ def music_filter(segments, duration):
 
 
 def _duration_of(path):
-    if FFPROBE is None:
-        raise StemError("ffprobe not found on PATH")
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    )
     try:
-        return float(proc.stdout.strip())
-    except ValueError as exc:
+        value = ff.probe(path)["duration"]
+    except ff.FFMissing as exc:
+        raise StemError(str(exc)) from exc
+    except ff.FFError as exc:
         raise StemError(f"{Path(path).name}: unreadable duration") from exc
+    if value is None:
+        raise StemError(f"{Path(path).name}: unreadable duration")
+    return value
 
 
 def _write_graph(filt, tmpdir, name="filter.txt"):

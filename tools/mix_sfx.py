@@ -44,9 +44,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import asset_home  # noqa: E402
+from tools.vidkit import ff  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 
 # Window sizes. A transient needs a tight window or it averages away.
 TRANSIENT_WINDOW_S = 0.3
@@ -313,15 +313,9 @@ def format_sheet(plan):
 
 
 def master_duration(path):
-    if FFPROBE is None:
-        return None
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    )
     try:
-        return float(proc.stdout.strip())
-    except ValueError:
+        return ff.probe(path)["duration"]
+    except ff.FFError:
         return None
 
 
