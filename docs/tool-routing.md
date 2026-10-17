@@ -78,7 +78,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Re-render a paid asset without losing the old one | `python3 tools/renders.py <project> archive --file F --reason R` (moves the old file into `_arsip/` before the new render) |
 | Keep the project folder clean / find stray folders and duplicates | `python3 -m tools.vidkit tidy <project>` (report only; `--apply` moves strays to `_arsip/`, `--empty-tmp` empties `.tmp/`) |
 | Face box per frame, for the layout gate | `face_box.py` |
-| Check text and watermark sit in the 9:16 safe area | `python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>]` |
+| Check text and watermark sit in the 9:16 safe area | `python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>] [--overlay <shots dir>]` |
 | Stamp the thumbnail title | `python3 -m tools.vidkit title <img> "<text>" <out>` |
 <!-- registry:routes:end -->
 

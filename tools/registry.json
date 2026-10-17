@@ -1344,7 +1344,7 @@
     },
     {
       "task": "Check text and watermark sit in the 9:16 safe area",
-      "use": "`python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>]`",
+      "use": "`python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>] [--overlay <shots dir>]`",
       "tools": [
         "tools/layout_gate.py"
       ]

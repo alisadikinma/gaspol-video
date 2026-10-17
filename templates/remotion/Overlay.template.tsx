@@ -103,7 +103,7 @@ export const KineticOverlay: React.FC<{ textOnly?: boolean; cueId?: string }> = 
         {plan.cues
           .filter((cue) => cueId === undefined || String(cue.id) === String(cueId))
           .map((cue) => (
-          <CueText key={`text-${cue.id}`} cue={cue} preset={plan.preset} safe={plan.safe} />
+          <CueText key={`text-${cue.id}`} cue={cue} preset={plan.preset} safe={plan.safe} settled />
           ))}
       </AbsoluteFill>
     );

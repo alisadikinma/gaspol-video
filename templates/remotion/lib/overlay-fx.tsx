@@ -25,6 +25,7 @@ import {
   drift,
   exitFx,
   leadIn,
+  settledCue,
   springIn,
   stepState,
   vignetteAlpha,
@@ -264,9 +265,16 @@ const useOwnedMotion = (cue: CueSpec, seed: number) => {
 const anchorBox = (pos: CuePos, width: number, height: number, safe?: SafeBox | null): React.CSSProperties =>
   anchorGeometry(pos, { width, height }, safe ?? undefined, SAFE_PX) as React.CSSProperties;
 
-export const CueText: React.FC<{ cue: CueSpec; preset?: PresetSpec; safe?: SafeBox | null }> = ({ cue, preset, safe }) => {
-  const frame = useCurrentFrame();
+// `settled` (the layout gate's text-only render) draws the cue at full size at any frame: every
+// enter effect finished, no exit, whatever frame the still is taken at.
+export const CueText: React.FC<{ cue: CueSpec; preset?: PresetSpec; safe?: SafeBox | null; settled?: boolean }> = ({
+  cue: planCue, preset, safe, settled = false,
+}) => {
+  const currentFrame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
+  const fixed = settled ? settledCue(planCue, fps) : null;
+  const cue: CueSpec = fixed ? { ...planCue, ...fixed.cue } : planCue;
+  const frame = fixed ? fixed.frame : currentFrame;
   if (!cueVisible(frame, cue.inF, cue.outF)) return null;
 
   const style = cueStyle(cue, frame, fps);

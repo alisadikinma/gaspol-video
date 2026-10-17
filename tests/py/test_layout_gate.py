@@ -414,5 +414,281 @@ class Cli(unittest.TestCase):
         self.assertIn("setup.sh", err)
 
 
+# ---- GV-23: overlay text measured from a text-only Remotion render -------------------------
+
+def overlay_workspace(tmp, size=(180, 320), cues=None, scene="03"):
+    """proj/shots/{src/shots/overlay-<scene>.json, public/overlay/<scene>/clip.mp4}."""
+    proj = Path(tmp) / "proj"
+    shots = proj / "shots"
+    (shots / "src" / "shots").mkdir(parents=True)
+    pub = shots / "public" / "overlay" / scene
+    pub.mkdir(parents=True)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                    f"testsrc=s={size[0]}x{size[1]}:r=10:d=4", "-pix_fmt", "yuv420p",
+                    str(pub / "clip.mp4")], check=True)
+    plan = {"scene": scene, "fps": 10, "width": size[0], "height": size[1],
+            "durationInFrames": 40, "clip": f"overlay/{scene}/clip.mp4", "mask": None,
+            "cues": cues or [{"id": "c1", "inF": 5, "keyF": 8, "outF": 30}]}
+    (shots / "src" / "shots" / f"overlay-{scene}.json").write_text(json.dumps(plan))
+    return proj, shots
+
+
+def stub_render(boxes, size=(180, 320), calls=None):
+    """A stand-in for the Remotion text-only render: one grey still per cue with a white
+    rectangle at boxes[cue id], the same grey (128) the real composition uses."""
+    def render(shots_dir, plan_path, out_dir):
+        plan = json.loads(Path(plan_path).read_text())
+        out = []
+        for cue in plan["cues"]:
+            x0, y0, x1, y1 = boxes[str(cue["id"])]
+            png = Path(out_dir) / f"{plan['scene']}-{cue['id']}.png"
+            png.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                            f"color=0x808080:s={size[0]}x{size[1]}", "-vf",
+                            f"drawbox=x={x0}:y={y0}:w={x1 - x0}:h={y1 - y0}:color=white:t=fill",
+                            "-frames:v", "1", str(png)], check=True)
+            frame = (cue["keyF"] + cue["outF"]) // 2
+            out.append({"id": str(cue["id"]), "frame": frame, "inF": cue["inF"],
+                        "outF": cue["outF"], "png": str(png)})
+            if calls is not None:
+                calls.append((str(shots_dir), str(plan_path), cue["id"]))
+        return out
+    return render
+
+
+class FindOverlays(unittest.TestCase):
+    def test_workspace_dir_project_dir_and_json_file_all_resolve(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+            plan = shots / "src" / "shots" / "overlay-03.json"
+            for target in (shots, proj, plan):
+                found_shots, plans = layout_gate.find_overlays(str(target))
+                self.assertEqual(Path(found_shots), shots, target)
+                self.assertEqual([Path(p) for p in plans], [plan], target)
+
+    def test_nothing_found_is_an_input_error_naming_the_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(layout_gate.InputError) as cm:
+                layout_gate.find_overlays(str(Path(tmp) / "nope"))
+            self.assertIn("nope", str(cm.exception))
+            (Path(tmp) / "empty").mkdir()
+            with self.assertRaises(layout_gate.InputError) as cm:
+                layout_gate.find_overlays(str(Path(tmp) / "empty"))
+            self.assertIn("overlay_plan.py", str(cm.exception))
+
+
+class RenderOverlayText(unittest.TestCase):
+    def test_runs_the_node_script_in_the_workspace(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+            plan = shots / "src" / "shots" / "overlay-03.json"
+            out = Path(tmp) / "out"
+            out.mkdir()
+            (shots / "scripts").mkdir()
+            (shots / "scripts" / "render-overlay-text.mjs").write_text("")
+            frames = [{"id": "c1", "frame": 19, "inF": 5, "outF": 30, "png": str(out / "03-c1.png")}]
+            (out / "overlay-03.frames.json").write_text(json.dumps(frames))
+            done = mock.Mock(returncode=0, stdout="", stderr="")
+            with mock.patch("subprocess.run", return_value=done) as run:
+                got = layout_gate.render_overlay_text(str(shots), str(plan), str(out))
+        self.assertEqual(got, frames)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[0], "node")
+        self.assertIn("scripts/render-overlay-text.mjs", argv[1])
+        self.assertEqual(run.call_args.kwargs["cwd"], str(shots))
+
+    def test_failure_stops_with_the_reason_and_no_estimate(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+            (shots / "scripts").mkdir()
+            (shots / "scripts" / "render-overlay-text.mjs").write_text("")
+            bad = mock.Mock(returncode=1, stdout="", stderr="render-overlay-text: Cannot find package '@remotion/bundler'")
+            with mock.patch("subprocess.run", return_value=bad):
+                with self.assertRaises(layout_gate.InputError) as cm:
+                    layout_gate.render_overlay_text(str(shots), str(shots / "src/shots/overlay-03.json"), tmp)
+        self.assertIn("@remotion/bundler", str(cm.exception))
+        self.assertIn("npm install", str(cm.exception))
+
+    def test_script_missing_names_the_scaffold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+            with self.assertRaises(layout_gate.InputError) as cm:
+                layout_gate.render_overlay_text(str(shots), str(shots / "src/shots/overlay-03.json"), tmp)
+        self.assertIn("render-overlay-text.mjs", str(cm.exception))
+
+    def test_node_missing_is_an_input_error(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+            (shots / "scripts").mkdir()
+            (shots / "scripts" / "render-overlay-text.mjs").write_text("")
+            with mock.patch("subprocess.run", side_effect=FileNotFoundError("node")):
+                with self.assertRaises(layout_gate.InputError) as cm:
+                    layout_gate.render_overlay_text(str(shots), str(shots / "src/shots/overlay-03.json"), tmp)
+        self.assertIn("node", str(cm.exception))
+
+
+class OverlayCli(unittest.TestCase):
+    def run_gate(self, tmp, box, detect=None, extra=(), **ws):
+        proj, shots = overlay_workspace(tmp, **ws)
+        calls = []
+        code, out, err = run_cli_render(
+            ["check", str(proj), "--overlay", str(shots), *extra],
+            detect=detect or fake_face(None), render=stub_render({"c1": box}, calls=calls))
+        return proj, code, out, err, calls
+
+    def test_text_inside_the_safe_area_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, calls = self.run_gate(tmp, [20, 100, 150, 140])
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(len(calls), 1)
+
+    def test_measured_box_is_in_the_report_with_scene_and_cue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, _ = self.run_gate(tmp, [2, 100, 150, 140])
+            report = (proj / "work" / "layout-report.md").read_text()
+        self.assertEqual(code, 1, out)
+        self.assertIn("overlay 03/c1", report)
+        self.assertIn("left by 9 px", report)  # safe x0 = 11 at 180 wide, box starts at 2
+        self.assertIn("[2, 100, 150, 140]", report)
+
+    def test_each_overflowed_edge_is_a_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, _ = self.run_gate(tmp, [20, 30, 175, 280])
+        self.assertEqual(code, 1)
+        for edge in ("top by 15", "right by 13", "bottom by 27"):
+            self.assertIn(edge, out)
+
+    def test_text_over_the_face_exit_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, _ = self.run_gate(tmp, [20, 100, 150, 140],
+                                                    detect=fake_face([60, 110, 120, 130]))
+        self.assertEqual(code, 1, out)
+        self.assertIn("overlaps face", out)
+        self.assertIn("overlay 03/c1", out)
+
+    def test_text_clear_of_the_face_passes_even_just_below_it(self):
+        # unlike a subtitle, overlay text has no chin gap rule: only touching the face fails
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, _ = self.run_gate(tmp, [20, 140, 150, 170],
+                                                    detect=fake_face([60, 60, 120, 138]))
+        self.assertEqual(code, 0, out)
+
+    def test_face_is_scaled_from_the_clip_to_the_overlay_size(self):
+        # clip is 180x320 but the plan says 360x640: a face at [60,110,120,130] in clip pixels
+        # is [120,220,240,260] in overlay pixels
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp, size=(180, 320))
+            planf = shots / "src" / "shots" / "overlay-03.json"
+            plan = json.loads(planf.read_text())
+            plan["width"], plan["height"] = 360, 640
+            planf.write_text(json.dumps(plan))
+            code, out, err = run_cli_render(
+                ["check", str(proj), "--overlay", str(shots)], detect=fake_face([60, 110, 120, 130]),
+                render=stub_render({"c1": [130, 225, 230, 255]}, size=(360, 640)))
+        self.assertEqual(code, 1, out + err)
+        self.assertIn("overlaps face", out)
+
+    def test_no_face_in_the_cue_is_skipped_not_passed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, _ = self.run_gate(tmp, [20, 100, 150, 140], detect=fake_face(None))
+        self.assertEqual(code, 0)
+        self.assertIn("no face detected", out)
+        self.assertIn("overlay 03/c1", out)
+
+    def test_previews_per_scene_and_platform_are_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, _ = self.run_gate(tmp, [20, 100, 150, 140])
+            for platform in ("tiktok", "reels", "shorts"):
+                p = proj / ".tmp" / f"layout-overlay-03-{platform}.jpg"
+                self.assertTrue(p.is_file() and p.stat().st_size > 0, p)
+                self.assertIn(str(p), out)
+
+    def test_text_only_stills_are_kept_and_listed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, _ = self.run_gate(tmp, [20, 100, 150, 140])
+            self.assertTrue((proj / ".tmp" / "overlay-text" / "03-c1.png").is_file())
+        self.assertIn("03-c1.png", out)
+
+    def test_cue_that_drew_nothing_is_a_note(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+
+            def blank(shots_dir, plan_path, out_dir):
+                png = Path(out_dir) / "03-c1.png"
+                png.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                                "color=0x808080:s=180x320", "-frames:v", "1", str(png)], check=True)
+                return [{"id": "c1", "frame": 19, "inF": 5, "outF": 30, "png": str(png)}]
+            code, out, err = run_cli_render(["check", str(proj), "--overlay", str(shots)],
+                                            detect=fake_face(None), render=blank)
+        self.assertEqual(code, 0)
+        self.assertIn("drew nothing", out)
+
+    def test_overlay_that_is_not_nine_sixteen_is_noted_and_not_rendered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, calls = self.run_gate(tmp, [20, 100, 150, 140], size=(320, 180))
+        self.assertEqual(calls, [])
+        self.assertIn("not 9:16", out)
+
+    def test_profile_flag_changes_the_safe_area(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # y1 = 208 under short-ads (bottom 35 %): a box ending at 230 passes organic, fails ads
+            proj, code, out, err, _ = self.run_gate(tmp, [20, 150, 150, 230])
+            self.assertEqual(code, 0, out)
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, code, out, err, _ = self.run_gate(tmp, [20, 150, 150, 230],
+                                                    extra=("--profile", "short-ads"))
+            self.assertEqual(code, 1, out)
+
+    def test_overlay_alone_is_enough_to_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+            code, out, err = run_cli_render(["check", str(proj), "--overlay", str(shots)],
+                                            detect=fake_face(None),
+                                            render=stub_render({"c1": [20, 100, 150, 140]}))
+        self.assertEqual(code, 0, err)
+
+    def test_overlay_path_missing_exit_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+            code, out, err = run_cli_render(["check", str(proj), "--overlay", str(Path(tmp) / "gone")],
+                                            detect=fake_face(None), render=stub_render({}))
+        self.assertEqual(code, 2)
+        self.assertIn("gone", err)
+
+    def test_render_failure_exit_2_with_the_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+
+            def boom(*a):
+                raise layout_gate.InputError("remotion cannot render here: no chrome")
+            code, out, err = run_cli_render(["check", str(proj), "--overlay", str(shots)],
+                                            detect=fake_face(None), render=boom)
+        self.assertEqual(code, 2)
+        self.assertIn("no chrome", err)
+
+    def test_overlay_plus_subtitles_checked_together(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp)
+            (proj / "subs.ass").write_text(karaoke.build_ass(WORDS, 4.0, profile="short-organic", per_group=2))
+            code, out, err = run_cli_render(
+                ["check", str(proj), "--ass", "subs.ass", "--overlay", str(shots)],
+                detect=fake_face(None), render=stub_render({"c1": [2, 100, 150, 140]}))
+            self.assertEqual(code, 1)
+            self.assertIn("overlay 03/c1", out)
+            self.assertTrue((proj / ".tmp" / "layout-tiktok.jpg").is_file())
+            self.assertTrue((proj / ".tmp" / "layout-overlay-03-tiktok.jpg").is_file())
+
+
+def run_cli_render(argv, detect=None, render=None):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = layout_gate.main(argv, detect=detect, render=render)
+    return code, out.getvalue(), err.getvalue()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -353,3 +353,12 @@ export function measureFrame(cue, fps) {
   if (settle <= exitStart) return Math.floor((settle + exitStart) / 2);
   return Math.max(cue.inF, exitStart - 1);
 }
+
+// The cue as it looks once fully entered, for measuring: the frame where every enter effect is
+// done (see measureFrame) and a copy of the cue whose exit is pushed far out, so a cue too short
+// to hold full size (a one-word cue with no hold) is still measured at full size, not mid-fade.
+// Only the layout gate's text-only render uses it.
+export function settledCue(cue, fps) {
+  const frame = cue.keyF + Math.ceil(0.65 * fps);
+  return { frame, cue: { ...cue, inF: Math.min(cue.inF, frame), outF: frame + 10 * fps } };
+}

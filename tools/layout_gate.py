@@ -3,10 +3,21 @@
 and clear of the speaker's face.
 
     python3 tools/layout_gate.py check <project> [--video output/final.mp4] [--ass FILE]
-            [--thumb GLOB] [--profile short-organic] [--every 15]
+            [--thumb GLOB] [--overlay SHOTS_DIR|PROJECT|OVERLAY_JSON] [--profile short-organic]
+            [--every 15]
 
 Paths are read relative to <project> (a path that exists as given is used as given).
-Needs --ass and/or --thumb; --video adds the face check of the subtitles.
+Needs --ass, --thumb and/or --overlay; --video adds the face check of the subtitles.
+
+--overlay (kinetic overlay text, GV-23): for each `overlay-<scene>.json` of the Remotion workspace,
+the cue text is rendered ALONE on flat mid-grey by `scripts/render-overlay-text.mjs` (the real
+KineticOverlay in `textOnly` mode, at the frame where each cue is at full size), its box is measured
+like a subtitle, and checked against the safe area and against the face boxes of the scene clip
+sampled while the cue is on screen. Needs the workspace's `npm install` (Remotion + Chrome); if the
+render cannot run the gate exits 2 with the reason and never estimates a width. An overlay that is
+not 9:16 is noted and skipped. Stills go to `<project>/.tmp/overlay-text/`, one preview per scene
+and platform to `<project>/.tmp/layout-overlay-<scene>-{tiktok,reels,shorts}.jpg`. Overlay text
+fails only by touching the face; the subtitle chin gap does not apply.
 
 Exit 0: no finding. Exit 1: at least one finding. Exit 2: bad input (missing file, unknown
 profile, not 9:16, thumbnail without `<thumb>.box.json`, missing face model or venv).
@@ -26,6 +37,7 @@ import glob
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -225,6 +237,102 @@ def check_title_face(title, face):
     return [{"what": "title", "t": None, "box": title, "face": face, "kind": "title overlaps face"}]
 
 
+# ------------------------------------------------------------------ overlay text (GV-23)
+
+RENDER_SCRIPT = "scripts/render-overlay-text.mjs"
+OVERLAY_GREY = 0x80  # the flat background of KineticOverlay textOnly
+
+
+def find_overlays(target):
+    """(shots workspace dir, [overlay json paths]) for a workspace dir, a project dir that holds
+    `shots/`, or one overlay json."""
+    t = Path(target)
+    if not t.exists():
+        raise InputError(f"overlay path not found: {t}")
+    if t.is_file():
+        return str(t.parent.parent.parent), [str(t)]
+    if (t / "src" / "shots").is_dir():
+        shots = t
+    elif (t / "shots" / "src" / "shots").is_dir():
+        shots = t / "shots"
+    else:
+        raise InputError(f"{t}: no Remotion workspace (src/shots/) here: scaffold it with "
+                         "node templates/remotion/scaffold.mjs <project> and run tools/overlay_plan.py")
+    plans = sorted(str(p) for p in (shots / "src" / "shots").glob("overlay-*.json"))
+    if not plans:
+        raise InputError(f"{shots}: no src/shots/overlay-*.json: run tools/overlay_plan.py first")
+    return str(shots), plans
+
+
+def render_overlay_text(shots_dir, plan_path, out_dir):
+    """Render the text-only stills of one overlay json with the workspace's Remotion.
+    Returns [{"id", "frame", "inF", "outF", "png"}], one per cue. Raises InputError with the
+    reason when it cannot run; nothing is estimated."""
+    script = Path(shots_dir) / RENDER_SCRIPT
+    if not script.is_file():
+        raise InputError(f"{script} missing: re-run node templates/remotion/scaffold.mjs "
+                         "on the project to refresh the workspace scripts")
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        done = subprocess.run(["node", RENDER_SCRIPT, str(Path(plan_path).resolve()),
+                               "--out", str(Path(out_dir).resolve())],
+                              cwd=str(shots_dir), capture_output=True, text=True)
+    except FileNotFoundError as e:
+        raise InputError(f"cannot render the overlay text: node not found ({e})") from e
+    if done.returncode != 0:
+        tail = (done.stderr or done.stdout or "").strip().splitlines()[-3:]
+        raise InputError("cannot render the overlay text (Remotion): " + " | ".join(tail)
+                         + f" -- run `npm install` in {shots_dir} if packages are missing")
+    plan = json.loads(Path(plan_path).read_text())
+    manifest = Path(out_dir) / f"overlay-{plan['scene']}.frames.json"
+    try:
+        return json.loads(manifest.read_text())
+    except (OSError, ValueError) as e:
+        raise InputError(f"{manifest}: not written by the render ({e})") from e
+
+
+def overlay_text_boxes(plan, rendered):
+    """[{"what", "t", "box", "cue", "window"}] from the text-only stills of one overlay.
+
+    `plan` is the overlay json; `rendered` the records of render_overlay_text. `box` is None
+    when the cue drew nothing. t is the measured frame in seconds; window is the cue's
+    (in, out) in seconds."""
+    out = []
+    for rec in rendered:
+        out.append({"what": f"overlay {plan['scene']}/{rec['id']}", "t": round(rec["frame"] / plan["fps"], 3),
+                    "box": layout.text_box(rec["png"], background=OVERLAY_GREY), "cue": rec["id"],
+                    "window": (rec["inF"] / plan["fps"], rec["outF"] / plan["fps"]), "png": rec["png"]})
+    return out
+
+
+def check_overlay_face(boxes, face_boxes, scale):
+    """(findings, skipped) for overlay text boxes against the face boxes sampled while the cue is
+    on screen (the nearest sample when none falls inside it). `scale` maps clip pixels to the
+    overlay's size. Touching the face is the only failure: there is no chin gap for overlays."""
+    findings, skipped, seen = [], [], set()
+    for b in boxes:
+        if b["box"] is None or not face_boxes:
+            continue
+        t0, t1 = b["window"]
+        recs = [r for r in face_boxes if t0 <= r["t"] <= t1] or \
+            [min(face_boxes, key=lambda r: abs(r["t"] - b["t"]))]
+        faced = [r for r in recs if r["box"] is not None]
+        if not faced:
+            key = (b["what"], recs[0]["frame"])
+            if key not in seen:
+                seen.add(key)
+                skipped.append({"frame": recs[0]["frame"], "t": recs[0]["t"],
+                                "reason": f"no face detected in the clip while {b['what']} is on screen"})
+            continue
+        for r in faced:
+            face = [round(v * scale) for v in r["box"]]
+            if _intersects(b["box"], face):
+                findings.append({"what": b["what"], "t": b["t"], "box": b["box"], "face": face,
+                                 "kind": "overlaps face"})
+                break
+    return findings, skipped
+
+
 # ------------------------------------------------------------------ platform previews
 
 # Each entry gives the UI bands of one platform. "px" values are for a 1080x1920 frame and
@@ -314,7 +422,7 @@ def render_report(result, info):
     lines = ["# Layout report", "", f"Result: {result}{tail}", ""]
     lines += [f"- profile: {info['profile']}", f"- frame: {info['size'][0]}x{info['size'][1]}",
               f"- safe box: {list(info['safe'])}"]
-    for k in ("video", "ass", "thumbs"):
+    for k in ("video", "ass", "thumbs", "overlays"):
         if info.get(k):
             lines.append(f"- {k}: {info[k]}")
     lines += ["", f"## Findings ({len(info['findings'])})", ""]
@@ -325,6 +433,12 @@ def render_report(result, info):
         lines.append("none")
     lines += ["", f"## Skipped face samples ({len(info['skipped'])})", ""]
     lines += [f"- frame {s['frame']} at {s['t']:.2f}s: {s['reason']}" for s in info["skipped"]] or ["none"]
+    lines += ["", f"## Overlay text boxes ({len(info['overlay_boxes'])})", ""]
+    if info["overlay_boxes"]:
+        lines += ["| what | t | box | still |", "|---|---|---|---|"]
+        lines += [f"| {o['what']} | {o['t']:.2f}s | {o['box']} | {o['png']} |" for o in info["overlay_boxes"]]
+    else:
+        lines.append("none")
     lines += ["", "## Notes", ""]
     lines += [f"- {n}" for n in info["notes"]] or ["none"]
     lines += ["", "## Previews", ""]
@@ -344,14 +458,14 @@ def _need_nine_sixteen(label, w, h):
         raise InputError(f"{label} is {w}x{h}: the layout gate only checks 9:16")
 
 
-def run_check(args, detect=None):
+def run_check(args, detect=None, render=None):
     proj = Path(args.project)
     if not proj.is_dir():
         raise InputError(f"project folder not found: {proj}")
     if args.every < 1:
         raise InputError("--every must be >= 1")
-    if not args.ass and not args.thumb:
-        raise InputError("nothing to check: give --ass (subtitles, watermark) and/or --thumb")
+    if not args.ass and not args.thumb and not args.overlay:
+        raise InputError("nothing to check: give --ass (subtitles, watermark), --thumb and/or --overlay")
     if args.video and not args.ass:
         raise InputError("--video is used for the subtitle face check: give --ass too")
     try:
@@ -361,7 +475,8 @@ def run_check(args, detect=None):
     except ValueError as e:
         raise InputError(str(e)) from e
 
-    info = {"profile": args.profile, "findings": [], "skipped": [], "notes": [], "previews": []}
+    info = {"profile": args.profile, "findings": [], "skipped": [], "notes": [], "previews": [],
+            "overlay_boxes": []}
     holder = {"detect": detect}
 
     def detector():
@@ -445,6 +560,42 @@ def run_check(args, detect=None):
             info["findings"] += check_title_face(tbox, face)
             if size is None:
                 size = tsize
+    overlay_runs = []
+    if args.overlay:
+        shots_dir, plans = find_overlays(_resolve(proj, args.overlay))
+        info["overlays"] = ", ".join(plans)
+        renderer = render or render_overlay_text
+        for plan_path in plans:
+            plan = json.loads(Path(plan_path).read_text())
+            osize = (plan["width"], plan["height"])
+            name = Path(plan_path).name
+            if abs(osize[0] / osize[1] - 9 / 16) > 0.01:
+                info["notes"].append(f"{name} is {osize[0]}x{osize[1]}, not 9:16: overlay text not checked")
+                continue
+            rendered = renderer(shots_dir, plan_path, str(proj / ".tmp" / "overlay-text"))
+            oprof = {**base, "width": osize[0], "height": osize[1]}
+            obox = overlay_text_boxes(plan, rendered)
+            for o in obox:
+                if o["box"] is None:
+                    info["notes"].append(f"{o['what']} drew nothing at t={o['t']:.2f}s, so it was not checked")
+            info["overlay_boxes"] += [o for o in obox if o["box"] is not None]
+            info["findings"] += check_safe(obox, oprof)
+            clip = Path(shots_dir) / "public" / plan["clip"]
+            if not clip.is_file():
+                raise InputError(f"overlay clip not found: {clip}")
+            cw, ch, _, _ = face_box.probe(clip)
+            if cw == 0:
+                raise InputError(f"cannot read overlay clip: {clip}")
+            faces = face_box.boxes(str(clip), args.every, detector())
+            found, skipped = check_overlay_face(obox, faces, osize[0] / cw)
+            info["findings"] += found
+            info["skipped"] += skipped
+            overlay_runs.append((plan, obox, str(clip), oprof))
+            if size is None:
+                size = osize
+    if size is None:
+        # only a non-9:16 overlay was given: nothing was measured, say so and stop here
+        size = (base["width"], base["height"])
     prof = {**base, "width": size[0], "height": size[1]}
     safe = layout.safe_box(prof)
     info["size"], info["safe"] = size, safe
@@ -458,14 +609,26 @@ def run_check(args, detect=None):
     else:
         source = None
     at_t = [b["box"] for b in sub_boxes if b["t"] == t_pre] + [e["box"] for e in extra]
-    for platform in PLATFORM_BANDS:
-        out = proj / ".tmp" / f"layout-{platform}.jpg"
-        write_preview(out, platform, source, size, safe, ass=str(ass) if ass else None, t=t_pre, boxes=at_t)
-        info["previews"].append(str(out))
+    if ass or thumbs or video:
+        for platform in PLATFORM_BANDS:
+            out = proj / ".tmp" / f"layout-{platform}.jpg"
+            write_preview(out, platform, source, size, safe, ass=str(ass) if ass else None, t=t_pre, boxes=at_t)
+            info["previews"].append(str(out))
+    for plan, obox, clip, oprof in overlay_runs:
+        bad = next((f["t"] for f in info["findings"]
+                    if f["what"].startswith(f"overlay {plan['scene']}/")), None)
+        t_o = bad if bad is not None else (obox[0]["t"] if obox else 0.0)
+        shown = [o["box"] for o in obox if o["box"] and o["window"][0] <= t_o <= o["window"][1]]
+        osafe = layout.safe_box(oprof)
+        for platform in PLATFORM_BANDS:
+            out = proj / ".tmp" / f"layout-overlay-{plan['scene']}-{platform}.jpg"
+            write_preview(out, platform, ("video", clip), (plan["width"], plan["height"]), osafe,
+                          t=t_o, boxes=shown)
+            info["previews"].append(str(out))
     return info
 
 
-def main(argv=None, detect=None):
+def main(argv=None, detect=None, render=None):
     ap = argparse.ArgumentParser(description="Layout gate for 9:16 video.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check", help="Measure text against the safe area and the face.")
@@ -473,11 +636,13 @@ def main(argv=None, detect=None):
     c.add_argument("--video")
     c.add_argument("--ass")
     c.add_argument("--thumb", help="thumbnail path or glob, e.g. packaging/thumb-*.png")
+    c.add_argument("--overlay", help="Remotion shots workspace (or the project, or one overlay-<scene>.json): "
+                                     "measure the kinetic overlay text rendered alone")
     c.add_argument("--profile", default="short-organic")
     c.add_argument("--every", type=int, default=15, help="face sample step in frames")
     args = ap.parse_args(argv)
     try:
-        info = run_check(args, detect)
+        info = run_check(args, detect, render)
     except (InputError, face_box.VideoUnreadable, ff.FFError, _venv.DependencyMissing) as e:
         print(str(e), file=sys.stderr)
         return 2

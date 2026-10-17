@@ -126,6 +126,13 @@ Over a red flash keep the keyword in `ink` or `highlight`, never red.
    import together, render `KineticOverlay`.
 6. Look at enter-mid, hold and exit-mid of every cue (`scripts/qa-frames.mjs`). Fix placement,
    not the style.
+7. Measure the text (GV-23): `python3 tools/layout_gate.py check <project> --overlay <project>/shots`.
+   It renders each cue's text alone on mid-grey with the real `KineticOverlay` (`textOnly`, via
+   `scripts/render-overlay-text.mjs`), at full size (`settledCue`), measures the box and checks it
+   against the safe area and the face boxes of the scene clip. The workspace needs `npm install`,
+   and its `KineticOverlay` must be wired to the scene being measured (the script says so when it
+   is not). Stills land in `.tmp/overlay-text/`, previews in `.tmp/layout-overlay-<scene>-*.jpg`.
+   Not 9:16: skipped with a note. Cannot render: exit 2 with the reason, never a guessed width.
 
 ## 8. Viral vocabulary (GV-19)
 

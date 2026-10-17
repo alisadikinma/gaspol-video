@@ -6,7 +6,7 @@ import {
   easeOut, clamp01, blurIn, glitch, countUp, strokeProgress, leadIn, exitFx,
   springIn, drift, carouselX, cueVisible, cueStyle,
   stepState, vignetteAlpha, burstParticles,
-  clampRange, anchorGeometry, measureFrame,
+  clampRange, anchorGeometry, measureFrame, settledCue,
 } from "../../templates/remotion/lib/overlayFx.mjs";
 
 const FPS_LIST = [24, 25, 30, 60];
@@ -398,4 +398,31 @@ test("measureFrame: a frame where the cue has fully entered and not started to l
   const g = measureFrame(short, 30);
   assert.ok(g >= short.inF && g < short.outF);
   assert.ok(Number.isInteger(g));
+});
+
+test("settledCue: every effect has finished and the exit never starts, even for a short cue", () => {
+  for (const fx of [1, 2, 3, 4]) {
+    for (const fps of FPS_LIST) {
+      const keyword = fx === 3 ? "1.234 juta" : "hilang";
+      const short = { id: "s", inF: 10, keyF: 12, outF: 18, fx, keyword, lead: "x" };
+      const { frame, cue: settled } = settledCue(short, fps);
+      const st = cueStyle(settled, frame, fps);
+      assert.equal(st.keyword.opacity, 1, `fx ${fx} fps ${fps}`);
+      assert.equal(st.keyword.blurPx, 0);
+      assert.equal(st.keyword.scale, 1);
+      assert.equal(st.keyword.text, keyword);
+      assert.equal(st.keyword.progress, 1);
+      assert.ok(st.keyword.slices.every((s) => s.dx === 0));
+      assert.equal(st.lead.opacity, 1);
+      assert.equal(st.lead.dy, 0);
+      assert.equal(st.icon.progress, 1);
+      assert.ok(cueVisible(frame, settled.inF, settled.outF));
+    }
+  }
+});
+
+test("settledCue does not change the cue it is given", () => {
+  const c = { id: "s", inF: 10, keyF: 12, outF: 18, fx: 1, keyword: "k", lead: "" };
+  settledCue(c, 30);
+  assert.equal(c.outF, 18);
 });
