@@ -834,6 +834,18 @@
       "replaces": [],
       "distinct_because": "",
       "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/layout.py",
+      "purpose": "Load layout profiles (safe area, subtitle and title defaults) from media/layout-profiles.json; every number carries a source.",
+      "tasks": [
+        "layout-profile",
+        "safe-area"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": "Loader library for layout profiles; used by the karaoke, title and layout gate tools. Public route added in the wiring phase."
     }
   ],
   "routes": [

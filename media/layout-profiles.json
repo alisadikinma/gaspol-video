@@ -1,0 +1,16 @@
+{"profiles": {
+  "short-organic": {"width": 1080, "height": 1920,
+    "safe": {"top": {"pct": 0.14, "source": "official: Meta, facebook.com/business/help/980593475366490"},
+             "bottom": {"pct": 0.21, "source": "tafsiran: YouTube Shorts / TikTok overlay templates (third-party), organic posts"},
+             "left": {"pct": 0.06, "source": "official: Meta"},
+             "right": {"pct": 0.10, "source": "tafsiran: YouTube Shorts template right 192px (third-party)"}},
+    "subtitle": {"font_pct": {"value": 0.045, "source": "tafsiran: notebook fd70ee32 4-6%"},
+                 "per_group": {"value": 2, "source": "tafsiran: notebook fd70ee32 1-3 words"},
+                 "chin_gap_pct": {"value": 0.10, "source": "tafsiran: notebook fd70ee32"}},
+    "title": {"font_pct": {"value": 0.10, "source": "tafsiran: notebook fd70ee32 8-12%"},
+              "center_y_pct": {"value": 0.38, "source": "tafsiran: notebook fd70ee32 30-45%"},
+              "max_words": {"value": 5, "source": "data: notebook fd70ee32, Samuel titles 3-5 words"},
+              "min_font_pct": {"value": 0.07, "source": "tafsiran: no measurement yet"}},
+    "timeline_tolerance_s": {"value": 1.0, "source": "tafsiran: no measurement yet"}},
+  "short-ads": {"inherits": "short-organic",
+    "safe": {"bottom": {"pct": 0.35, "source": "official: Meta ads Reels/Stories 35%"}}}}}
