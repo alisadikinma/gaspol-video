@@ -8,7 +8,7 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 
 | Module | What | Replaces (per project) |
 |---|---|---|
-| `ff` | `probe`, `duration`, `run` (`heartbeat_s=N` prints `still running: <file> <s>s` every N seconds), `ffmpeg` | ad-hoc `ffprobe` helpers in every script |
+| `ff` | `probe` (video dict carries `pix_fmt`), `duration`, `has_audio`, `missing()` and `TOOLS` (binaries not on PATH), `FFMissing` (a `FFError` naming the absent binary), `run` (`heartbeat_s=N` prints `still running: <file> <s>s` every N seconds), `ffmpeg` | ad-hoc `ffprobe` helpers in every script |
 | `encoder` | `available`, `choose`, `video_args`, `run_with_fallback` (env `GASPOL_VIDEO_ENCODER`, see below) | the hard-coded `-c:v libx264 ...` in each encode |
 | `gates` | `gate_av` (video = audio length), `gate_uniform` (same sample rate and channels before concat) | `gerbang.py` |
 | `join` | `concat_copy`, `join_xfade`, `clip_starts` (timeline maths for dissolves) | `join.py`, the `rakit_*.py` concat steps |

@@ -1,11 +1,13 @@
 import hashlib
 import io
 import json
+import os
 import random
 import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
 from tools.vidkit import beats, color, colormatch, cover, encoder, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, track
@@ -211,6 +213,47 @@ class MediaTest(unittest.TestCase):
         self.assertEqual((info["video"]["width"], info["video"]["height"]), (320, 240))
         self.assertAlmostEqual(info["video"]["fps"], 25.0)
         self.assertTrue(ff.has_audio(self.dir / "a.mp4"))
+
+    def test_probe_returns_pix_fmt(self):
+        info = ff.probe(self.clip("a.mp4", seconds=1.0))
+        self.assertEqual(info["video"]["pix_fmt"], "yuv420p")
+
+    def test_probe_audio_only_has_no_video(self):
+        wav = self.dir / "a.wav"
+        ff.ffmpeg("-f", "lavfi", "-i", "sine=frequency=440:duration=1", wav)
+        info = ff.probe(wav)
+        self.assertIsNone(info["video"])
+        self.assertIsNotNone(info["audio"])
+
+    def test_missing_binary_raises_ffmissing(self):
+        clip = self.clip("a.mp4", seconds=1.0)
+        empty = tempfile.mkdtemp(dir=self.dir)
+        with mock.patch.dict(os.environ, {"PATH": empty}):
+            with self.assertRaises(ff.FFMissing) as ctx:
+                ff.probe(clip)
+        self.assertEqual(str(ctx.exception), "ffprobe not found on PATH")
+        self.assertIsInstance(ctx.exception, ff.FFError)
+
+    def test_missing_binary_with_heartbeat_raises_ffmissing(self):
+        empty = tempfile.mkdtemp(dir=self.dir)
+        with mock.patch.dict(os.environ, {"PATH": empty}):
+            with self.assertRaises(ff.FFMissing) as ctx:
+                ff.run(["ffmpeg", "-version"], heartbeat_s=1)
+        self.assertEqual(str(ctx.exception), "ffmpeg not found on PATH")
+
+    def test_nonzero_exit_is_plain_fferror(self):
+        bad = self.dir / "bad.mp4"
+        bad.write_text("not media")
+        with self.assertRaises(ff.FFError) as ctx:
+            ff.probe(bad)
+        self.assertNotIsInstance(ctx.exception, ff.FFMissing)
+
+    def test_tools_and_missing(self):
+        self.assertEqual(ff.TOOLS, ("ffmpeg", "ffprobe"))
+        self.assertEqual(ff.missing(), [])
+        empty = tempfile.mkdtemp(dir=self.dir)
+        with mock.patch.dict(os.environ, {"PATH": empty}):
+            self.assertEqual(ff.missing(), ["ffmpeg", "ffprobe"])
 
     def test_gate_av_passes_and_fails(self):
         gates.gate_av(self.clip("ok.mp4", seconds=1.5))
