@@ -14,7 +14,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 <!-- registry:routes:begin -->
 | I want to... | Use |
 |---|---|
-| Download someone's video from a link | `python3 -m tools.vidkit ingest <url> <dir>` |
+| Download someone's video from a link (Instagram needs login) | `python3 -m tools.vidkit ingest <url> <dir> [--cookies-from-browser chrome]` |
 | Cut a video into scenes (clip + first/mid/last stills + scenes.json) | `python3 -m tools.vidkit scenes <video> <dir>` |
 | Probe a clip (duration, fps, size, sample rate, channels) | `python3 -m tools.vidkit probe` / `vidkit.ff.probe` |
 | Check video length = audio length | `vidkit gate-av`; narration fits its cut: `check_vo_duration.py` |
@@ -57,6 +57,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Kinetic text overlay behind the speaker | `overlay_plan.py`, `person_mask.py`, Remotion `KineticOverlay` |
 | Viral overlay extras (sticker icons, step counter, red vignette, falling burst, `viral` caption preset) | `overlay_plan.py` fields `steps`, `vignette`, `burst`, `preset` + `KineticOverlay` (doc 19 section 8) |
 | Measure onsets, tempo, energy and word/cut timing of a reference clip | `python3 -m tools.vidkit audiostudy <clip> [--words w.json] [--out r.json]` |
+| Copy how a reference voice is delivered, or reject a flat/slow take before voice change | `python3 -m tools.vidkit prosody <mono.wav> <words.json> [--out r.json] [--min-range-st 10 --min-wps 2.4 --max-pause 0.35]` |
 | Retention check on a finished cut (static frame, hook, foreshadow, b-roll, BGM) | `python3 tools/retention_gate.py report` / `check` |
 | Fill/check the viral checklist of a short-form script; rate analytics against course thresholds | `python3 tools/viral_checklist.py check` / `timeline` / `rate` |
 | Put an app screen into a phone/monitor in a clip | `python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green\|track` (green: exact corners from a green screen, `--mode track --corners ...` for a clip without green); legacy or seed: `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |

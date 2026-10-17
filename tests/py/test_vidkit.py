@@ -33,6 +33,27 @@ class IngestTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ingest.scenes_from_cuts([], 0)
 
+    def test_download_passes_browser_cookies_to_yt_dlp(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(ff, "run") as run:
+            target = Path(d) / "source.mp4"
+            run.side_effect = lambda cmd, **kw: target.write_bytes(b"x")
+            ingest.download("https://x/reel", d, cookies_from_browser="chrome")
+            cmd = run.call_args[0][0]
+            self.assertEqual(cmd[cmd.index("--cookies-from-browser") + 1], "chrome")
+            self.assertEqual(cmd[-1], "https://x/reel")
+
+    def test_download_without_cookies_has_no_cookie_flag(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(ff, "run") as run:
+            run.side_effect = lambda cmd, **kw: (Path(d) / "source.mp4").write_bytes(b"x")
+            ingest.download("https://x/reel", d)
+            self.assertNotIn("--cookies-from-browser", run.call_args[0][0])
+
+    def test_cli_ingest_forwards_cookies_flag(self):
+        with mock.patch.object(ingest, "download", return_value="p") as dl, \
+                contextlib.redirect_stdout(io.StringIO()):
+            vcli.main(["ingest", "https://x/reel", "out", "--cookies-from-browser", "chrome"])
+        dl.assert_called_once_with("https://x/reel", "out", "source", "chrome")
+
     @requires_ffmpeg
     def test_split_writes_clips_stills_and_json(self):
         with tempfile.TemporaryDirectory() as d:
