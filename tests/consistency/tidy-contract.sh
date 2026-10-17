@@ -17,10 +17,17 @@ for s in video-image video-gen; do
 done
 for s in video-image video-gen video-post video-explainer; do
   need "skills/$s/SKILL.md" "vidkit tidy" "skills/$s/SKILL.md missing \`vidkit tidy\`"
-  need "skills/$s/SKILL.md" "sfx/" "skills/$s/SKILL.md folder-contract paragraph missing \`sfx/\`"
+  # Anchored on the folder-contract list itself: a bare "sfx/" also matches media/sfx/library paths.
+  need "skills/$s/SKILL.md" '`vo/` `sfx/`' "skills/$s/SKILL.md folder-contract paragraph missing \`sfx/\`"
 done
-need docs/tool-routing.md "vidkit tidy" "docs/tool-routing.md table missing \`vidkit tidy\`"
-need docs/tool-routing.md "archive --file" "docs/tool-routing.md table missing \`archive --file\`"
+# Only the generated table counts, not prose elsewhere in the file.
+routes_table="$(sed -n '/<!-- registry:routes:begin -->/,/<!-- registry:routes:end -->/p' docs/tool-routing.md)"
+for needle in "vidkit tidy" "archive --file"; do
+  if ! grep -qF -- "$needle" <<<"$routes_table"; then
+    echo "FAIL docs/tool-routing.md generated table missing \`$needle\`"
+    fail=1
+  fi
+done
 need tools/registry.json '"tools/vidkit/tidy.py"' "tools/registry.json missing \"tools/vidkit/tidy.py\""
 need tools/registry.json '"render-archive"' "tools/registry.json missing \"render-archive\""
 need reference/post-production/10-post-production-pipeline.md "### 2.4" "pipeline doc missing ### 2.4"
