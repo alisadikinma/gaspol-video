@@ -171,12 +171,13 @@ changed first and why the loop repeats.
 ### Archive every reject with its reason IN THE FILENAME
 
 ```
-clips/_tidak-dipakai/scene-04-v5-tangan-ketiga.mp4      # third hand
-clips/_tidak-dipakai/scene-03-v3-solar-tumpah.mp4       # diesel spilled
-keyframes/_gen/DITOLAK-S04-tangan-lepas-setir.png       # hand off the wheel
+_arsip/klip-scene-04-v5-tangan-ketiga.mp4        # third hand
+_arsip/klip-scene-03-v3-solar-tumpah.mp4         # diesel spilled
+_arsip/keyframe-S04-v1-tangan-lepas-setir.png    # hand off the wheel
 ```
 
-`ls` on that folder then reads as a defect histogram. `scene-04-v1-tangan-ketiga`,
+Make each one with `python3 tools/renders.py {output_folder} archive --file <file> --reason "<defect>"`
+(it numbers the version). `ls _arsip/` then reads as a defect histogram. `klip-scene-04-v1-tangan-ketiga`,
 `-v3-tiga-tangan`, `-v5-tangan-ketiga` is the same word three times — that is the signal to stop
 prompting, and it is invisible if the files are named `v1 v2 v3`.
 
@@ -208,4 +209,4 @@ whose overlays still carry the old face.
 | Face "not similar at all" after several renders | Identity built from a front-only reference | Rebuild the keyframe with a 3-angle ref sheet (front + profile + ¾) named in the prompt text |
 | Reference image rejected by the API | File over the 10 MB per-image cap | Downscale to <10 MB before sending; keep the original for the sheet |
 | Liquid/particle physics wrong in a wide shot | Physics VEO does not resolve at that scale | Do not animate it wide. Carry it in a macro insert; hold the wide static |
-| Clip is right but the group still shows the old version | A composited or Remotion-embedded copy was not rebuilt | Rebuild every derivative: `_ov/`, `_final/`, `shots/public/`, then re-cut |
+| Clip is right but the group still shows the old version | A composited or Remotion-embedded copy was not rebuilt | Rebuild every derivative: the `-ov` and `-jadi` copies in `.tmp/`, `shots/public/`, then re-cut |

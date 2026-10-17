@@ -453,9 +453,9 @@ class RenderTest(FakeRoot):
         rc, out, _ = cli("render", "--check", root=ROOT)
         self.assertEqual(rc, 0, out)
 
-    def test_committed_registry_has_sixtyone_routes_and_validates(self):
+    def test_committed_registry_route_count_and_validates(self):
         reg = json.loads((ROOT / "tools/registry.json").read_text())
-        self.assertEqual(len(reg["routes"]), 61)
+        self.assertEqual(len(reg["routes"]), 63)
         self.assertEqual(registry_build.validate(reg, ROOT), [])
         deck = [r for r in reg["routes"] if r["task"].startswith("Deck / slide")]
         self.assertEqual(deck[0]["tools"], [])

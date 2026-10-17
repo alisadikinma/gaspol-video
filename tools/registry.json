@@ -360,7 +360,8 @@
       "tasks": [
         "render-ledger",
         "prompt-hash",
-        "eligibility"
+        "eligibility",
+        "render-archive"
       ],
       "phase": "shared",
       "replaces": [],
@@ -820,6 +821,19 @@
       "replaces": [],
       "distinct_because": "",
       "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/tidy.py",
+      "purpose": "Report and clean a project folder: stray folders, duplicates, stale ledger entries, old .tmp files, MCP renders not moved home.",
+      "tasks": [
+        "folder-tidy",
+        "stray-folders",
+        "tmp-cleanup"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
     }
   ],
   "routes": [
@@ -1255,6 +1269,20 @@
       "use": "`python3 tools/registry_build.py suggest --text-file F`, `validate --coverage`, `render`",
       "tools": [
         "tools/registry_build.py"
+      ]
+    },
+    {
+      "task": "Re-render a paid asset without losing the old one",
+      "use": "`python3 tools/renders.py <project> archive --file F --reason R` (moves the old file into `_arsip/` before the new render)",
+      "tools": [
+        "tools/renders.py"
+      ]
+    },
+    {
+      "task": "Keep the project folder clean / find stray folders and duplicates",
+      "use": "`python3 -m tools.vidkit tidy <project>` (report only; `--apply` moves strays to `_arsip/`, `--empty-tmp` empties `.tmp/`)",
+      "tools": [
+        "tools/vidkit/tidy.py"
       ]
     }
   ],

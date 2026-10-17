@@ -92,14 +92,17 @@ NEVER load the storytelling files or the NB2 guide. Neither applies after the cl
 6. **Degradation is loud.** A missing binary or key costs one capability, says which, and the phase
    continues.
 
-7. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
-that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
-`.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
+7. **Folder contract — twelve folders, no new ones.** Everything this skill writes goes in a folder
+that already exists: `ref/` `keyframes/` `shots/` `clips/` `vo/` `sfx/` `work/` `output/` `_arsip/`
+`.tmp/` `screens/` `packaging/`. A new folder needs the user's approval. Subfolders are not allowed
+inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/ output/`, except those the plugin's tools create:
+`ref/sumber/`, `vo/native/`, `vo/master/`, `output/stems/`. Derived files (previews, QA stills, upload
 copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
 subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
 to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,
-it replaces the folder — use `ffmpeg -vf scale`. Full contract:
-`reference/post-production/10-post-production-pipeline.md` §2.
+it replaces the folder — use `ffmpeg -vf scale`. At the end of each batch run
+`python3 -m tools.vidkit tidy {output_folder}` (report only) and show the user anything it lists.
+Full contract: `reference/post-production/10-post-production-pipeline.md` §2.
 
 ---
 
@@ -139,11 +142,12 @@ and every overlay composited on top.
 **A rejected clip is archived with its reason in the filename**, never overwritten and never
 deleted while the scene is open:
 
-```
-clips/_tidak-dipakai/scene-04-v5-tangan-ketiga.mp4
+```bash
+python3 tools/renders.py {output_folder} archive --file clips/scene-04.mp4 --reason "tangan ketiga"
+# -> _arsip/klip-scene-04-v1-tangan-ketiga.mp4
 ```
 
-`ls` on that folder is then a defect histogram. The same word appearing twice is the signal to stop
+`ls _arsip/` is then a defect histogram. The same word appearing twice is the signal to stop
 re-prompting and go fix the keyframe — see `03-workflow-pipeline.md` "The Reject Loop".
 
 ### K.3 — Voice change
@@ -225,7 +229,7 @@ Two things this ordering prevents:
    visible in the still — a face, a hand count, a prop's state — the keyframe is the fix. Going
    straight to the clip is how the same defect comes back three rounds running.
 2. **Fixing one scene and shipping another one stale.** A re-rendered clip invalidates its voice
-   change, its composited copy in `_ov/`, its `_final/`, any `shots/public/` copy an overlay
+   change, its composited copy (`.tmp/scene-NN-ov.mp4`), its `-jadi` copy, any `shots/public/` copy an overlay
    embeds, and the cut. Walk the whole chain or the group ships half-fixed.
 
 Report back note by note, in the user's numbering, saying what was changed and what was verified —

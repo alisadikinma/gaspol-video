@@ -78,9 +78,11 @@ Everything Phase 6 reads and writes lives under the project's `{output_folder}`.
     music-plan.json
     visual-qa.md       Phase 5   verdicts on each clip's contact sheet (validator V15)
   output/                Phase 6   kelompok-K{N}.mp4, master.mp4, master.srt, master-mixed.mp4
+  screens/               any phase  captured or mocked app screens (gen_app_screen.py)
+  packaging/             Phase 7   title, thumbnails, description (video-package)
   _arsip/                any phase  rejected or superseded paid artefacts, kept with their reason
-  .tmp/                  any phase  every derived file; safe to delete at any time
-                                    (includes qa-scene-NN.jpg contact sheets, music-proxy.mp4)
+  .tmp/                  any phase  every derived file (includes qa-scene-NN.jpg contact sheets,
+                                    music-proxy.mp4); paid MCP renders and vocache-* are kept, see 2.4
 ```
 
 ### 2.1 These folders are the whole contract. Do not create others.
@@ -90,8 +92,13 @@ Set 2026-09-20, after a project reached 25 folders: seven held preview JPEGs, se
 archives. The user could no longer tell which folder was safe to delete, which is the real cost
 — not the disk space.
 
-**A new folder needs the user's approval.** When you need somewhere to put a file, pick one of
-the folders above. If none fits, the file is almost certainly derived, so it belongs in `.tmp/`.
+**A new folder needs the user's approval.** The twelve top-level folders are `ref/ keyframes/
+shots/ clips/ vo/ sfx/ work/ output/ _arsip/ .tmp/ screens/ packaging/`. Subfolders are not
+allowed inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/` or `output/`, except the ones the plugin's
+own tools create: `ref/sumber/` (and `ref/sumber/scenes/`, `vidkit ingest` and `vidkit scenes`),
+`vo/native/` (`cast_voice.mjs`), `vo/master/` (`check_vo_duration.py` convention) and
+`output/stems/` (`make_stems.py`). `tidy` lists every other subfolder. When you
+need somewhere to put a file, pick one of the folders above. If none fits, the file is almost certainly derived, so it belongs in `.tmp/`.
 
 **Variants are distinguished by a FILENAME SUFFIX inside the existing folder, never by a new
 subfolder:**
@@ -123,6 +130,9 @@ cd shots && node scripts/render-all.mjs     # overlays -> shots/out/
 python3 work/rakit_*.py                     # composite + audio mix -> .tmp/ and output/
 ```
 
+The exception is the MCP render area (`.tmp/image`, `.tmp/video`) and `.tmp/vocache-*`, which hold paid
+results and are kept unless a verified copy exists at home (section 2.4).
+
 So never leave the ONLY copy of anything in `.tmp/`. Anything that cost money — images from an
 image API, clips from a video platform, mp3s from ElevenLabs — belongs in `keyframes/`, `clips/`,
 `ref/`, `vo/`, or `_arsip/`.
@@ -138,8 +148,39 @@ was rejected, which is what makes the archive worth keeping at all.
   as the file lands, move it to its permanent home under a readable name and remove that subfolder.
   Never point `output_dir` at `keyframes/` or `clips/` directly.
 - **Never `sips --out <folder>/<file>`.** Twice on 2026-09-19 sips replaced the target FOLDER with
-  a single image file, destroying every preview inside it (`keyframes/_small`, then
-  `keyframes/_up`). Use `ffmpeg -i in.png -vf scale=1920:-2 out.png` for every resize.
+  a single image file, destroying every preview inside it (two preview folders
+  in a row). Use `ffmpeg -i in.png -vf scale=1920:-2 out.png` for every resize.
+
+### 2.4 Cleaning up
+
+```bash
+python3 tools/renders.py {output_folder} archive --file keyframes/scene-03.png --reason "face drift"
+python3 -m tools.vidkit tidy {output_folder}                 # report only, changes nothing
+python3 -m tools.vidkit tidy {output_folder} --apply         # move strays into _arsip/
+python3 -m tools.vidkit tidy {output_folder} --empty-tmp     # empty .tmp/
+```
+
+`archive` runs inside the render step, after the user approves a re-render AND the new render
+succeeded, before the new file is moved into place: it moves the existing file to `_arsip/<kind>-<stem>-v<N>-<reason><ext>`, so the old paid version is never
+overwritten. It refuses a file that is not inside a sub-folder (for example `renders.json`), a file
+inside `_arsip/` or `.tmp/`, and an `_arsip/` that is a symlink or resolves outside the project.
+`renders.py check` prints `render` for a slot whose file is missing on disk, even when the ledger
+hash matches, so a declined re-render is not skipped later.
+
+`tidy` with no flag reports unknown top-level folders, subfolders inside the flat folders
+(`_arsip/` is never a source of subfolders and `--apply` never renames anything in it),
+duplicate files, stale ledger entries, old `.tmp/` files and folders that could not be listed.
+`--apply` moves unknown top-level folders and subfolders inside flat folders to `_arsip/folder-...`.
+
+`--empty-tmp` deletes only content of `.tmp/`. The MCP area is `.tmp/image` and `.tmp/video`
+(letter case ignored). Every file there, of any type, readable or not, is kept unless it is
+verified at delete time as a copy: the tool hashes the `.tmp` file again, finds a home file with
+the same size and sha256, hashes that home file again and checks it still matches. Only then does it
+delete the copy (prints `deleted <tmp> (copy of <home>)`); any mismatch or error keeps the file.
+`--include-mcp` deletes the MCP area without that check. `.tmp/vocache-*` (paid ElevenLabs chunk
+cache from `gen_vo.mjs`) is always kept (`paid TTS cache, kept: <path>`). A file or folder that
+cannot be removed is listed as `failed <path>: <error>`, the rest still run, and the exit code is 1.
+`_arsip/` and `shots/out/` are never touched. Do not run it while a render is writing to `.tmp/`.
 
 Naming rules that other tools depend on:
 
