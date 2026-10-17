@@ -62,6 +62,10 @@ blocking gate. Also fix why `video-repackage` is missing from sessions (marketpl
 - Language: skill/reference/plan text in English (repo convention). Owner-facing questions inside
   skills are Indonesian, as today.
 
+## Static check (owner decision 2026-10-17)
+
+Every phase that adds or changes a `.py` file also runs `python3 -m py_compile <changed .py files>`; it must exit 0. No linter is configured in this repo.
+
 ## Tech Stack
 
 Python 3 stdlib + ffmpeg for everything except the face box (MediaPipe face detector in the venv).
