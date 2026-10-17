@@ -97,5 +97,186 @@ class ThreadMapsTest(unittest.TestCase):
         self.assertEqual(albedo.shape[:2], height.shape)
 
 
+def _field(x, y):
+    import numpy as np
+    return 6.0 * np.sin(y / 40.0), 4.0 * np.cos(x / 50.0)
+
+
+def _grid_points(n=7, x0=50, x1=350, y0=40, y1=260):
+    import numpy as np
+    gx, gy = np.meshgrid(np.linspace(x0, x1, n), np.linspace(y0, y1, n))
+    return np.stack([gx.ravel(), gy.ravel()], 1).astype(np.float32)
+
+
+def _checker_layer(w=400, h=300, cell=25, hull=(50, 40, 350, 260)):
+    import numpy as np
+    yy, xx = np.mgrid[0:h, 0:w]
+    check = (((xx // cell) + (yy // cell)) % 2).astype(np.uint8) * 200 + 30
+    layer = np.zeros((h, w, 4), np.uint8)
+    layer[..., :3] = check[..., None]
+    inside = (xx >= hull[0]) & (xx <= hull[2]) & (yy >= hull[1]) & (yy <= hull[3])
+    layer[..., 3] = inside * 255
+    return layer
+
+
+@needs_cv
+class GridWarpTest(unittest.TestCase):
+    def setUp(self):
+        from tools.vidkit import embroider
+        self.e = embroider
+
+    def _warp(self, layer, src, dst, visible=None):
+        import numpy as np
+        if visible is None:
+            visible = np.ones(len(src), bool)
+        return self.e.grid_warp(layer, src, dst, visible, (layer.shape[1], layer.shape[0]))
+
+    def test_matches_analytic_field_per_cell(self):
+        import cv2
+        import numpy as np
+        layer = _checker_layer()
+        src = _grid_points()
+        dx, dy = _field(src[:, 0], src[:, 1])
+        dst = src + np.stack([dx, dy], 1).astype(np.float32)
+        out = self._warp(layer, src, dst)
+        h, w = layer.shape[:2]
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        sx, sy = xx.copy(), yy.copy()
+        for _ in range(2):
+            fx, fy = _field(sx, sy)
+            sx, sy = xx - fx, yy - fy
+        truth = cv2.remap(layer, sx, sy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        errs = []
+        cell = 25
+        for cy in range(2, 9):
+            for cx in range(2, 13):
+                x0, y0 = cx * cell, cy * cell
+                if (cx + cy) % 2:
+                    continue
+                cents = []
+                for img in (out, truth):
+                    win = img[y0 - 8:y0 + cell + 8, x0 - 8:x0 + cell + 8]
+                    a = win[..., 3].astype(np.float32) * (win[..., 0] > 128)
+                    ys, xs = np.mgrid[0:a.shape[0], 0:a.shape[1]]
+                    tot = a.sum()
+                    if tot == 0:
+                        break
+                    cents.append(((a * xs).sum() / tot, (a * ys).sum() / tot))
+                if len(cents) == 2:
+                    errs.append(np.hypot(cents[0][0] - cents[1][0], cents[0][1] - cents[1][1]))
+        self.assertGreater(len(errs), 20)
+        print("centroid error mean=%.3f max=%.3f" % (np.mean(errs), np.max(errs)))
+        self.assertLessEqual(float(np.mean(errs)), 1.5)
+
+    def test_identity(self):
+        import numpy as np
+        layer = _checker_layer()
+        src = _grid_points()
+        out = self._warp(layer, src, src.copy())
+        inner = (slice(46, 254), slice(56, 344))
+        diff = np.abs(out.astype(int) - layer.astype(int))[inner]
+        self.assertLessEqual(int(diff.max()), 1)
+
+    def test_invisible_points_ignored(self):
+        import numpy as np
+        layer = _checker_layer()
+        src = _grid_points()
+        dx, dy = _field(src[:, 0], src[:, 1])
+        dst = src + np.stack([dx, dy], 1).astype(np.float32)
+        visible = np.ones(len(src), bool)
+        visible[10] = False
+        a = self._warp(layer, src, dst, visible)
+        dst2 = dst.copy()
+        dst2[10] += (300, -200)
+        b = self._warp(layer, src, dst2, visible)
+        self.assertTrue(np.array_equal(a, b))
+
+    def test_too_few_or_collinear_refused(self):
+        import numpy as np
+        from tools.vidkit.screen import Refused
+        layer = _checker_layer()
+        src = _grid_points()
+        visible = np.zeros(len(src), bool)
+        visible[[0, 1, 2]] = True
+        with self.assertRaises(Refused) as ctx:
+            self._warp(layer, src, src.copy(), visible)
+        self.assertIn("track lost: 3 visible points", str(ctx.exception))
+        line = np.array([[50, 50], [100, 50], [150, 50], [200, 50], [250, 50]], np.float32)
+        with self.assertRaises(Refused):
+            self._warp(layer, line, line.copy())
+
+    def test_multichannel_float_layer(self):
+        import numpy as np
+        h, w = 300, 400
+        rng = np.random.default_rng(1)
+        layer = np.zeros((h, w, 8), np.float32)
+        layer[50:250, 60:340] = rng.random((200, 280, 8)).astype(np.float32) * 0 + np.linspace(0, 1, 8, dtype=np.float32)
+        src = _grid_points()
+        out = self._warp(layer, src, src.copy())
+        self.assertEqual(out.shape, (h, w, 8))
+        self.assertEqual(out.dtype, np.float32)
+        self.assertLess(float(np.abs(out[60:240, 70:330] - layer[60:240, 70:330]).max()), 1e-3)
+
+
+def _shade_inputs(h=100, w=300):
+    import numpy as np
+    ramp = np.linspace(40, 220, w, dtype=np.float32)
+    frame = np.repeat(np.repeat(ramp[None, :, None], h, 0), 3, 2).astype(np.uint8)
+    alpha = np.zeros((h, w), np.float32)
+    alpha[20:80, 60:240] = 1.0
+    albedo = np.full((h, w, 3), 0.5, np.float32)
+    return frame, albedo, alpha
+
+
+@needs_cv
+class ShadeTest(unittest.TestCase):
+    def setUp(self):
+        from tools.vidkit import embroider
+        self.e = embroider
+
+    def test_follows_cloth_luminance(self):
+        import numpy as np
+        frame, albedo, alpha = _shade_inputs()
+        h, w = alpha.shape
+        normal = np.zeros((h, w, 3), np.float32)
+        normal[..., 2] = 1
+        out = self.e.shade(frame, albedo, normal, np.full((h, w), 0.5, np.float32), alpha)
+        self.assertEqual(out.dtype, np.uint8)
+        row_out = out[50, 75:225].mean(axis=1)
+        row_in = frame[50, 75:225].mean(axis=1)
+        corr = float(np.corrcoef(row_out, row_in)[0, 1])
+        print("shade correlation=%.4f" % corr)
+        self.assertGreaterEqual(corr, 0.8)
+
+    def test_ridges_brighter_than_valleys(self):
+        import numpy as np
+        frame, albedo, alpha = _shade_inputs()
+        frame[:] = 128
+        h, w = alpha.shape
+        xs = np.arange(w, dtype=np.float32)
+        height = np.tile((0.5 + 0.5 * np.sin(xs / 3.0))[None, :], (h, 1)).astype(np.float32)
+        slope = np.tile((0.5 * np.cos(xs / 3.0) / 3.0)[None, :], (h, 1))
+        normal = np.dstack([-slope * 6, np.zeros_like(slope), np.ones_like(slope)])
+        normal /= np.linalg.norm(normal, axis=2, keepdims=True)
+        out = self.e.shade(frame, albedo, normal.astype(np.float32), height, alpha)
+        lum = out.mean(axis=2)
+        core = alpha > 0
+        core[:, :80] = False
+        core[:, 220:] = False
+        top = lum[core & (height > 0.9)].mean()
+        valley = lum[core & (height < 0.1)].mean()
+        print("ridge/valley ratio=%.3f" % (top / valley))
+        self.assertGreater(top, valley)
+
+    def test_outside_alpha_equals_frame(self):
+        import numpy as np
+        frame, albedo, alpha = _shade_inputs()
+        h, w = alpha.shape
+        normal = np.zeros((h, w, 3), np.float32)
+        normal[..., 2] = 1
+        out = self.e.shade(frame, albedo, normal, np.full((h, w), 0.5, np.float32), alpha)
+        self.assertTrue(np.array_equal(out[alpha == 0], frame[alpha == 0]))
+
+
 if __name__ == "__main__":
     unittest.main()
