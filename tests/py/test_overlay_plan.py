@@ -534,6 +534,70 @@ class OverlayPlanTest(unittest.TestCase):
         self.assertTrue(msgs[0].startswith("overlay 04:"))
         self.assertFalse((self.out / "shots" / "src" / "shots" / "overlay-03.json").exists())
 
+    # ---- GV-23: cue positions against the layout profile's safe area ----------------------
+
+    def test_json_carries_the_safe_box_of_the_default_profile(self):
+        self.run_plan(_scene())
+        self.assertEqual(self.result()["safe"],
+                         {"x0": 65, "y0": 269, "x1": 972, "y1": 1517, "profile": "short-organic"})
+
+    def test_safe_box_scales_to_the_scene_size(self):
+        self.run_plan(_scene(width=540, height=960))
+        s = self.result()["safe"]
+        self.assertEqual((s["x0"], s["y0"], s["x1"], s["y1"]), (32, 134, 486, 758))
+
+    def test_profile_none_writes_no_safe_box(self):
+        self.write_plan(_scene())
+        overlay_plan.run(self.out, profile=None)
+        self.assertNotIn("safe", self.result())
+
+    def test_cli_profile_flag(self):
+        self.write_plan(_scene())
+        self.assertEqual(overlay_plan.main([str(self.out), "--profile", "none"]), 0)
+        self.assertNotIn("safe", self.result())
+        self.assertEqual(overlay_plan.main([str(self.out), "--profile", "short-ads"]), 0)
+        self.assertEqual(self.result()["safe"]["y1"], 1248)  # ads: bottom 35 %
+        self.assertEqual(overlay_plan.main([str(self.out), "--profile", "nope"]), 2)
+
+    def test_anchor_point_outside_the_safe_box_refused_naming_scene_and_cue(self):
+        for pos in ({"x": 500, "y": 100}, {"x": 500, "y": 1800},
+                    {"x": 20, "y": 800}, {"x": 1050, "y": 800}):
+            with self.subTest(pos=pos):
+                msg = self.refused(_scene(cues=[_cue(pos=pos)]))
+                self.assertIn("scene 03 cue c1", msg)
+                self.assertIn("outside the safe area", msg)
+                self.assertIn("short-organic", msg)
+
+    def test_anchor_point_on_the_safe_edge_passes(self):
+        self.run_plan(_scene(cues=[_cue(pos={"x": 65, "y": 1517})]))
+
+    def test_every_bad_cue_is_listed(self):
+        a = _cue(id="a", pos={"x": 500, "y": 100})
+        b = _cue(id="b", words="di hutan kita", keyword="hutan", pos={"x": 500, "y": 1900})
+        msg = self.refused(_scene(cues=[a, b]))
+        self.assertIn("scene 03 cue a", msg)
+        self.assertIn("scene 03 cue b", msg)
+
+    def test_default_anchors_are_not_refused(self):
+        for anchor in ("top", "left", "right", "center"):
+            with self.subTest(anchor=anchor):
+                self.run_plan(_scene(cues=[_cue(pos={"anchor": anchor})]))
+
+    def test_profile_none_skips_the_check(self):
+        self.write_plan(_scene(cues=[_cue(pos={"x": 500, "y": 100})]))
+        overlay_plan.run(self.out, profile=None)
+
+    def test_scene_that_is_not_nine_sixteen_skips_the_profile(self):
+        # a 16:9 explainer overlay: a vertical profile does not apply, and nothing is refused
+        lines = self.run_plan(_scene(width=1920, height=1080,
+                                     cues=[_cue(pos={"x": 500, "y": 100})]))
+        self.assertNotIn("safe", self.result())
+        self.assertIn("not 9:16", lines[0])
+
+    def test_preset_center_position_still_passes(self):
+        self.run_plan(_scene(preset="viral"))
+        self.assertEqual(self.result()["cues"][0]["pos"]["anchor"], "center")
+
     def test_cli_exit_codes(self):
         self.write_plan(_scene())
         self.assertEqual(overlay_plan.main([str(self.out)]), 0)

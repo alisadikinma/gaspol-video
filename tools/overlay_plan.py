@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Resolve kinetic-overlay cues to frames and stage their media for Remotion.
 
-    python3 tools/overlay_plan.py <output_folder> [--scene 03]
+    python3 tools/overlay_plan.py <output_folder> [--scene 03] [--profile short-organic|none]
 
 Reads `<output_folder>/work/overlay-plan.json` (`{"scenes": [...]}`). Each scene names its clip,
 fps and size, one word source, and its cues in spoken order. The word source is exactly one of:
@@ -19,13 +19,19 @@ GV-19 optional fields: scene `steps` {total 2-9, marks [{n, words}]} (a numeral 
 toward the text share), scene `preset` ("viral", source: course), cue `vignette` (bool) and cue
 `burst` {icon, count 1-30}. An explicit cue field always overrides the preset.
 
+GV-23: every cue with an explicit `pos` {x, y} is checked against the safe area of the layout
+profile (`--profile`, default short-organic, `none` to skip; media/layout-profiles.json scaled to the
+scene's size). A point outside the box is refused, naming scene and cue. The box goes into the json as
+`safe` {x0, y0, x1, y1, profile}, and KineticOverlay keeps every text block inside it (default
+anchors start at its edges). A scene that is not 9:16 gets no `safe` and no check.
+
 Writes `shots/src/shots/overlay-<scene>.json` (cues with inF / keyF / outF frames and public media
 paths) and stages the clip, media and person-mask frames in `shots/public/overlay/<scene>/`
 (hard link, copy as fallback). A `behind` layer needs frames from tools/person_mask.py for the same
 clip. Re-running gives identical output.
 
 Exit 0 ok, one line per scene. Exit 1 refused; every problem is listed, each as
-"scene <s> cue <id>: <problem>". Exit 2 an input file is missing. Stdlib only.
+"scene <s> cue <id>: <problem>". Exit 2 an input file is missing or the profile is unknown. Stdlib only.
 """
 
 import argparse
@@ -41,7 +47,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.gen_captions import _align_norm  # noqa: E402
-from tools.vidkit import ff  # noqa: E402
+from tools.vidkit import ff, layout  # noqa: E402
 
 
 ICONS = ("fire", "gavel", "chart", "cloud", "question", "arrow", "circle",
@@ -68,6 +74,7 @@ OVERLAP_MAX_S = 0.1
 # Keywords, not subtitles: text may be on screen for at most this share of a scene's speech.
 TEXT_SHARE_MAX = 0.5
 MASK_STAMP = "source.json"
+DEFAULT_PROFILE = "short-organic"
 SCAFFOLD_HINT = ("scaffold the Remotion workspace first: "
                  "node templates/remotion/scaffold.mjs <project>")
 
@@ -82,6 +89,19 @@ class OverlayPlanError(Exception):
 
 class MissingInput(Exception):
     """An input file the plan points at does not exist."""
+
+
+class BadProfile(Exception):
+    """The layout profile named on the command line does not exist or is unreadable."""
+
+
+def _scene_safe(profile, name, width, height):
+    """Safe box {x0, y0, x1, y1, profile} scaled to the scene, or None when it is not 9:16."""
+    if profile is None or not (_is_int(width) and _is_int(height)) or width <= 0 or height <= 0 \
+            or abs(width / height - 9 / 16) > 0.01:
+        return None
+    x0, y0, x1, y1 = layout.safe_box({**profile, "width": width, "height": height})
+    return {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "profile": name}
 
 
 def _load_json(path, what):
@@ -192,6 +212,10 @@ def _is_int(v):
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
 def _validate_viral_fields(cue, label, problems):
     if "vignette" in cue and not isinstance(cue["vignette"], bool):
         problems.append(f"{label}: vignette must be true or false (got {cue['vignette']!r})")
@@ -256,7 +280,7 @@ def _resolve_steps(steps, words, offset, fps, scene, problems):
     return {"total": total, "marks": out}
 
 
-def _plan_scene(out, sc, problems_all):
+def _plan_scene(out, sc, problems_all, profile=None, profile_name=None):
     """Resolve one scene. Returns (result dict, staging dict) or None when refused."""
     scene = str(sc.get("scene", ""))
     problems = []
@@ -304,6 +328,8 @@ def _plan_scene(out, sc, problems_all):
     if not cues:
         add("no cues")
 
+    safe = _scene_safe(profile, profile_name, sc["width"], sc["height"])
+
     preset = None
     if sc.get("preset") is not None:
         preset = PRESETS.get(sc["preset"])
@@ -338,6 +364,14 @@ def _plan_scene(out, sc, problems_all):
         _validate_cue_fields(cue, label, local)
         _validate_viral_fields(cue, label, local)
         problems.extend(local)
+        pos = cue.get("pos") or {}
+        if safe and pos.get("x") is not None and pos.get("y") is not None:
+            if not (_is_num(pos["x"]) and _is_num(pos["y"])):
+                add(f"pos x and y must be numbers (got {pos['x']!r}, {pos['y']!r})", cid)
+            elif not (safe["x0"] <= pos["x"] <= safe["x1"] and safe["y0"] <= pos["y"] <= safe["y1"]):
+                add(f"anchor point ({pos['x']}, {pos['y']}) is outside the safe area of profile "
+                    f"{profile_name} ({safe['x0']},{safe['y0']} to {safe['x1']},{safe['y1']} at "
+                    f"{sc['width']}x{sc['height']})", cid)
         for field in ("words", "keyword"):
             if not str(cue.get(field, "")).strip():
                 add(f"missing {field}", cid)
@@ -470,10 +504,12 @@ def _plan_scene(out, sc, problems_all):
     }
     if steps_out:
         result["steps"] = steps_out
+    if safe:
+        result["safe"] = safe
     if preset:
         result["preset"] = {"name": sc["preset"], "source": preset["source"],
                             "lead_px": preset["lead_px"], "key_px": preset["key_px"]}
-    staging = {"files": owners, "mask": mask_pngs if needs_mask else None}
+    staging = {"files": owners, "mask": mask_pngs if needs_mask else None, "safe": safe}
     return result, staging
 
 
@@ -511,9 +547,20 @@ def _stage(out, scene, staging):
     return count
 
 
-def run(output_folder, scene=None):
-    """Resolve the plan and stage files. Returns one status line per scene."""
+def run(output_folder, scene=None, profile=DEFAULT_PROFILE):
+    """Resolve the plan and stage files. Returns one status line per scene.
+
+    `profile` is a layout profile name (media/layout-profiles.json) or None to skip the
+    safe-area check."""
     out = Path(output_folder)
+    prof = None
+    if profile is not None:
+        try:
+            prof = layout.load(profile)
+        except KeyError as e:
+            raise BadProfile(str(e.args[0])) from e
+        except (ValueError, OSError) as e:
+            raise BadProfile(f"layout profile {profile!r}: {e}") from e
     plan = _load_json(out / "work" / "overlay-plan.json", "overlay plan")
     if not (out / "shots").is_dir():
         raise OverlayPlanError([SCAFFOLD_HINT])
@@ -527,7 +574,7 @@ def run(output_folder, scene=None):
 
     problems, planned = [], []
     for sc in scenes:
-        res = _plan_scene(out, sc, problems)
+        res = _plan_scene(out, sc, problems, prof, profile)
         if res:
             planned.append(res)
     if problems:
@@ -540,8 +587,10 @@ def run(output_folder, scene=None):
         staged = _stage(out, result["scene"], staging)
         (shots_dir / f"overlay-{result['scene']}.json").write_text(
             json.dumps(result, indent=2, ensure_ascii=False) + "\n")
-        lines.append(f"overlay {result['scene']}: {len(result['cues'])} cues, "
-                     f"{staged} files staged")
+        line = f"overlay {result['scene']}: {len(result['cues'])} cues, {staged} files staged"
+        if profile is not None and not staging["safe"]:
+            line += f" (safe area not applied: scene {result['width']}x{result['height']} is not 9:16)"
+        lines.append(line)
     return lines
 
 
@@ -549,12 +598,19 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("output_folder")
     ap.add_argument("--scene", help="only this scene id, e.g. 03")
+    ap.add_argument("--profile", default=DEFAULT_PROFILE,
+                    help="layout profile for the safe-area check (default %(default)s); "
+                         "'none' skips it")
     args = ap.parse_args(argv)
+    profile = None if args.profile.lower() == "none" else args.profile
     try:
-        for line in run(args.output_folder, scene=args.scene):
+        for line in run(args.output_folder, scene=args.scene, profile=profile):
             print(line)
     except MissingInput as e:
         print(f"missing input: {e}", file=sys.stderr)
+        return 2
+    except BadProfile as e:
+        print(f"bad profile: {e}", file=sys.stderr)
         return 2
     except OverlayPlanError as e:
         for line in e.problems:

@@ -6,6 +6,7 @@ import {
   easeOut, clamp01, blurIn, glitch, countUp, strokeProgress, leadIn, exitFx,
   springIn, drift, carouselX, cueVisible, cueStyle,
   stepState, vignetteAlpha, burstParticles,
+  clampRange, anchorGeometry, measureFrame,
 } from "../../templates/remotion/lib/overlayFx.mjs";
 
 const FPS_LIST = [24, 25, 30, 60];
@@ -329,4 +330,72 @@ test("burstParticles: count, determinism, seed, fall range", () => {
   }
   // pure positions follow the same x across frames (seeded, not per-frame random)
   assert.equal(burstParticles(40, 30, 30, 7, 5)[2].x, burstParticles(50, 30, 30, 7, 5)[2].x);
+});
+
+// ---- GV-23: the overlay stays inside the safe area ----------------------------------------
+const SAFE = { x0: 65, y0: 269, x1: 972, y1: 1517 }; // short-organic at 1080x1920
+const SIZE = { width: 1080, height: 1920 };
+
+test("clampRange: inside, below, above, inverted range", () => {
+  assert.equal(clampRange(5, 0, 10), 5);
+  assert.equal(clampRange(-3, 0, 10), 0);
+  assert.equal(clampRange(99, 0, 10), 10);
+  assert.equal(clampRange(5, 10, 0), 10); // inverted: the low edge wins, never NaN
+});
+
+test("anchorGeometry without a safe box keeps today's geometry", () => {
+  const top = anchorGeometry({ anchor: "top", x: null, y: null }, SIZE, undefined, 96);
+  assert.deepEqual(top, { left: 540, top: 96, transform: "translateX(-50%)",
+    alignItems: "center", textAlign: "center" });
+  const center = anchorGeometry({ anchor: "center", x: null, y: null }, SIZE, null, 96);
+  assert.equal(center.top, "64%");
+  assert.equal(center.left, 540);
+  const left = anchorGeometry({ anchor: "left", x: 100, y: 800 }, SIZE, undefined, 96);
+  assert.equal(left.left, 100);
+  assert.equal(left.maxWidth, 1080 - 100 - 96);
+  const right = anchorGeometry({ anchor: "right", x: 900, y: 800 }, SIZE, undefined, 96);
+  assert.equal(right.right, 180);
+  assert.equal(right.maxWidth, 900 - 96);
+});
+
+test("anchorGeometry with a safe box: default anchors start at the safe edges", () => {
+  const top = anchorGeometry({ anchor: "top", x: null, y: null }, SIZE, SAFE, 96);
+  assert.equal(top.top, SAFE.y0);
+  assert.equal(top.left, (SAFE.x0 + SAFE.x1) / 2);
+  const left = anchorGeometry({ anchor: "left", x: null, y: null }, SIZE, SAFE, 96);
+  assert.equal(left.left, SAFE.x0);
+  const right = anchorGeometry({ anchor: "right", x: null, y: null }, SIZE, SAFE, 96);
+  assert.equal(right.right, SIZE.width - SAFE.x1);
+  const center = anchorGeometry({ anchor: "center", x: null, y: null }, SIZE, SAFE, 96);
+  assert.equal(center.top, Math.round(0.64 * 1920));
+  assert.ok(center.top >= SAFE.y0 && center.top <= SAFE.y1);
+});
+
+test("anchorGeometry with a safe box: explicit points and widths are clamped inside", () => {
+  const out = anchorGeometry({ anchor: "left", x: 10, y: 5 }, SIZE, SAFE, 96);
+  assert.equal(out.left, SAFE.x0);
+  assert.equal(out.top, SAFE.y0);
+  assert.equal(out.maxWidth, SAFE.x1 - SAFE.x0);
+  const right = anchorGeometry({ anchor: "right", x: 1075, y: 1900 }, SIZE, SAFE, 96);
+  assert.equal(right.right, SIZE.width - SAFE.x1);
+  assert.equal(right.top, SAFE.y1);
+  assert.equal(right.maxWidth, SAFE.x1 - SAFE.x0);
+  const mid = anchorGeometry({ anchor: "top", x: 540, y: 800 }, SIZE, SAFE, 96);
+  assert.equal(mid.left, 540);
+  assert.equal(mid.top, 800);
+  // centred block: width limited by the nearer safe edge, both sides
+  assert.equal(mid.maxWidth, 2 * Math.min(540 - SAFE.x0, SAFE.x1 - 540));
+});
+
+test("measureFrame: a frame where the cue has fully entered and not started to leave", () => {
+  const c = { id: "a", inF: 30, keyF: 45, outF: 150 };
+  const f = measureFrame(c, 30);
+  assert.ok(f >= c.keyF + 21, "after the 0.6 s count-up and 0.3 s blur-in");
+  assert.ok(f <= c.outF - 6, "before the 0.2 s exit starts");
+  assert.equal(measureFrame(c, 30), f);
+  // a short cue: still inside [inF, outF)
+  const short = { id: "b", inF: 10, keyF: 14, outF: 30 };
+  const g = measureFrame(short, 30);
+  assert.ok(g >= short.inF && g < short.outF);
+  assert.ok(Number.isInteger(g));
 });

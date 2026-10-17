@@ -91,6 +91,14 @@ satu") sets **`key_words`** to the spoken tokens; the keyword is timed on them.
   its RIGHT edge for `right`, its centre for `top`; a `maxWidth` keeps it inside a 96 px safe
   margin. The tool cannot measure text width, so a long keyword can still reach the face: check
   the exit-mid still (scene 25 run, "masalahnya" moved from x=330 to x=120).
+- **Safe area (GV-23).** `overlay_plan.py --profile` (default `short-organic`, `none` to skip) checks
+  every explicit `pos` x/y against the profile's safe box scaled to the scene and refuses a point
+  outside it, naming scene and cue. The box goes into `overlay-<scene>.json` as `safe`, and
+  `KineticOverlay` keeps text inside it: default anchors start at the box edges, an anchor point is
+  clamped into it and `maxWidth` never passes its sides (`anchorGeometry` in `overlayFx.mjs`). It
+  cannot know the block height, so a tall block can still run past the bottom edge: the layout gate
+  (`layout_gate.py check <project> --overlay <shots dir>`) renders the text alone and measures it.
+  A scene that is not 9:16 gets no `safe`; a json without `safe` behaves as before.
 - A `behind` cue may sit over the head on purpose; the head then covers part of it.
 - Keep off other burned text (subtitles at the bottom, a Remotion card).
 

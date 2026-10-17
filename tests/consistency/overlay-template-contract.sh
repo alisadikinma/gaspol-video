@@ -63,4 +63,9 @@ for k in stepState vignetteAlpha burstParticles; do
   grep -qF "$k" "$F" || { echo "FAIL $F does not draw $k (GV-19)"; fail=1; }
 done
 
+# GV-23: the safe box reaches the text, and the text-only mode the layout gate renders exists.
+grep -qF 'anchorGeometry' "$F" || { echo "FAIL $F does not use anchorGeometry (GV-23)"; fail=1; }
+grep -qF 'plan.safe' "$T" || { echo "FAIL $T does not pass plan.safe to CueText (GV-23)"; fail=1; }
+grep -qF 'textOnly' "$T" || { echo "FAIL $T lacks the textOnly mode (GV-23)"; fail=1; }
+
 exit $fail
