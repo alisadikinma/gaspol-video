@@ -291,3 +291,68 @@ someone else's work. Not applicable: deploy (plugin, no server).
 - [ ] `git show origin/main:.claude-plugin/plugin.json` shows `3.21.1`; gaspol-one `marketplace.json` gaspol-video = `3.21.1`
 - [ ] `git worktree list` no longer shows `gv-25-tool-dedup`
 - [ ] No placeholder/TODO comments in new code
+
+---
+
+> **Added 2026-10-17 during execution (owner request, Ali chose "Ikut di branch GV-25").** Phases F and G run
+> after Phase E step 5 and before Phase E step 6 (merge). Release number stays 3.21.1.
+
+### Phase F: README that shows the whole plugin
+
+**Estimated time:** 15 minutes
+
+**Completeness:** happy path = README covers every skill, the ML stack, the viral toolkit, sound,
+quality gates, vidkit, with five AI illustrations (owner choice: nano-banana-2, bolder copy but no
+invented numbers or results). Error path: an image link that does not resolve → caught by the
+step-1 check. Edge: images with garbled text → rendered with "no text" prompts and checked by eye
+before use. Not applicable: runtime code.
+
+**Files:**
+- Create: `docs/img/{hero,ml-vision,pipeline-line,viral-engine,sound-engine}.jpg` (rendered with `mcp__indusia-image-gen__generate_image`, model `nano-banana-2`, 16:9, 2K, scaled to 1600 px JPEG)
+- Create: `tests/consistency/readme-images.sh`
+- Modify: `README.md`
+
+**Steps:**
+1. Write failing test for README images. `tests/consistency/readme-images.sh` fails when any `docs/img/...` path referenced in `README.md` does not exist, or when README lacks a section heading containing `Machine learning`, or lacks any of `TAPNext`, `SAM 2.1`, `MediaPipe`, `YuNet`, `AssemblyAI`, `retention_gate`, `screen-insert`, `embroider`. Expected error: `FAIL README.md: no Machine learning section`.
+2. Run it; confirm it fails for that reason.
+3. Rewrite `README.md`: hero image, one-line promise, "what you get" summary, ML section (vision: TAPNext++ point tracking, SAM 2.1 masks, MediaPipe person matte, OpenCV YuNet face box; audio: ElevenLabs TTS/STS/music/SFX/isolator, RNNoise, AssemblyAI second-pass verify, beat detection, audio study), viral engine (F12/F13 frameworks, kinetic overlay, layout gate, retention gate, viral checklist, packaging bets), sound, pipeline + kelompok, honesty, quick start, requirements, usage, stack, structure. Real counts only (78 registry tools, 11 skills, 42 reference docs). Keep the latest changelog pointer to CHANGELOG.md.
+4. Run `bash tests/consistency/readme-images.sh` and `bash tests/run.sh consistency`; confirm pass (except `marketplace-version.sh`). Commit: `docs(GV-25): README shows the whole plugin, with illustrations`.
+
+**Verification:**
+- [ ] static: `bash -n tests/consistency/readme-images.sh` passes
+- [ ] unit: `bash tests/run.sh` passes (except `marketplace-version.sh` until Phase E step 8)
+- [ ] every image in README opens; none shows garbled text
+- [ ] no number in README that is not counted from the repo
+- [ ] No placeholder/TODO comments in new code
+
+### Phase G: slim CLAUDE.md (fewer tokens every session)
+
+**Estimated time:** 15 minutes
+
+**Completeness:** happy path = CLAUDE.md keeps what an agent needs every session (overview,
+commands, tool-first rule, architecture names, reference table, the critical prompt rules,
+pointers) and moves history and long tables out. Constraints from tests that read CLAUDE.md:
+`tools-index.sh` (every `tools/*.py` except `__init__.py`/`_venv.py`, every `tools/*.mjs`, every
+`reference/post-production/*.md` named), `reference-index.sh` (every `reference/**/*.md` named,
+every named one exists), `screencast-contract.sh` (`18-screencast.md`), `verify-p6-contract.sh`
+(`P6`, `verify_render.py`), `surface-insert-contract.sh` (one debugging row per refusal stem).
+Error path: a moved section that a test still reads in CLAUDE.md → the test is pointed at the new
+file in the same commit. Not applicable: runtime code.
+
+**Files:**
+- Create: `docs/debugging.md` (the Debugging table, verbatim)
+- Modify: `CLAUDE.md`, `CHANGELOG.md` (receives every `### vX Changelog` section not already there), `tests/consistency/surface-insert-contract.sh` (reads `docs/debugging.md`), `tests/consistency/claude-md-size.sh` (new)
+
+**Steps:**
+1. Write failing test for size. `tests/consistency/claude-md-size.sh` fails when `CLAUDE.md` has more than 400 lines or contains a `### v` changelog heading. Expected error: `FAIL CLAUDE.md: 1065 lines (max 400)`.
+2. Run it; confirm it fails for that reason.
+3. Move every `### vX Changelog` block to `CHANGELOG.md` (newest first, skip versions already there), leave one line in CLAUDE.md: version + pointer.
+4. Move the `## Debugging` table verbatim to `docs/debugging.md`; CLAUDE.md keeps one line: "Error message? `grep -n '<text>' docs/debugging.md`". Point `surface-insert-contract.sh` at `docs/debugging.md`.
+5. Shorten `## Key Concepts` to the rules an agent must not break (audio rules, VEO mode tree, NB2 filename rules, hard gates) with pointers to `reference/` and skills for the rest; dedupe the two `tools/vidkit/` rows and the duplicated `gen_vo.mjs` row in Architecture; keep every tool and reference name.
+6. Run `bash tests/run.sh`; confirm pass (except `marketplace-version.sh`). Commit: `docs(GV-25): slim CLAUDE.md, history to CHANGELOG.md, debugging to docs/`.
+
+**Verification:**
+- [ ] static: `bash -n tests/consistency/claude-md-size.sh` passes
+- [ ] unit: `bash tests/run.sh` passes (except `marketplace-version.sh` until Phase E step 8)
+- [ ] `wc -l CLAUDE.md` ≤ 400; nothing deleted, only moved (`docs/debugging.md` row count = old table row count)
+- [ ] No placeholder/TODO comments in new code

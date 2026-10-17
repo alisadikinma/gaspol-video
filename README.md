@@ -1,102 +1,155 @@
 <p align="center">
-  <img src="docs/img/hero.svg" alt="gaspol-video: from one idea to a finished, mixed promo video" width="100%">
+  <img src="docs/img/hero.jpg" alt="gaspol-video: an AI video studio inside Claude Code" width="100%">
+</p>
+
+<h1 align="center">gaspol-video</h1>
+
+<p align="center">
+  <b>Not a prompt writer. Not a video editor. A whole AI video studio, run from one chat.</b><br>
+  <b>v3.21.1</b> · Claude Code plugin · MIT
 </p>
 
 <p align="center">
-  <b>v3.21.1</b> · Claude Code plugin · MIT<br>
-  Agencies, freelancers and brand owners: ship a professional 2-3 minute promo from a single chat.
+  Story engine · computer vision · voice and sound AI · coded motion graphics · viral short-form toolkit · self-checking at every step
 </p>
 
 ---
 
-## Why gaspol-video
+## In one minute
 
-Most AI video workflows stop at "here is a prompt, good luck". You still write the script, keep faces consistent, fix the voice, time the captions, score the sound and mix the audio by hand.
+You bring a product, a service, or a link to a reel. gaspol-video brings the rest:
 
-**gaspol-video runs the whole line.** It takes a product or service and carries it through brainstorm, script, images, video, voice, sound, captions, mix and packaging. It checks its own work at every step, before a credit is spent.
+- a **script** built like a storyteller's, researched for the real place and industry it shows,
+- **keyframes and clips** for VEO 3.1, Seedance 2.0 and Kling 3.0, with faces and costumes locked across scenes,
+- **computer vision** that tracks screens, cuts the speaker out of the frame and stitches logos onto moving cloth,
+- **voice, music and sound effects** generated, cleaned, timed to the words and mixed by measurement,
+- **short-form packaging** built on a viral framework: hook timing, kinetic keywords, safe-area layout, retention checks, three thumbnail bets.
 
-<p align="center">
-  <img src="docs/img/pipeline.svg" alt="Seven phase pipeline with approval gates" width="100%">
-</p>
+Every step checks its own output before you pay for the next one. Every check that could not run says so.
 
-## What makes it different
+| | |
+|---|---|
+| **11** skills, **2** agents | the full line from brainstorm to packaging |
+| **78** registered tools | Python, Node and ffmpeg, routed by one registry |
+| **31** `vidkit` commands | a reusable video assembly library |
+| **42** reference documents | the craft knowledge the skills load on demand |
+| **1,900+** automated tests | Python, Node and consistency checks guard every rule |
 
-### 1. It writes like a storyteller, not a brochure
-- **Customer is the hero. Product is the bridge.** Nine hard commandments: never open with the logo, never use jargon without a translation, every feature needs a human consequence.
-- A **7-beat arc** (pattern interrupt, hook, foreshadow, agitate, guide, peak, CTA) with a simpler 6-stage alias for people who think in HOOK → BODY → PEAK.
-- **22 rejection signals** auto-check every script. BODY 1 must dramatize *every* pain you identified, not just the easy one.
-- A **hook vault** of 100 hooks, CTA frameworks per awareness level, and 5 target-market profiles from C-level to end consumer.
-- **Domain deep research** before the first line is written: six location-aware searches, so a hospital in Surabaya does not look like one in Ohio.
+---
 
-### 2. Faces, outfits and places stay the same, scene after scene
-- **Cast builder** for 1-5 characters with locked identity: face, body and costume references, a portrait-first rule for anyone who appears twice.
-- **Institution-aware costumes.** Say "KAI" or "Pelindo" and it asks for the real uniform reference.
-- **Asset-first images.** Recurring items become standalone assets, filtered by a uniqueness test so you never pay to generate a generic coffee cup.
-- **One keyframe per clip**, a max of 5 inline references per prompt, and scene-to-scene references only when the location really is the same.
-
-### 3. Three video platforms, one plan
-- **VEO 3.1**, **Seedance 2.0** and **Kling 3.0**, or mix them scene by scene.
-- Each has its own prompt craft built in: camera libraries, lip-sync rules, extension chains, multi-shot storyboards, the "last frame secret".
-- **In-session render offers** for NB2 stills and VEO 3.1 fast clips, tracked in a ledger so an unchanged prompt is never billed twice.
-- Rules that came from real failures: no real person names in speech lines, no em dash in voice text, no "security camera" (it draws a REC badge).
-
-### 4. It asks "is this physically possible?" before you pay
-Every prompt answers seven questions: mechanism, count, flow, facing, pair, people, overlay surface. It catches the fuel filler on the side of a tank, the two gates in one frame, the phone held upside down. These came from nine defect classes measured on a real film, all found by the client after the render was paid for.
+## From idea to a finished, mixed video
 
 <p align="center">
-  <img src="docs/img/gates.svg" alt="Quality gates for script, images, video and post" width="100%">
+  <img src="docs/img/pipeline-line.jpg" alt="Seven stages from an idea to a viral short, with a quality check between each stage" width="100%">
 </p>
 
-### 5. Readable scenes are coded, not generated
-No video model can render legible text. So scenes with numbers, diagrams, tables and UI walkthroughs are **built in Remotion** and timed to the narration. The routing is decided at Phase 3, before any image credit is spent.
-- **App screens and screencasts** for software that does not exist yet: capture a real URL with Playwright, or mock one with pinned data shared across every scene. Mock screens are flagged `simulated`, so packaging never claims a mocked flow as a shipped feature.
-- **Tracked screen overlays.** Four screen corners are fitted per frame and the panel is attached by homography, so it sticks to a moving laptop.
+| Phase | Skill | What happens |
+|---|---|---|
+| 1 | `/video-brainstorm` | Language, cast of 1-5 characters, product, **location and domain research** (six location-aware searches), audience, awareness level, video type, tone |
+| 2-3.5 | `/video-script` | 7-beat script, scene breakdown, reference manifest. A **hard gate**: no image is made until every reference exists |
+| 4 | `/video-image` | Asset library first (faces, costumes, vehicles, products), then one keyframe per clip built from those assets |
+| 4.5 | `/video-explainer` | Scenes that must be **readable** are coded in Remotion, timed to the narration |
+| 5 | `/video-gen` | The keyframes are looked at, then clip prompts are written for VEO, Seedance or Kling, scene by scene |
+| 6 | `/video-post` | Voice, edit, sound effects, captions, music, final mix |
+| 7 | `/video-package` | One title, three thumbnail bets on three different levers, one description |
+| — | `/video-repackage` | Paste a link to someone else's reel; keep the structure, regenerate everything |
+| — | `/video-full` | Runs the whole line with an approval gate between phases |
 
-### 6. Keywords that move, pictures behind the speaker
-
-<p align="center">
-  <img src="docs/img/overlay.svg" alt="Kinetic overlay: clip plus panels behind plus person matte" width="100%">
-</p>
-
-- Only the **important** words are highlighted. The tool refuses text on screen for more than half of a scene's speech, so it never turns into subtitles.
-- Six text effects, **timed from the voice's own words**.
-- Image and video panels, a sliding carousel and photo bubbles sit **behind** the speaker through a per-frame person mask.
-- **Kinetic captions** reveal word by word. The text always comes from your script, never from the speech recognizer.
-- Title cards that stay off the speaker's face, and **automatic punch-in** on any shot that would hold still for more than five seconds.
-
-### 7. Sound that follows the story
-- **Per-character voices** from ElevenLabs. Dialogue spoken by the video platform can be swapped to your locked voice with speech-to-speech, on spans only, so a second speaker is never converted by accident.
-- **`[pause: 1.2s]`** in the script renders as exact silence.
-- **SFX scored from your domain brief**, with layered stacks, library-first sourcing and cue times snapped to the beats of the music.
-- A **music bed composed to the picture**, ducked under the voice, with the headroom measured and not assumed.
-
-<p align="center">
-  <img src="docs/img/postproduction.svg" alt="Five post-production passes" width="100%">
-</p>
-
-### 8. Delivered in small batches, so a mistake stays small
-Work moves in **kelompok**: batches of at most five scenes. Each batch gets its narration, clips, voice swap, overlays and rough cut, and you approve it before the next one starts. Then one final pass joins, scores and masters everything.
+Work moves in **kelompok**, batches of at most five scenes. Each batch is cut and approved before the next one starts, so a mistake costs five scenes, not fifty.
 
 <p align="center">
   <img src="docs/img/kelompok.svg" alt="Per-kelompok delivery loop" width="100%">
 </p>
 
-### 9. It never pretends
-- Missing key, binary or network? The pass **names what it skipped** and how to fix it.
-- A `SKIPPED` check is reported as `SKIPPED`, never `PASS`.
-- A **second speech-recognition pass** reads the rendered master and diffs it against your script, so a clipped or invented word shows up before the client sees it.
-- A **retention report** and a **7-stage viral checklist** for short-form, with course-derived numbers tagged `source: course`.
-- A **thumbnail honesty guardrail**: the frame's promise must stay inside what the video shows.
+---
 
-### 10. Built to be reused
-- **`vidkit`**, a reusable assembly library: A/V gates, crossfade joins, loudness, beat detection, karaoke captions, colour match, cover art, one-plan final mixdown.
-- **Repackage** (`/video-repackage`): share a link to a reel, and it cuts the video into scenes, keeps the storyline, regenerates every asset, localizes cast and costume, and runs the normal production line. No footage, voice or music from the source is reused.
-- **Cheap to re-run.** Voice, music, SFX, images and edit stages are fingerprinted. Unchanged work is reused, not re-billed.
-- **1,200+ automated tests** (Python, Node and consistency checks) guard the rules above.
+## Machine learning behind the scenes
 
 <p align="center">
-  <img src="docs/img/stack.svg" alt="Production stack" width="100%">
+  <img src="docs/img/ml-vision.jpg" alt="Person matte behind the speaker, a screen tracked on a phone, a logo stitched onto a hoodie" width="100%">
 </p>
+
+AI video models make beautiful clips and then get the details wrong: the app on the phone, the logo on the shirt, the text over the speaker's face. gaspol-video fixes those details with computer vision instead of hoping for a better render.
+
+### Vision
+
+| Model / method | What it does here |
+|---|---|
+| **TAPNext++** point tracking (Apache-2.0) | Follows hundreds of points on a phone, monitor or shirt through the clip, even when a hand covers them |
+| **SAM 2.1** segmentation (Apache-2.0) | Masks a shirt, a hand or a screen from one click, through every frame |
+| **Homography per frame**, RANSAC edge fits, One-Euro smoothing | `vidkit screen-insert` puts your real app screen onto a phone or monitor in a generated clip. Fingers stay in front, motion blur and light are matched |
+| **Raised-thread embroidery** | `vidkit embroider` stitches a logo onto clothing that bends with the folds, and never over the hands |
+| **MediaPipe** selfie segmentation | A per-frame person matte, so keywords, photos and video panels sit **behind** the speaker |
+| **OpenCV YuNet** face detection | The layout gate keeps subtitles, titles and watermarks off the face and inside the platform safe area |
+
+Both tracking tools **refuse** instead of shipping a wrong video: a lost track, a corner that jumps, a screen covered too long. Each refusal has a named fix.
+
+### Voice and sound
+
+<p align="center">
+  <img src="docs/img/sound-engine.jpg" alt="A voice waveform cleaned and enriched, sound effects stacked, music ducked under the voice, the transcript checked" width="100%">
+</p>
+
+| Model / method | What it does here |
+|---|---|
+| **ElevenLabs** text-to-speech | One locked voice per character; `[pause: 1.2s]` in the script becomes exact silence |
+| **ElevenLabs** speech-to-speech | Swaps the platform's voice for yours on the speaker's turns only, with a fixed `--seed` for repeatable takes; lip sync stays within 0.05 s or it refuses |
+| **Guide-voice takes** + prosody picking | An expressive voice reads each line at several settings; the liveliest take is picked by measurement, tightened, then converted to the cast voice |
+| **Voice Isolator** and **RNNoise** | Clean platform dialogue before conversion |
+| **ElevenLabs Music** and **SFX** | A music bed written for the topic and the story arc, or composed to the finished picture; sound effects from recipes, layered in stacks |
+| **Onset and beat detection** | Sound effects snap to the beats of the music; `vidkit audiostudy` measures the sound design of a reference clip |
+| **AssemblyAI** speech recognition | Caption timing, and a **second pass on the finished master** that diffs every word against the script (check P6) |
+| Two-pass **loudness** normalisation, sidechain ducking | The music sits under the voice by measurement, not by guess |
+
+---
+
+## Built to go viral, and to check that it can
+
+<p align="center">
+  <img src="docs/img/viral-engine.jpg" alt="Kinetic keywords on a vertical video, retention and beat analytics, safe-area guide" width="100%">
+</p>
+
+- **A short-form framework in the script.** Seven viral stages with a pass/fail checklist (`viral_checklist.py`), and a timeline the script must hit: thumbnail 0-1 s, hook 0-3 s, foreshadow 3-6 s, body, call to action in the last seconds.
+- **Kinetic keywords, never subtitles.** Six text effects timed from the voice's own words, sticker icons, step counters, a red alarm vignette, a falling burst. The tool refuses text on screen for more than half of the speech.
+- **Layout gate for TikTok, Reels and Shorts.** Subtitles, watermark and cover title are measured against the safe area and the face box, with a preview per platform.
+- **Retention report** (`retention_gate.py`): static frames, the first spoken word, the foreshadow beat, b-roll that matches what is said, music headroom.
+- **Packaging that earns the click.** One locked title, three thumbnail bets on three different levers, a verify-by-looking gate for every thumbnail, and an honesty guardrail: the frame never promises more than the video shows.
+- **Repackage a reel.** Share a link; the skill cuts it into scenes, keeps the structure, and regenerates every image, voice and sound as your own. No footage, voice or music from the source is reused.
+
+<p align="center">
+  <img src="docs/img/overlay.svg" alt="Kinetic overlay: clip plus panels behind plus person matte" width="100%">
+</p>
+
+---
+
+## A story engine, not a brochure writer
+
+- **The customer is the hero. The product is the bridge.** Nine commandments, 22 rejection signals, and a rule that every pain found in the brainstorm is dramatized, not just the easy one.
+- **A 100-hook vault**, call-to-action frameworks per awareness level, audience profiles from the boardroom to the end consumer.
+- **Research before writing.** A hospital in Surabaya does not look like one in Ohio: equipment brands, uniforms, signage and plates come from location-aware research, injected into every prompt.
+- **Faces, costumes and places stay the same.** Portrait-first rule, uniform references for real institutions, a uniqueness filter so you never pay to generate a generic coffee cup.
+- **"Is this physically possible?"** Every image and video prompt answers seven plausibility questions. They come from nine defect classes a client found after the render was paid for.
+
+<p align="center">
+  <img src="docs/img/gates.svg" alt="Quality gates for script, images, video and post" width="100%">
+</p>
+
+## Readable scenes are coded, not generated
+
+No video model renders legible text. Metrics, diagrams, tables and app walkthroughs are built in **Remotion** and timed to the narration. App screens are captured from a real URL with Playwright, or mocked with pinned data for software that does not exist yet, and flagged `simulated` so packaging never sells a mock as a shipped feature.
+
+## It never pretends
+
+- A missing key, binary or network is **named**, with the command that fixes it. The rest of the pipeline continues.
+- A check that could not run reports `SKIPPED`, never `PASS`.
+- Paid renders are **fingerprinted**: an unchanged prompt, voice line, track or edit stage is reused, not billed again.
+- Every number in the tools carries its source: measured, course advice, or marked as interpretation.
+
+<p align="center">
+  <img src="docs/img/postproduction.svg" alt="Five post-production passes" width="100%">
+</p>
+
+---
 
 ## Quick start
 
@@ -111,203 +164,76 @@ Then, inside Claude Code:
 /video-full
 ```
 
-Answer the questions, approve each phase, and render the clips in your platform of choice when it tells you to. See [Installation](#installation) and [Usage](#usage) for details.
-
----
-
-## What It Does
-
-Give it a product or service, and the engine walks you through Phase 1 to Phase 7:
-
-1. **Brainstorm** — language, cast builder (1-5 characters), institution detection, target market, awareness level, storyline input, tone and mood
-2. **Script** — 2-3 minute A/V script on the 7-beat arc, with beat labels, timing, narration and audio direction
-3. **Scene Breakdown** — scene count from script beats, video mode per scene, extension strategy
-4. **Reference Collection** — auto-derived ref manifest, cultural location research, batch prompts for missing refs, a hard-block gate
-5. **Image Prompts (NB2)** — asset library first, then one keyframe per clip composed from those assets
-6. **Video Prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0)** — camera, three-layer audio, lip sync, extensions, vocal direction. Phase 5 starts with platform selection, or Mixed for per-scene routing
-7. **Explainer Shots (Remotion)** — readable scenes are coded, with every reveal timed to the narration and verified by looking at a still
-8. **Post-Production** — voice, assembly, sound design, captions and music, final mix
-9. **Packaging** — one locked title, three thumbnail bets on different levers, one value-forward description
-
-Each phase has an approval gate. Phase 3.5 is a hard block: 100% of reference images must exist before image generation. The Phase 6 SFX cue sheet is a second hard gate: nothing is mixed until you have read it.
+Answer the questions and approve each phase. Render the clips in-session (NB2 stills, VEO 3.1 fast) or in your platform's own UI when the skill says so.
 
 ## Requirements
 
 | What | Needed for | If missing |
 |---|---|---|
 | Claude Code | everything | — |
-| `ffmpeg` / `ffprobe` on PATH | Phase 6 assembly, SFX, captions, music, mix | Plans are still written and printed; nothing is rendered, and the skill says so |
-| `node` 20+ | voice-over and voice changing | Those passes are skipped, named, not silently dropped |
-| `python3` | most tools (stdlib only, no pip install) | — |
-| `bash tools/setup.sh` (builds `~/.gaspol-video/venv`) | app-screen capture/mock, thumbnail post-process, YouTube stats (Pillow, Playwright, google-api-python-client) | The tool exits 2 naming the script; every stdlib-only tool keeps working |
-| `ELEVENLABS_API_KEY` in `.env` | voice-over, voice changing, SFX generation, music bed generation, voice cleanup (isolate method) | Dialogue stays in the platform's own voice; every recipe that could not be made is listed with its prompt |
-| `ASSEMBLYAI_API_KEY` in `.env` | caption timing for platform-spoken dialogue, and Check P6 (render verification) | Those scenes are listed as untimed; P6 reports SKIPPED, never PASS |
-| Node + `npx` | Remotion explainer shots, screencasts, mock app screens | Shot source is still written; rendering is left to you |
-| YouTube OAuth client under `~/.gaspol-video/youtube/` | `yt_stats.py` packaging calibration | Calibration has no real view/watch-time data; CTR is always manual regardless |
+| `ffmpeg` / `ffprobe` | assembly, sound, captions, mix | Plans are still written; nothing is rendered, and the skill says so |
+| `python3` | most tools (standard library only) | — |
+| `node` 20+ and `npx` | voice, Remotion shots, screencasts | Those passes are skipped and named |
+| `bash tools/setup.sh` | app-screen capture, face box, person matte, thumbnail post-process, YouTube stats | The tool exits 2 naming the script |
+| `bash tools/setup.sh --ml` | TAPNext++ and SAM 2.1 for `screen-insert --mode track` and `embroider` (separate venv, about 2.6 GB of weights) | The tool exits 2 naming the script |
+| `ELEVENLABS_API_KEY` in `.env` | voice, voice changing, music, SFX, voice cleanup | Dialogue stays in the platform's own voice; missing recipes are listed |
+| `ASSEMBLYAI_API_KEY` in `.env` | caption timing for platform dialogue, check P6 | Those scenes are listed as untimed; P6 reports SKIPPED |
 
-Copy `.env.example` to `.env` and fill in the values. **`.env` is gitignored and the repo only ever
-names variables, never their values** — a voice id identifies one person's cloned voice on one
-account, and does not belong in a plugin.
-
-**Nothing degrades silently.** Every tool that cannot do its job says what it could not do and what
-to run to fix it, then lets the rest of the pipeline continue.
-
-## Installation
-
-### Via Claude Code Marketplace (Recommended)
-
-```bash
-# Step 1: Add marketplace source
-claude plugins marketplace add alisadikinma/ai-content-suite
-
-# Step 2: Install plugin
-claude plugins install gaspol-video
-```
-
-### Manual Installation
-
-Clone into your Claude Code plugins directory:
-
-```bash
-# macOS / Linux
-git clone https://github.com/alisadikinma/gaspol-video.git \
-  ~/.claude/plugins/gaspol-video
-
-# Windows
-git clone https://github.com/alisadikinma/gaspol-video.git ^
-  %USERPROFILE%\.claude\plugins\gaspol-video
-```
-
-Then restart Claude Code. The plugin auto-registers on session start.
+Copy `.env.example` to `.env`. **`.env` is gitignored, and the repo only names variables, never their values.**
 
 ## Usage
 
-### Full Pipeline (End-to-End)
-
 ```
-/video-full
-```
-
-Starts the full interactive pipeline. The orchestrator runs all 7 production skills in sequence, asking questions and generating outputs phase-by-phase with approval gates. It stops before Phase 6 until you have actually rendered the platform clips — post-production runs on video, not on prompts.
-
-**Flags:**
-- `--full` (default) — full production plan with storyboard notes, NB2 prompts, VEO prompts, audio specs, extension strategy, post-production checklist
-- `--quick` — copy-paste ready prompts only (NB2 + VEO per scene, no production plan)
-- `--preset ali` — use Ali Sadikin creator preset instead of generic brand profile
-
-### Individual Skills
-
-Run any phase independently:
-
-```
-/video-brainstorm      # Phase 1: brainstorm, cast, product, location, domain research
-/video-script          # Phase 2-3.5: script, scene breakdown, reference collection
-/video-image           # Phase 4: NB2 asset library + scene keyframes
-/video-explainer       # Phase 4.5: Remotion shots for scenes that must be readable
-/video-gen             # Phase 5: image review + VEO / Seedance / Kling prompts
-/video-post            # Phase 6: voice-over, edit, SFX, subtitles, music, final mix
-/video-package         # Phase 7: title, thumbnail bets, description
-/video-repackage       # Remake someone else's reel as your own version
+/video-full            # the whole line, with approval gates
+/video-brainstorm      # Phase 1
+/video-script          # Phase 2-3.5
+/video-image           # Phase 4
+/video-explainer       # Phase 4.5
+/video-gen             # Phase 5
+/video-post            # Phase 6 (per kelompok, then --final)
+/video-package         # Phase 7
+/video-repackage       # remake a reel from a link
+/video-validate        # --script / --image / --video / --refs / --post / --layout / --retention / --all
+/video-add-platform    # scaffold a new video platform
 ```
 
-### Utility Skills
+Agents: **`video-engine-agent`** for batch work, **`video-prompt-reviewer`** as an independent validator that has never seen the generation rules, so it cannot explain a violation away.
+
+## Production stack
+
+| Layer | Technology |
+|---|---|
+| Images | Nano Banana 2 (Gemini 3.1 Flash Image), gpt-image-2 for repackage |
+| Video | VEO 3.1 (primary), Seedance 2.0, Kling 3.0, or mixed per scene |
+| Vision | TAPNext++, SAM 2.1, MediaPipe, OpenCV YuNet |
+| Voice and sound | ElevenLabs TTS, speech-to-speech, Music, SFX, Voice Isolator; RNNoise |
+| Speech recognition | AssemblyAI (timing and master verification) |
+| Motion graphics | Remotion |
+| Assembly and mix | ffmpeg through `vidkit` |
+
+## Project structure
 
 ```
-/video-validate            # Unified validator (--script / --image / --video / --refs / --post / --retention / --all)
-/video-add-platform        # Scaffold support for a new AI video platform
+skills/              11 skills, one per phase plus orchestrator, repackage, validator, platform scaffold
+agents/              video-engine-agent, video-prompt-reviewer
+reference/           42 craft documents, loaded per phase (global-promo-config.md is the source of truth)
+tools/               registered tools; tools/registry.json routes each task to one tool
+  vidkit/            python3 -m tools.vidkit --help
+templates/remotion/  shot, caption, overlay and screen templates, workspace scaffolder
+media/               SFX recipes, music moods, layout and loudness profiles (sourced)
+docs/                tool-routing.md, vidkit.md, debugging.md, evals/ (measured runs behind the rules)
+tests/               bash tests/run.sh
 ```
-
-### Agents
-
-- **`video-engine-agent`** — handles batch or complex promo work, can be dispatched for parallel processing
-- **`video-prompt-reviewer`** — independent validator for NB2/VEO prompt batches (auto-spawned during Phase 4B and Phase 5)
-
-## Production Stack
-
-| Component | Technology |
-|-----------|------------|
-| Image Generation | Nano Banana 2 (NB2) — Gemini 3.1 Flash Image |
-| Video Generation (Primary) | VEO 3.1 — 720p/1080p, 8s clips, 148s extension chain |
-| Video Generation (Alt) | Seedance 2.0 — native 2K, 15s clips, @ reference system, dual-branch AV |
-| Pipeline (VEO) | NB2 image → VEO First+Last Frame / Ingredients → VEO Extend |
-| Video Generation (Alt) | Kling 3.0 — per-second duration 3-15s, multi-shot storyboard, omni audio |
-| Pipeline (Seedance) | NB2 image → Seedance @Image refs + Omni mode → Seedance @Video extend |
-| Readable Shots | Remotion — coded animation for metrics, diagrams, tables, UI |
-| Voice | ElevenLabs `eleven_multilingual_v2` (TTS) and `eleven_multilingual_sts_v2` (voice changing) |
-| Caption Timing | AssemblyAI. Caption TEXT always comes from the script, never from the recognizer |
-| Assembly and Mix | ffmpeg — concat, sidechain duck, loudnorm, burned subtitles |
-| Screen-Attached Overlays | `vidkit screen-insert` (`--mode green` / `--mode track`); `tools/track_screen.py` reads `--corners` |
-
-## Storytelling Philosophy
-
-> Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.
-
-The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand name, no jargon without translation, every feature needs a human consequence, **BODY 1 must dramatize ALL identified problems**, etc.) and auto-checks for 22+ structural failure patterns.
 
 ## Changelog
 
-Every release is in [CHANGELOG.md](CHANGELOG.md).
-
-## v3.21.1 Changelog
-
-- **One tool per job (GV-25).** Screen panels go through `vidkit screen-insert` only (`quad-screen.tsx` legacy, `track_screen.py` reads `--corners`); `vidkit smooth-track` removed; `voice_changer.mjs --seed N`; `vidkit sheet` takes exact timestamps and `qa_frames.py` uses it.
-
-## v3.21.0 Changelog
-
-- **Screen insert and embroidery that stick (GV-24).** `vidkit screen-insert` puts an app panel onto a phone/monitor: `--mode green` (screen rendered as chroma green, Hard Rule 26 + validator V17) or `--mode track` (TAPNext++ point tracking + per-frame homography); fingers come back over the panel, with motion blur, light match and glass residual. `vidkit embroider` puts a logo on clothing as raised thread: follows the folds per point, only on the shirt (SAM 2.1), never over hands or drawstrings passed as `--hand`. Both refuse (exit 2) instead of writing a wrong video. Needs `bash tools/setup.sh --ml` (separate venv-ml, ~2.6 GB of weights, Apache-2.0). Proof: REA scene 01 (`docs/evals/surface-insert-run.md`); screen insert proven on synthetic clips only.
-
-## v3.20.0 Changelog
-
-- **Short-form layout and format (GV-23).** 9:16 output has a measured safe area (profiles in `media/layout-profiles.json`, numbers from a Samuel Shorts measurement; title numbers are marked interpretation). `vidkit karaoke` places subtitles by that profile, `vidkit title` stamps a cover title inside it, and `tools/layout_gate.py check` blocks a layout whose subtitle, watermark or title leaves the safe area or crowds the face (`tools/face_box.py`, OpenCV YuNet). The gate runs in validate, post `--final`, package and repackage. New F13 short-form timeline (checked by `viral_checklist.py timeline`), four video types in brainstorm with a format confirmation step, a Foreshadow beat and a two-link merge in repackage, and three distinct texts in packaging. A real run on a finished master is in `docs/evals/layout-gate-run.md`. Not done: more than two merge links, a 4:5 LinkedIn variant, OCR of burned-in text, separate renders per platform, cover-title numbers, rotation tags in `person_mask.py`.
-
-## Project Structure
-
-```
-.claude-plugin/plugin.json          # Plugin metadata
-hooks/                              # Session start hook
-skills/                             # 11 skills
-  video-brainstorm/                 # Phase 1 — brainstorm, cast, product, location
-  video-script/                     # Phase 2-3.5 — script, scene, reference collection
-  video-image/                      # Phase 4 — NB2 asset library + scene keyframes
-  video-explainer/                  # Phase 4.5 — Remotion shots for readable scenes
-  video-gen/                        # Phase 5 — image review + video prompts
-  video-post/                       # Phase 6 — VO, edit, SFX, captions+music, mix
-  video-package/                    # Phase 7 — title, thumbnail bets, description
-  video-full/                       # Orchestrator — runs the production skills in sequence
-  video-repackage/                  # Remake someone else's reel as your own version
-  video-validate/                   # Unified validator
-  video-add-platform/               # Scaffold a new video platform
-agents/
-  video-engine-agent.md             # Subagent for batch/complex work
-  video-prompt-reviewer.md          # Independent prompt quality validator
-reference/                          # 41 reference documents (RAG knowledge base)
-  global-promo-config.md            # Single source of truth for all settings
-  storytelling_script_gen/          # Storytelling and script references
-  image-video-gen/                  # Image and video production references
-  post-production/                  # Post-production and packaging references
-tools/                              # 40 CLI tools: 38 python3 (mostly stdlib) + 2 node, ffmpeg throughout
-  vidkit/                           # Reusable assembly library (python3 -m tools.vidkit --help)
-  _venv.py, setup.sh                # Dependency guard + venv builder for tools that need libs
-templates/remotion/                 # Shot, caption, overlay and screen templates, workspace scaffolder
-media/sfx/library/palette.json      # SFX recipes. Clips generated per install, never committed
-media/music/library/palette.json    # Music moods mapped to the six tones
-docs/img/                           # README illustrations
-docs/tool-routing.md                # Task → tool table. Read before writing any script
-docs/evals/                         # Measured runs and probes behind the rules
-tests/                              # bash tests/run.sh — consistency, python unittest, node --test
-CHANGELOG.md                        # Every release, newest first
-.env.example                        # Variable NAMES the tools read. Never their values
-```
-
-## Configuration
-
-All configurable values live in `reference/global-promo-config.md` — the single source of truth. Settings include default language, video/image resolution, film stock, color temperature, NB2 parameters, VEO duration, output mode, and creator preset.
+Every release is in [CHANGELOG.md](CHANGELOG.md). Latest: **v3.21.1**, one tool per job. Screen panels go through `vidkit screen-insert` only, `vidkit smooth-track` is retired, `voice_changer.mjs --seed`, and `vidkit sheet` takes exact timestamps.
 
 ## Contributing
 
-1. **Change a setting** — edit `reference/global-promo-config.md` only
-2. **Add a reference file** — create in `reference/`, update relevant SKILL.md + agent + CLAUDE.md, run `/video-validate --refs`
-3. **Add a video platform** — run `/video-add-platform` to scaffold everything
+1. **Change a setting**: edit `reference/global-promo-config.md` only.
+2. **Add a tool**: read `docs/tool-routing.md` first; extend `tools/vidkit/`, register it in `tools/registry.json`, run `python3 tools/registry_build.py render`.
+3. **Add a video platform**: run `/video-add-platform`.
 
 ## License
 
@@ -315,4 +241,4 @@ All configurable values live in `reference/global-promo-config.md` — the singl
 
 ## Author
 
-**Ali Sadikin** — [GitHub](https://github.com/alisadikinma)
+**Ali Sadikin**: [GitHub](https://github.com/alisadikinma)
