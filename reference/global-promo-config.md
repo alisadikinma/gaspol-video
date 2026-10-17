@@ -203,6 +203,8 @@ See `reference/image-video-gen/08-kling-production-guide.md` for full Kling 3.0 
 | TikTok | 9:16 | 60-90s | Vertical, pattern interrupts |
 | Twitter/X | 16:9 | 30-60s | Shortest, punchy |
 
+**(GV-23) `video_type` decides the format.** Four values, chosen in `video-brainstorm` Step 1.0b: `presentasi` (16:9, 180 s, youtube + linkedin), `promo` (9:16, 60 s, shorts + reels + tiktok + linkedin), `isu` (9:16, 60 s, same platforms; legacy `issue` is read as `isu`), `edukasi` (no format: routed to `/video-repackage`). The table above stays the platform reference; the type picks the row.
+
 ---
 
 ## 9. Prompt Length Guidelines
