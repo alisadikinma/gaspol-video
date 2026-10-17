@@ -497,6 +497,19 @@
       "internal_reason": ""
     },
     {
+      "id": "tools/vidkit/screen.py",
+      "purpose": "Green-screen corners per frame (RANSAC line per side, finger-proof) and a One-Euro filter for corner tracks.",
+      "tasks": [
+        "screen-insert",
+        "screen-corners",
+        "green-key"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
       "id": "tools/vidkit/ml.py",
       "purpose": "Guard for the ML tools: venv-ml interpreter path, sha256-checked model weights, torch device pick (mps or cpu).",
       "tasks": [
@@ -1096,6 +1109,13 @@
       "use": "`tools.vidkit.segment.masks(frames, frame_idx, points=..., box=...)` in venv-ml",
       "tools": [
         "tools/vidkit/segment.py"
+      ]
+    },
+    {
+      "task": "Find the four corners of a green screen in a frame",
+      "use": "`tools.vidkit.screen.corners_green(frame)`",
+      "tools": [
+        "tools/vidkit/screen.py"
       ]
     },
     {
