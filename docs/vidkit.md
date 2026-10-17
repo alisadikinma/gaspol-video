@@ -13,7 +13,7 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 | `gates` | `gate_av` (video = audio length), `gate_uniform` (same sample rate and channels before concat) | `gerbang.py` |
 | `join` | `concat_copy`, `join_xfade`, `clip_starts` (timeline maths for dissolves) | `join.py`, the `rakit_*.py` concat steps |
 | `patch` | `freeze_box`: freeze a rectangle of a clip to one frame | `freeze_patch.py` |
-| `sheet` | `contact_sheet`, `montage` | `sheet.py`, `mont.py` |
+| `sheet` | `contact_sheet` (evenly spaced, or exact `times=[...]`), `montage` | `sheet.py`, `mont.py` |
 | `synth` | `notification`, `alarm`, `render` (layered ffmpeg tones) | `bunyi-notif.py`, `bunyi-alarm.py` |
 | `speech` | `words_from_alignment`, `speech_spans`, `gaps`, `snap_to_gaps`, `energy_db` | `kata.py`, `energi.py`, `geser_cue.py` |
 | `loudness` | `normalize`: two-pass loudnorm, audio trimmed to picture | `mix_akhir.py` |
@@ -222,6 +222,8 @@ Point tracking and segmentation need torch, so they run in their own venv, `venv
 ## Screen insert (`screen`, `vidkit screen-insert`)
 
 `python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green|track [--corners x,y,x,y,x,y,x,y] [--occluder x,y] [--qa DIR]`
+
+`tools/track_screen.py` only reads `--corners`; `templates/remotion/lib/quad-screen.tsx` is legacy.
 
 `panel` is a PNG (held) or an mp4 (looped or cut to the clip). The output keeps the clip's size and frame count; the clip's audio is re-encoded to AAC and padded with silence to the video length, so audio shorter than the video never shortens it. The file is written to a hidden temp file and moved over `<out>` only when its duration matches the frames written, so a failure leaves a previous `<out>` alone. A phone clip with a display-rotation tag is decoded upright (`ff.probe` returns the displayed `width`/`height` and a `rotation` key). A 16-bit PNG panel is scaled to 8 bits; a video panel with an alpha channel keeps it.
 

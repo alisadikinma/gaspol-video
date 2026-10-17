@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>v3.21.0</b> · Claude Code plugin · MIT<br>
+  <b>v3.21.1</b> · Claude Code plugin · MIT<br>
   Agencies, freelancers and brand owners: ship a professional 2-3 minute promo from a single chat.
 </p>
 
@@ -247,6 +247,10 @@ The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand n
 ## Changelog
 
 Every release is in [CHANGELOG.md](CHANGELOG.md).
+
+## v3.21.1 Changelog
+
+- **One tool per job (GV-25).** Screen panels go through `vidkit screen-insert` only (`quad-screen.tsx` legacy, `track_screen.py` reads `--corners`); `vidkit smooth-track` removed; `voice_changer.mjs --seed N`; `vidkit sheet` takes exact timestamps and `qa_frames.py` uses it.
 
 ## v3.21.0 Changelog
 
