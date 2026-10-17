@@ -973,7 +973,7 @@
     },
     {
       "task": "Phone notification / alarm sound without paid files",
-      "use": "`vidkit synth notification|alarm`",
+      "use": "`vidkit synth notification\\|alarm`",
       "tools": [
         "tools/vidkit/synth.py"
       ]

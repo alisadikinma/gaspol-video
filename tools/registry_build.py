@@ -174,7 +174,7 @@ def _check_routes(routes, ids, problems):
             v = r.get(key)
             if not isinstance(v, str) or not v.strip():
                 problems.append(f"{label}: {key} is empty")
-            elif ("|" in (re.sub(r"`[^`\n]*`", "", v) if key == "use" else v)) or "\n" in v:
+            elif re.search(r"(?<!\\)\|", v) or "\n" in v:
                 problems.append(f"{label}: {key} has a pipe or newline")
         rt = r.get("tools")
         if not isinstance(rt, list):

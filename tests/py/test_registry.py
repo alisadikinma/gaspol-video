@@ -425,8 +425,21 @@ class RenderTest(FakeRoot):
     def test_route_with_pipe_is_validate_problem(self):
         self.assertProblem(registry(routes=[route("a | b", "`x`")]), "pipe")
 
-    def test_pipe_inside_code_span_of_use_is_allowed(self):
-        self.assertEqual(self.problems(registry(routes=[route("t", "`a b|c` x")])), [])
+    def test_escaped_pipe_is_allowed(self):
+        self.assertEqual(self.problems(registry(routes=[route("t", "`a b\\|c` x")])), [])
+        self.assertEqual(self.problems(registry(routes=[route("a\\|b", "`x`")])), [])
+        self.assertEqual(self.problems(registry(routes=[route("\\|a", "`x\\|y\\|z`")])), [])
+
+    def test_bare_pipe_inside_code_span_rejected(self):
+        self.assertProblem(registry(routes=[route("t", "`a|b`")]), "route #1: use has a pipe or newline")
+        self.assertProblem(registry(routes=[route("a|b", "`x`")]), "route #1: task has a pipe or newline")
+
+    def test_escaped_pipe_next_to_bare_pipe_rejected(self):
+        self.assertProblem(registry(routes=[route("t", "`a\\||b`")]), "pipe")
+        self.assertProblem(registry(routes=[route("t", "`a|\\|b`")]), "pipe")
+
+    def test_empty_route_cell_still_reported_empty(self):
+        self.assertProblem(registry(routes=[route("", "`x`")]), "task is empty")
 
     def test_pipe_outside_code_span_of_use_rejected(self):
         self.assertProblem(registry(routes=[route("t", "a | b")]), "pipe")

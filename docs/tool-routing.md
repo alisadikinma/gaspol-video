@@ -36,7 +36,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Beat times of a music file | `python3 -m tools.vidkit beats FILE` (`vidkit.beats.detect`) |
 | Land SFX cues on the music beat | `python3 tools/sfx_snap.py <project> --music-plan work/music-plan.json` (or `--music FILE`; exit 2 bad input, 3 no beats; writes `work/sfx-plan.snapped.json`; `snap` = `vidkit.beats.snap`) |
 | Skip an expensive step when its inputs did not change | `vidkit.stages.fingerprint(files, params, version)` + `StageCache(path).is_fresh/record`. `tools/edit_render.py` already uses it: a re-run skips unchanged segments (`--no-cache` forces a full render) |
-| Phone notification / alarm sound without paid files | `vidkit synth notification|alarm` |
+| Phone notification / alarm sound without paid files | `vidkit synth notification\|alarm` |
 | Music: generate / mix | `gen_music.py`, `mix_music.py` |
 | Final loudness (-14 LUFS) with A/V kept aligned | `vidkit normalize` |
 | Final loudness to a named, sourced target (`--profile NAME`; unknown or unsourced profile exits 2) | `vidkit normalize --profile`, `loudness.profile()` |
