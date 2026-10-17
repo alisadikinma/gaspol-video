@@ -785,11 +785,12 @@
     },
     {
       "id": "tools/viral_checklist.py",
-      "purpose": "Check the viral checklist block of a short-form script and rate analytics against thresholds.",
+      "purpose": "Check viral checklist and F13 timeline of a short-form script; rate analytics.",
       "tasks": [
         "viral-checklist",
         "script-gate",
-        "analytics-rating"
+        "analytics-rating",
+        "timeline-check"
       ],
       "phase": "2",
       "replaces": [],
@@ -1175,7 +1176,7 @@
     },
     {
       "task": "Fill/check the viral checklist of a short-form script; rate analytics against course thresholds",
-      "use": "`python3 tools/viral_checklist.py check` / `rate`",
+      "use": "`python3 tools/viral_checklist.py check` / `timeline` / `rate`",
       "tools": [
         "tools/viral_checklist.py"
       ]
