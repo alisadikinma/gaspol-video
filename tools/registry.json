@@ -871,6 +871,18 @@
       "replaces": [],
       "distinct_because": "",
       "internal_reason": ""
+    },
+    {
+      "id": "tools/layout_gate.py",
+      "purpose": "Layout gate for 9:16 video: subtitle, watermark and title boxes against the profile safe area and the face box.",
+      "tasks": [
+        "layout-gate",
+        "safe-area-gate"
+      ],
+      "phase": "6",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": "Public route added in the wiring phase (GV-23 Phase H)."
     }
   ],
   "routes": [
