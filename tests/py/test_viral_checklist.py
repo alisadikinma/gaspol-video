@@ -314,14 +314,40 @@ class TimelineTest(unittest.TestCase):
     def test_tolerance_from_profile(self):
         self.assertEqual(vc.timeline_tolerance(), 1.0)
 
+    def test_audit_probe_body_cta_overrun(self):
+        rows = [("Hook", "0-3"), ("Foreshadow", "3-6"), ("Body", "6-58"), ("CTA", "58-70")]
+        found = " | ".join(vc.timeline_problems(tl(rows)))
+        self.assertIn("Body: ends at 58", found)
+        self.assertIn("CTA: lasts 12", found)
+        self.assertIn("total length 70", found)
 
-def run_timeline(text):
+    def test_cta_not_last(self):
+        rows = [("Hook", "0-3"), ("Foreshadow", "3-6"), ("Body", "6-50"), ("CTA", "50-54"), ("Body", "54-56")]
+        found = vc.timeline_problems(tl(rows))
+        self.assertTrue(any("CTA" in p and "last" in p for p in found), found)
+
+    def test_cta_too_short(self):
+        rows = [("Hook", "0-3"), ("Foreshadow", "3-6"), ("Body", "6-50"), ("CTA", "50-51")]
+        found = vc.timeline_problems(tl(rows))
+        self.assertTrue(any("CTA: lasts 1" in p for p in found), found)
+
+    def test_max_s_param(self):
+        self.assertEqual(vc.timeline_problems(tl(GOOD), max_s=60), [])
+        found = vc.timeline_problems(tl(GOOD), max_s=45)
+        self.assertTrue(any("total length 54" in p for p in found), found)
+
+    def test_cli_max_s(self):
+        self.assertEqual(run_timeline(tl(GOOD), ["--max-s", "60"])[0], 0)
+        self.assertEqual(run_timeline(tl(GOOD), ["--max-s", "45"])[0], 1)
+
+
+def run_timeline(text, extra=()):
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "av-script.md"
         p.write_text(text, encoding="utf-8")
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = vc.main(["timeline", str(p)])
+            code = vc.main(["timeline", str(p), *extra])
         return code, out.getvalue() + err.getvalue()
 
 

@@ -101,7 +101,7 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 
 27. **(GV-19) Short-form scripts carry the filled Viral Checklist.** For a short-form target (`aspect: 9:16`, or a Shorts/Reels/TikTok platform), the generated `av-script.md` MUST end with the `## Viral Checklist` block of `F12_Viral_Framework.md`, every `{verdict}` replaced by a real verdict. Run `python3 tools/viral_checklist.py check {output_folder}/av-script.md` before the approval gate and show its findings. A `FAIL:` is reported to the owner, who fixes it or accepts it with a reason in Production Notes. F12 adds to the 9 Commandments and the Hook/CTA vaults; it never overrides them.
 
-28. **(GV-23) 9:16 scripts follow the F13 timeline.** When `aspect: 9:16`, the A/V table has `Tahap` (Thumbnail, Hook, Foreshadow, Body, CTA) and `Detik` columns, loads `F13_Short_Form_Timeline.md`, and runs `python3 tools/viral_checklist.py timeline {output_folder}/av-script.md` before the approval gate (exit 0 pass, 1 problems, 2 no `Tahap`/`Detik` columns). Show the findings. A FAIL is fixed, or accepted by the owner with a reason in Production Notes. The script stays within `max_duration_s` from the brief.
+28. **(GV-23) 9:16 scripts follow the F13 timeline.** When `aspect: 9:16`, the A/V table has `Tahap` (Thumbnail, Hook, Foreshadow, Body, CTA) and `Detik` columns, loads `F13_Short_Form_Timeline.md`, and runs `python3 tools/viral_checklist.py timeline {output_folder}/av-script.md --max-s {max_duration_s}` before the approval gate (exit 0 pass, 1 problems, 2 no `Tahap`/`Detik` columns). Show the findings. A FAIL is fixed, or accepted by the owner with a reason in Production Notes. The script stays within `max_duration_s` from the brief.
 
 ## Workflow
 
