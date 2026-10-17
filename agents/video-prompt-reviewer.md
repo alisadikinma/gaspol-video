@@ -286,6 +286,12 @@ Run on every Phase 5 batch. Search each prompt body for `[pause:` or `[jeda:` (a
 regex `\[\s*(pause|jeda)\s*:`). Any hit is a FAIL: the platform would speak the tag aloud. Pause
 tags are allowed only in the narration text of `av-script.md`. Report the scene id and the line.
 
+### V17. Green Screen Phrase On An Insert Scene (Phase 5 platform prompts — v3.21.0)
+
+Run on every Phase 5 batch. For each scene whose `Screen Source` row notes `insert: green`, the
+platform prompt must contain `flat solid chroma green screen`. A missing phrase is a FAIL: the
+screen will not key, and `vidkit screen-insert --mode green` refuses the clip. Report the scene id.
+
 ### C13. Company Uniform And Vehicle Classes (Phase 3 scene-plan + Phase 4B/5 prompts — v3.9.0)
 
 Read `strategic-brief.md` (`### Company Uniform`, `### Delivery Points & Vehicles`) and `cast-profile.md` → `## Company Uniform`.

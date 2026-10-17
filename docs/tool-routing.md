@@ -59,9 +59,9 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Measure onsets, tempo, energy and word/cut timing of a reference clip | `python3 -m tools.vidkit audiostudy <clip> [--words w.json] [--out r.json]` |
 | Retention check on a finished cut (static frame, hook, foreshadow, b-roll, BGM) | `python3 tools/retention_gate.py report` / `check` |
 | Fill/check the viral checklist of a short-form script; rate analytics against course thresholds | `python3 tools/viral_checklist.py check` / `timeline` / `rate` |
-| Put an app screen into a phone/monitor in a clip | `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |
+| Put an app screen into a phone/monitor in a clip | `python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green\|track` (green: exact corners from a green screen, `--mode track --corners ...` for a clip without green); legacy or seed: `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |
 | App screen for software that does not exist | `gen_app_screen.py` |
-| Print a logo/sablon onto a person's clothing | `vidkit bond` |
+| Print a logo/sablon onto a person's clothing (flat ink, no relief) | `vidkit bond` |
 | Freeze one region of a clip (a bar that must not move) | `vidkit freeze` |
 | Look at a clip without watching it | `qa_frames.py` (gate), `vidkit sheet`, `vidkit montage` |
 | Check rendered thumbnails by looking before they are final | `thumb_verify.py init`, then `thumb_verify.py check` (gate); prompt pieces in `reference/post-production/21-thumbnail-style-elements.md` |

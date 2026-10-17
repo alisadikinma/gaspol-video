@@ -116,6 +116,15 @@ Remotion `KineticOverlay`. See `reference/post-production/19-keyword-text-overla
 on the face. A red alarm flash goes on the background only, through the same mask.
 The v3.10.0 gold-serif card tool is removed.
 
+26. **(v3.21.0) Green screen for an app insert.** A screen (phone, monitor, tablet) that will
+receive an app insert in post is prompted as `flat solid chroma green screen (#00FF00), no
+reflections, no content`, and the scene's `Screen Source` row notes `insert: green`. The app goes in
+with `python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green`. A clip made without
+green uses `--mode track --corners x,y,x,y,x,y,x,y` (and `--occluder x,y` when a hand covers the
+screen). Why: green gives exact corners on every frame, and a finger over the screen drops out
+because the key removes it. Validator check V17 fails an `insert: green` scene whose prompt lacks
+the phrase `flat solid chroma green screen`.
+
 20. **Folder contract — twelve folders, no new ones.** Everything this skill writes goes in a folder
 that already exists: `ref/` `keyframes/` `shots/` `clips/` `vo/` `sfx/` `work/` `output/` `_arsip/`
 `.tmp/` `screens/` `packaging/`. A new folder needs the user's approval. Subfolders are not allowed

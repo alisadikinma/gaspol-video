@@ -88,6 +88,11 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/viral_checklist.py` | `check` the `## Viral Checklist` block of `av-script.md` (7 stages, exit 1 on a missing/empty/`FAIL:` cell); `rate` a `calibration.json` entry against the course analytics thresholds (`unknown` when a key is absent). Test: `tests/py/test_viral_checklist.py` |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
 | `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: `audiostudy` (SFX/speech onsets, tempo, energy, word and cut relation of a reference clip), A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, track smoothing, motion-tracked print bond (cv2), `tidy.py` (`vidkit tidy`: report, `--apply`, `--empty-tmp` for a project folder). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
+| `tools/vidkit/ml.py`, `requirements-ml.txt`, `tools/setup.sh --ml` | ML guard (GV-24): `bash tools/setup.sh --ml` builds `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv-ml` (torch, TAPNext++, SAM 2.1; Python 3.10+, `PYTHON_ML` overrides) and fetches two weights with pinned URL and sha256. `ml.weight`, `ml.device`, `ml.require`; a missing piece raises `MLMissing` ending `run tools/setup.sh --ml`. Stdlib only, torch imported lazily |
+| `tools/vidkit/pointtrack.py` | `track(frames, queries)`: occlusion-aware point tracking with TAPNext++ (Apache-2.0). Needs venv-ml |
+| `tools/vidkit/segment.py` | `masks(frames, frame_idx, points, labels, box)`: SAM 2.1 mask of an object through a clip from one click or box. Needs venv-ml |
+| `tools/vidkit/screen.py` | `vidkit screen-insert <clip> <panel> <out> --mode green\|track`: app screen into a phone/monitor. Green: exact corners by keyed blob and RANSAC line fits (fingers drop out). Track: TAPNext++ plus homography per frame, `check_track` raises `Refused` (exit 2). One-Euro smoothing. Test: `tests/py/test_screen.py` |
+| `tools/vidkit/embroider.py` | `vidkit embroider <clip> <logo> <out> --at x,y --width W`: raised satin thread on clothing (thread height map, per-point cloth warp, shading), refuses a bad track or a click off the shirt. Distinct from `bond` (flat print). Test: `tests/py/test_embroider.py`. Contract: `tests/consistency/surface-insert-contract.sh` |
 | `tools/vidkit/js/` | Node helpers: `env.mjs` (.env loading, keys never printed), `eleven.mjs` (`tts` with settings + seed, `stt` word timings, `sfx`), `cast_voice.mjs` (voice change with per-character settings and seed, spans only), `ff.mjs` (`probeDuration`, the only Node file that runs ffprobe). Test: `tests/node/vidkit-js.test.mjs` |
 | `templates/remotion/scripts/frames.mjs`, `qa-end.mjs` | Multi-frame and end-state Remotion QA, copied into every scaffolded workspace |
 | `templates/remotion/Overlay.template.tsx`, `lib/{overlay-fx.tsx,overlayFx.mjs}` | `KineticOverlay` (GV-17): clip, behind layer, person cut out by mask, front text, source box; six text effects as zero-import maths in `overlayFx.mjs` (unit-tested), drawn by `overlay-fx.tsx` |
@@ -643,12 +648,30 @@ All configurable values live in `reference/global-promo-config.md` — single so
 | **(v3.1.0) NB2 draws a garbled dashboard / UI screen** | The scene needs Screen Source `capture` or `mock`, not a text-only NB2 prompt — no image model renders legible on-screen text reliably. Run `python3 tools/gen_app_screen.py capture` (or `mock`) against `{output_folder}` and reference the resulting `ui-<name>-<state>.png` inline in the Phase 4B prompt instead. |
 | **(v3.1.0) P6 (`verify_render.py`) reports missing or inserted words** | The rendered master says something different from `av-script.md`. Listen at the timestamps printed in `work/verify-report.md`; fix the edit-plan segment or regenerate the VO for that layer — never edit the report to make it pass. Exit codes: 0 PASS, 1 FAIL (words differ), 2 ERROR (the tool could not run: missing plan, ffmpeg, network), 3 SKIPPED (no AssemblyAI key). Only 0 is a pass. |
 | **(v3.1.0) `clean_voice.py` refuses with `duration changed by ...s`** | The cleaning method (`isolate` or `rnnoise`) shifted the clip's length past the 0.05s lip-sync tolerance. Do not stretch the audio to compensate; try the other method, or skip cleaning and accept the platform-native noise for that scene. |
+| **(v3.21.0) `refused: track lost on frames A-B (P% points hidden)`** | More than 30% of the tracked points were hidden for 0.5 s or longer (`screen-insert --mode track`, `embroider`). The screen or shirt left the frame or was covered. Cut the clip to the visible part, or re-shoot with the screen on green and use `--mode green` |
+| **(v3.21.0) `refused: corner jump N px at frame F`** | The tracked corners moved further in one frame than a real screen can. The track jumped to another object. Check `--corners` at frame 0, pass `--occluder` for a hand, or use a green-screen clip |
+| **(v3.21.0) `refused: homography unstable at frame F (inliers X)`** | Too few tracked points agree on one plane at that frame (fast blur, bend, cover). Do not lower the threshold. Trim the clip around that frame or use `--mode green` |
+| **(v3.21.0) `refused: green key missing on N frames`** | `screen-insert --mode green` found no green screen on N frames. The prompt lacked `flat solid chroma green screen` (video-gen Rule 26, check V17), or the screen is not green. Re-render the scene with the phrase, or use `--mode track --corners ...` |
+| **(v3.21.0) `refused: shirt area too small for design (R)`** | The shirt mask is too small for `--width`. Lower `--width`, or use a shot where the shirt is larger in frame. Check the QA sheet to see which mask SAM made |
+| **(v3.21.0) `refused: --at is not on the shirt`** | The `--at` point is outside the shirt mask at frame 0. Pick a point on the cloth, away from hands. A click on the background can still pass if SAM returns a large mask there: always open `qa-embroider.jpg` |
+| **(v3.21.0) `missing <what>: run tools/setup.sh --ml`** | `venv-ml`, torch or a model weight is missing or has the wrong sha256. Run `bash tools/setup.sh --ml` (Python 3.10+; set `PYTHON_ML` if needed). Never copy a weight in by hand |
 | **(v3.1.0) Python `SSL: CERTIFICATE_VERIFY_FAILED` calling ElevenLabs/AssemblyAI** | The python.org 3.14 installer does not register system CA certificates the way Homebrew's build does. Run `/Applications/Python 3.14/Install Certificates.command` once. Affects any tool that makes an HTTPS call on that interpreter: `gen_music.py`, `clean_voice.py --method isolate`, `verify_render.py`, `gen_subs.py`. |
 
 ---
 
 **Version:** 3.20.0
 **Last Updated:** 2026-10-17
+
+### v3.21.0 Changelog
+
+- **Surface insert (GV-24).** `vidkit screen-insert` puts an app screen into a phone/monitor in a clip, and `vidkit embroider` stitches a logo onto clothing as raised thread.
+  - **Screen insert.** `--mode green` keys a green screen and fits the four edges (fingers drop out). `--mode track` follows a screen with no key colour using TAPNext++ and a homography per frame. Video-gen Rule 26 prompts the screen as `flat solid chroma green screen`; validator check V17 fails a scene marked `insert: green` without the phrase.
+  - **Embroider.** Thread height map, per-point cloth warp from tracked points, thread shading. Differs from `bond`, which is a flat print.
+  - **Models.** TAPNext++ (Apache-2.0) and SAM 2.1 small (Apache-2.0), in their own `venv-ml` (`bash tools/setup.sh --ml`), weights pinned by sha256. Rejected: CoTracker3 (CC-BY-NC) and SAM 3 (CUDA only).
+  - **Refusals.** Seven messages, each a row in the Debugging table. A bad track exits 2 and writes no output.
+  - **Evidence.** Numbers so far come from synthetic clips and are not claims about real footage. The real-clip proof is Phase L.
+  - **Known gaps.** A click on the background is not refused by `embroider` (check the QA sheet). The whole clip is held in RAM. Short occlusions of 5 frames or fewer are not flagged by TAPNext++ visibility; the SAM masks handle fingers.
+  - **Not released yet.** `**Version:**` and `plugin.json` stay at 3.20.0 until Phase L. Contract test: `tests/consistency/surface-insert-contract.sh`.
 
 ### v3.20.0 Changelog
 
