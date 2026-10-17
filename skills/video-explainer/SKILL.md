@@ -88,7 +88,7 @@ coded shot.
    on one monitor: left edge 524px, right edge 375px), so a box plus rotation always overhangs a
    corner; screen-insert maps the panel by homography per frame. Look at
    `.tmp/qa-NN/qa-screen.jpg` before the shot is used. A `refused: ...` exit 2 means trim the
-   clip or re-render it (CLAUDE.md Debugging rows); never fall back to the Remotion
+   clip or re-render it (`docs/debugging.md`); never fall back to the Remotion
    `quad-screen.tsx` component, which is legacy and kept only for old projects.
 
 10. **(v3.4.0) Decide screen-insert vs floating card from a measurement, not from taste.** Frontal
