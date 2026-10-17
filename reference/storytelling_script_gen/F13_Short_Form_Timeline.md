@@ -23,7 +23,7 @@
 | Body | 6-50 | Points or escalation |
 | CTA | last 2-4 s (50-54) | Specific follow ask |
 
-`[TAFSIRAN]` The `av-script.md` table for 9:16 carries the columns `Tahap` and `Detik`. `python3 tools/viral_checklist.py timeline <av-script.md>` checks the order Thumbnail (optional), Hook, Foreshadow, Body, CTA, that Hook ends by 3 s and Foreshadow by 6 s, with the tolerance `timeline_tolerance_s` from `media/layout-profiles.json`.
+`[TAFSIRAN]` The `av-script.md` table for 9:16 carries the columns `Tahap` and `Detik`. `python3 tools/viral_checklist.py timeline <av-script.md>` checks the order Thumbnail (optional), Hook, Foreshadow, Body, CTA; that Hook ends by 3 s, Foreshadow by 6 s and Body by 50 s; that the CTA lasts 2-4 s and is the last stage; and that the total stays within `--max-s` (default 60, the brief's `max_duration_s`). Tolerance is `timeline_tolerance_s` from `media/layout-profiles.json`, applied to the late side (a CTA under 2 s always fails).
 
 ## Thumbnail (frame 0-1 s)
 
