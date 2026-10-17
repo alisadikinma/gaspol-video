@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 38 CLI tools (36 Python + 2 Node, 5 of the Python tools — `gen_app_screen.py capture`, `composite_logo.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 41 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 40 CLI tools (38 Python + 2 Node, 6 of the Python tools — `face_box.py`, `gen_app_screen.py capture`, `composite_logo.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 41 reference documents as RAG knowledge base.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -70,6 +70,9 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/sfx_snap.py` | Snaps the cue sheet's `at_s` (a stack's parent only) onto the beats of the music bed within `--window` (default 0.12 s); writes `work/sfx-plan.snapped.json`, never the original; `--music-plan` (default `work/music-plan.json`) takes beats from every segment's track, or `--music FILE` for one bed; exit 2 bad input, exit 3 and no file when the music has no beats. Run after the cue sheet is audited and the music tracks are generated, before `mix_sfx.py` |
 | `tools/face_box.py` | GV-23 face box per sampled frame (`[x0,y0,x1,y1]` pixel ints, end-exclusive, `null` = no face) from OpenCV YuNet (cv2.FaceDetectorYN, CPU, score >= 0.6); model pinned in `tools/setup.sh`. Exit 2 on missing model or unreadable video. Test: `tests/py/test_face_box.py`, `tests/consistency/face-model-setup.sh` |
 | `tools/layout_gate.py` | GV-23 layout gate for 9:16 video, `check <project> [--video] [--ass] [--thumb GLOB] [--profile] [--every]`. Measures subtitle and watermark boxes by rendering the ASS alone on black, reads the title box from `<thumb>.box.json`, scales the profile to the video's display size (not 9:16 = exit 2), flags boxes outside the safe area and subtitles or titles that touch or crowd the face box (via `face_box.py`). Exit 0 pass, 1 finding, 2 bad input; skipped face samples are listed. Writes `work/layout-report.md` and `.tmp/layout-{tiktok,reels,shorts}.jpg`. Test: `tests/py/test_layout_gate.py` |
+| `media/layout-profiles.json`, `tools/vidkit/layout.py` | GV-23 layout profiles: safe area (left 6 %, top 14 %, right 10 %, bottom 21 %), subtitle, watermark and title numbers, each with a `source` (`data` from the Samuel measurement in `docs/evals/short-form-layout-measurement.md`, or `tafsiran: ...`). `layout.load/safe_box/value/text_box` read it; no number lives in code. Test: `tests/py/test_layout.py` |
+| `tools/vidkit/title.py` | `vidkit title <img> "<text>" <out> [--profile] [--y-pct]`: stamps a 9:16 cover title (max 3-5 words by profile, up to two lines, black box, font chain Montserrat, Helvetica Neue, Arial Bold) inside the safe area and writes `<out>.box.json` for `layout_gate.py`. Refuses a line wider than the safe area at `min_font_pct` (centred, so the widest line is 2 x (safe right - half width)). Exit 2 on refusal. Test: `tests/py/test_vidkit.py`, `tests/consistency/title-card-contract.sh` |
+| `tools/vidkit/karaoke.py` | `vidkit karaoke` now defaults to `--profile short-organic` (56 px, 4 words in 2 lines, MarginV 735, baseline 61.7 %); `--profile none` is the old look. Test: `tests/py/test_vidkit.py` |
 | `tools/person_mask.py` | Per-frame person matte (MediaPipe selfie segmenter, venv + model from `tools/setup.sh`) into `.tmp/mask-<scene>/NNNNN.png`, cached by clip sha256; exit 1 when no person in more than 10% of frames, listing the frames |
 | `tools/overlay_plan.py` | Resolves `work/overlay-plan.json` cues to frames from VO words (`vo_layer` in `vo-manifest.json`, or `words_file` ASR words), validates fx/colour/layer/icon/media/mask, writes `shots/src/shots/overlay-<scene>.json` and stages media + masks in `shots/public/overlay/<scene>/` for `KineticOverlay` |
 | `tools/caption_keywords.py` | Scores key phrases in a narration line (number+unit, brand term, acronym, reversal word) for kinetic-caption highlighting |
@@ -644,8 +647,22 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.19.0
+**Version:** 3.20.0
 **Last Updated:** 2026-10-17
+
+### v3.20.0 Changelog
+
+- **Short-form layout and format (GV-23).** 9:16 output now has a measured safe area and a gate that blocks a bad layout.
+  - **Profiles.** `media/layout-profiles.json` + `tools/vidkit/layout.py`. Samuel measurement: subtitle 2.9 % of the height, 4 words in 2 lines, baseline 61.7 %. No Samuel cover title was found, so the title numbers stay `tafsiran`.
+  - **Karaoke and title.** `vidkit karaoke` defaults to `--profile short-organic` (`--profile none` = old look). New `vidkit title` stamps the cover title inside the safe area.
+  - **Face box.** `tools/face_box.py` uses OpenCV YuNet (`opencv-contrib-python==5.0.0.93`, model pinned by sha256 in `tools/setup.sh`). The MediaPipe face detector aborts on this Mac's Metal.
+  - **Layout gate.** `tools/layout_gate.py check` (blocking): outline-inclusive boxes measured on grey, previews per platform (`.tmp/layout-{tiktok,reels,shorts}.jpg`), exit 0 pass / 1 finding / 2 bad input, skipped face samples listed. Wired into `video-validate --layout`, `video-post --final`, `video-package` 7.7c and `video-repackage` 6b.
+  - **Script.** `reference/storytelling_script_gen/F13_Short_Form_Timeline.md` and `viral_checklist.py timeline` (Thumbnail 0-1 / Hook 0-3 / Foreshadow 3-6 / Body / CTA). `video-script` rule 28.
+  - **Brainstorm.** Four video types (presentasi, promo, isu, edukasi) decide the format; Step 1.5 Format Confirmation.
+  - **Repackage and package.** `video-repackage` adds a Foreshadow beat and merges two links; `video-package` writes three distinct texts (title, cover title, description); doc 21 gains the 9:16 path.
+  - **Real run.** `docs/evals/layout-gate-run.md`: a real 9:16 master, exit 1 with one true finding (subtitle too close under the face). The master had one spoken word, which the record says.
+  - **Registry.** 68 tool entries, 66 routes, 6 `ffprobe_allow` entries (adds `face_box.py`). Tests: `tests/py/test_{layout,face_box,layout_gate,vidkit}.py`, `tests/consistency/{layout-gate-contract,title-card-contract,short-form-texts-contract,viral-framework-contract,face-model-setup,repackage-merge,video-type-routing,marketplace-version}.sh`.
+  - **Not done.** More than two merge links; a 4:5 LinkedIn variant; OCR of burned-in text; separate renders per platform; cover-title numbers unmeasured; `person_mask.py` ignores rotation tags.
 
 ### v3.19.0 Changelog
 
