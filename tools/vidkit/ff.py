@@ -1,5 +1,6 @@
 """ffmpeg / ffprobe plumbing shared by every vidkit module."""
 import json
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -7,6 +8,18 @@ from pathlib import Path
 
 class FFError(RuntimeError):
     """ffmpeg or ffprobe exited non-zero. The message carries the tail of stderr."""
+
+
+class FFMissing(FFError):
+    """The binary is not on PATH. The message names it."""
+
+
+TOOLS = ("ffmpeg", "ffprobe")
+
+
+def missing():
+    """Names from TOOLS that are not on PATH."""
+    return [t for t in TOOLS if shutil.which(t) is None]
 
 
 def run(cmd, capture_stderr=False, heartbeat_s=None):
@@ -20,7 +33,10 @@ def run(cmd, capture_stderr=False, heartbeat_s=None):
     if heartbeat_s:
         stdout, stderr, rc = _run_with_heartbeat(argv, heartbeat_s)
     else:
-        proc = subprocess.run(argv, capture_output=True, text=True)
+        try:
+            proc = subprocess.run(argv, capture_output=True, text=True)
+        except FileNotFoundError:
+            raise FFMissing(f"{argv[0]} not found on PATH") from None
         stdout, stderr, rc = proc.stdout, proc.stderr, proc.returncode
     if rc != 0:
         raise FFError(f"{cmd[0]} failed ({rc}):\n{stderr.strip()[-900:]}")
@@ -30,7 +46,10 @@ def run(cmd, capture_stderr=False, heartbeat_s=None):
 def _run_with_heartbeat(argv, heartbeat_s):
     label = Path(argv[-1]).name if len(argv) > 1 else argv[0]
     start = time.monotonic()
-    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except FileNotFoundError:
+        raise FFMissing(f"{argv[0]} not found on PATH") from None
     while True:
         try:
             stdout, stderr = proc.communicate(timeout=heartbeat_s)
@@ -51,18 +70,22 @@ def ffmpeg(*args, capture_stderr=False):
 def probe(path):
     """Everything the other modules need to know about a file, in one ffprobe call.
 
-    Keys: duration (container), video {duration, fps, width, height} or None,
+    Keys: duration (container), video {duration, fps, width, height, pix_fmt} or None,
     audio {duration, sample_rate, channels} or None.
     """
     out = run(["ffprobe", "-v", "error", "-show_entries",
                "format=duration:stream=codec_type,duration,r_frame_rate,width,height,"
-               "sample_rate,channels", "-of", "json", path])
-    data = json.loads(out)
+               "sample_rate,channels,pix_fmt", "-of", "json", path])
+    try:
+        data = json.loads(out)
+    except ValueError:
+        raise FFError(f"ffprobe gave no JSON for {path}") from None
     info = {"duration": _num(data.get("format", {}).get("duration")), "video": None, "audio": None}
     for s in data.get("streams", []):
         if s.get("codec_type") == "video" and info["video"] is None:
             info["video"] = {"duration": _num(s.get("duration")), "fps": _fps(s.get("r_frame_rate")),
-                             "width": s.get("width"), "height": s.get("height")}
+                             "width": s.get("width"), "height": s.get("height"),
+                             "pix_fmt": s.get("pix_fmt")}
         elif s.get("codec_type") == "audio" and info["audio"] is None:
             info["audio"] = {"duration": _num(s.get("duration")),
                              "sample_rate": int(s["sample_rate"]) if s.get("sample_rate") else None,

@@ -425,8 +425,26 @@ class RenderTest(FakeRoot):
     def test_route_with_pipe_is_validate_problem(self):
         self.assertProblem(registry(routes=[route("a | b", "`x`")]), "pipe")
 
-    def test_pipe_inside_code_span_of_use_is_allowed(self):
-        self.assertEqual(self.problems(registry(routes=[route("t", "`a b|c` x")])), [])
+    def test_escaped_pipe_is_allowed(self):
+        self.assertEqual(self.problems(registry(routes=[route("t", "`a b\\|c` x")])), [])
+        self.assertEqual(self.problems(registry(routes=[route("a\\|b", "`x`")])), [])
+        self.assertEqual(self.problems(registry(routes=[route("\\|a", "`x\\|y\\|z`")])), [])
+
+    def test_bare_pipe_inside_code_span_rejected(self):
+        self.assertProblem(registry(routes=[route("t", "`a|b`")]), "route #1: use has a pipe or newline")
+        self.assertProblem(registry(routes=[route("a|b", "`x`")]), "route #1: task has a pipe or newline")
+
+    def test_escaped_pipe_next_to_bare_pipe_rejected(self):
+        self.assertProblem(registry(routes=[route("t", "`a\\||b`")]), "pipe")
+        self.assertProblem(registry(routes=[route("t", "`a|\\|b`")]), "pipe")
+
+    def test_escaped_backslash_before_pipe_rejected(self):
+        # `\\|` in a GFM cell is a literal backslash followed by a bare pipe.
+        self.assertProblem(registry(routes=[route("t", "`a\\\\|b`")]), "pipe")
+        self.assertEqual(self.problems(registry(routes=[route("t", "`a\\\\\\|b`")])), [])
+
+    def test_empty_route_cell_still_reported_empty(self):
+        self.assertProblem(registry(routes=[route("", "`x`")]), "task is empty")
 
     def test_pipe_outside_code_span_of_use_rejected(self):
         self.assertProblem(registry(routes=[route("t", "a | b")]), "pipe")
@@ -497,6 +515,13 @@ class CommittedVidkitCoverageTest(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertEqual([ln for ln in out.splitlines() if "not in registry" in ln], [])
 
+    def test_ffprobe_allow_is_the_five_that_need_raw_fields(self):
+        # GV-22: everything else probes through vidkit/ff.py or vidkit/js/ff.mjs.
+        reg = json.loads((ROOT / "tools/registry.json").read_text())
+        self.assertEqual(sorted(a["id"] for a in reg["ffprobe_allow"]), [
+            "tools/person_mask.py", "tools/probe_clips.py", "tools/registry_build.py",
+            "tools/retention_gate.py", "tools/vidkit/color.py"])
+
     def test_every_route_tool_id_exists(self):
         reg = json.loads((ROOT / "tools/registry.json").read_text())
         ids = {t["id"] for t in reg["tools"]}
@@ -542,7 +567,8 @@ class FfprobeScanTest(FakeRoot):
         (self.root / "tools/new_probe.py").write_text("# uses ffprobe\n")
         probs = self.scan(self.probe_reg())
         self.assertEqual(
-            probs, ["tools/new_probe.py: ffprobe outside vidkit/ff.py and not in ffprobe_allow"]
+            probs, ["tools/new_probe.py: ffprobe outside vidkit/ff.py or vidkit/js/ff.mjs "
+            "and not in ffprobe_allow"]
         )
 
     def test_allowed_ffprobe_passes(self):
@@ -555,11 +581,17 @@ class FfprobeScanTest(FakeRoot):
         probs = self.scan(self.probe_reg())
         self.assertEqual(probs, [])
 
+    def test_ff_mjs_is_exempt(self):
+        (self.root / "tools/vidkit/js").mkdir(parents=True, exist_ok=True)
+        (self.root / "tools/vidkit/js/ff.mjs").write_text("execFile('ffprobe')\n")
+        self.assertEqual(self.scan(self.probe_reg()), [])
+
     def test_init_file_is_scanned(self):
         (self.root / "tools/vidkit/__init__.py").write_text("# ffprobe\n")
         probs = self.scan(self.probe_reg())
         self.assertIn(
-            "tools/vidkit/__init__.py: ffprobe outside vidkit/ff.py and not in ffprobe_allow",
+            "tools/vidkit/__init__.py: ffprobe outside vidkit/ff.py or vidkit/js/ff.mjs "
+            "and not in ffprobe_allow",
             probs,
         )
 

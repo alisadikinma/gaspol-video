@@ -36,8 +36,12 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.vidkit import ff  # noqa: E402
+
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 ISO_URL = "https://api.elevenlabs.io/v1/audio-isolation"
 ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = ROOT / "tools" / "models" / "rnnoise"
@@ -91,31 +95,21 @@ def _run(cmd, cwd=None):
 
 
 def duration_of(path):
-    if FFPROBE is None:
-        raise CleanError("ffprobe not found on PATH")
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True,
-    )
-    out = proc.stdout.strip()
-    if proc.returncode != 0 or not out or out == "N/A":
-        return None
     try:
-        return float(out)
-    except ValueError:
+        return ff.probe(path)["duration"]
+    except ff.FFMissing as exc:
+        raise CleanError(str(exc)) from None
+    except ff.FFError:
         return None
 
 
 def has_audio_stream(path):
-    if FFPROBE is None:
-        raise CleanError("ffprobe not found on PATH")
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-select_streams", "a",
-         "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    )
-    return bool(proc.stdout.strip())
+    try:
+        return ff.probe(path)["audio"] is not None
+    except ff.FFMissing as exc:
+        raise CleanError(str(exc)) from None
+    except ff.FFError:
+        return False
 
 
 def _astat(path, label):

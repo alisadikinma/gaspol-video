@@ -24,7 +24,6 @@ underneath it.
 """
 
 import argparse
-import json
 import math
 import shutil
 import subprocess
@@ -32,52 +31,50 @@ import sys
 import tempfile
 from pathlib import Path
 
+# tools/ is not a package on sys.path when this file runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.vidkit import ff  # noqa: E402
+
 FFMPEG = shutil.which("ffmpeg")
-FFPROBE = shutil.which("ffprobe")
 
 
 class CompositeError(Exception):
     """The shot cannot be placed as asked."""
 
 
-def _probe(path, entries, stream="v:0"):
-    if FFPROBE is None:
-        raise CompositeError("ffprobe not found on PATH")
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-select_streams", stream,
-         "-show_entries", entries, "-of", "json", str(path)],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0:
-        raise CompositeError(f"{Path(path).name}: unreadable")
-    return json.loads(proc.stdout)
+def _info(path):
+    """ff.probe of `path`; a missing binary or an unreadable file becomes a CompositeError."""
+    try:
+        return ff.probe(path)
+    except ff.FFMissing as exc:
+        raise CompositeError(str(exc)) from None
+    except ff.FFError:
+        raise CompositeError(f"{Path(path).name}: unreadable") from None
 
 
 def duration_of(path, stream="v:0"):
-    data = _probe(path, "stream=duration", stream=stream)
-    streams = data.get("streams", [])
-    if not streams or streams[0].get("duration") in (None, "N/A"):
-        return None
-    return float(streams[0]["duration"])
+    """Duration of the first video ("v:0") or audio ("a:0") stream; None when absent."""
+    info = _info(path)
+    entry = info["audio"] if stream == "a:0" else info["video"]
+    return entry["duration"] if entry else None
 
 
-def _has_stream(path, select_stream):
-    """select_stream is an ffprobe -select_streams value, e.g. "v" or "a"."""
-    if FFPROBE is None:
-        raise CompositeError("ffprobe not found on PATH")
-    proc = subprocess.run(
-        [FFPROBE, "-v", "error", "-select_streams", select_stream,
-         "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    )
-    return bool(proc.stdout.strip())
+def _has_stream(path, kind):
+    """kind is "v" or "a". An unreadable file has no stream."""
+    try:
+        info = ff.probe(path)
+    except ff.FFMissing as exc:
+        raise CompositeError(str(exc)) from None
+    except ff.FFError:
+        return False
+    return info["video" if kind == "v" else "audio"] is not None
 
 
 def require_alpha(path):
     """An overlay without an alpha channel would black out the picture it is meant to sit on."""
-    data = _probe(path, "stream=pix_fmt")
-    streams = data.get("streams", [])
-    pix_fmt = streams[0].get("pix_fmt", "") if streams else ""
+    video = _info(path)["video"]
+    pix_fmt = (video.get("pix_fmt") or "") if video else ""
     if "a" not in pix_fmt.replace("yuva", "A").lower().replace("rgba", "A").lower() and \
        not any(tag in pix_fmt for tag in ("yuva", "rgba", "argb", "abgr")):
         raise CompositeError(
@@ -139,19 +136,11 @@ def cutaway(master, shot, at_s, out_s, out):
 
 def _video_info(path):
     """(width, height, fps) of a video's first video stream."""
-    data = _probe(path, "stream=width,height,r_frame_rate")
-    streams = data.get("streams", [])
-    if not streams:
+    video = _info(path)["video"]
+    if not video or video["width"] is None or video["height"] is None:
         raise CompositeError(f"{Path(path).name}: unreadable")
-    stream = streams[0]
-    width, height = int(stream["width"]), int(stream["height"])
-    raw_fps = stream.get("r_frame_rate") or "30/1"
-    if "/" in raw_fps:
-        num, den = raw_fps.split("/", 1)
-        fps = (float(num) / float(den)) if float(den) else 30.0
-    else:
-        fps = float(raw_fps)
-    return width, height, fps
+    # 0/1 fps stays 0.0 so the filter fails loudly; only an unknown rate falls back.
+    return video["width"], video["height"], 30.0 if video["fps"] is None else video["fps"]
 
 
 def split_filter(box, master_w, master_h, fps, at_s, out_s, crop_cx=0.5, crop_cy=0.5, zoom=1.0):
