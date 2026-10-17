@@ -91,6 +91,23 @@ nobody will use.
 Concrete promise, a magnet word, and a barrier dropped. Written for the awareness level already
 chosen in Phase 1. It stays the same across all three bets.
 
+### Step 7.3b: Three separate texts for 9:16 (GV-23)
+
+A 9:16 short needs three different texts. Write each one on its own, never reuse one for another:
+
+| Text | Length | Job |
+|---|---|---|
+| Thumbnail title | 3-5 words, ALL CAPS | the click in the feed; stamped on the cover by `vidkit title` (Step 7.7c) |
+| Video title | 5-9 words + tags, ALL CAPS | search and algorithm. Example: `AKU NGINAP DI RUMAH 70 MILIAR DR RICHARD! (PART 1)` |
+| Hook on-screen text | 4-7 words | stops the scroll; appears with the narration at 0-3 s |
+
+Formula for both titles: extreme number + public figure or brand + curiosity word. Examples:
+`SISKA KOHL BELI NASI GORENG SEHARGA 400 JUTA!`, `RAFATHAR HASILKAN 2 MILYAR PER ENDORSE?!`.
+
+Honesty guardrail: the promise must be in the video (Step 7.5 traces it to a frame). For an
+indusia.ai promo, no invented numbers: numbers must come from the brief. No number in the brief
+means the title uses a curiosity word instead. 16:9 keeps the single locked title of Step 7.3.
+
 ### Step 7.4: Three bets on three levers
 
 | Bet | Lever | Bets on |
@@ -178,6 +195,7 @@ scrim falls short. Both are optional; skip them when the plate already reads cle
 ## Quality Gates
 
 - [ ] One title, unchanged across all three bets
+- [ ] 9:16: thumbnail title (3-5 words), video title (5-9 words + tags) and hook on-screen text (4-7 words) written separately, all numbers from the brief
 - [ ] Three bets on three DIFFERENT levers, not three variations of one
 - [ ] Every promise traced to a frame in `av-script.md`
 - [ ] Calibration mode stated in the output; uncalibrated defaults labelled as such

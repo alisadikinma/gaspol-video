@@ -128,3 +128,23 @@ pixel-exact tools in Step 7.8 (`composite_logo.py`) when the logo must be exact.
    looking at it. `thumb_verify.py check <project>` must exit 0 before any thumbnail is offered as
    final. A FAIL cell means one re-roll with the matching fix from section 6; after two re-rolls,
    ask the owner.
+
+## 8. 9:16 path (GV-23)
+
+Sections 1 to 7 are the 16:9 path and stay as they are. A 9:16 short cover works differently:
+the image is rendered with no text and the tool stamps the title.
+
+1. **Render the cover without text.** Expressive face (shock or awe) or one high-value object.
+   Put no title words in the prompt. End the prompt with the negative
+   `no text, no letters, no captions`. Section 4 text pieces are not used on this path.
+2. **Write the title.** 3-5 words, ALL CAPS. Formula: extreme number + public figure or brand +
+   curiosity word, for example `SISKA KOHL BELI NASI GORENG SEHARGA 400 JUTA!` or
+   `RAFATHAR HASILKAN 2 MILYAR PER ENDORSE?!`. The honesty guardrail of section 1 applies: the
+   promise must be in the video, and numbers must come from the brief.
+3. **Stamp it.** `python3 -m tools.vidkit title <img> "<TEXT>" <out>`. Size and position come from
+   `media/layout-profiles.json`. Say plainly: these title numbers are tafsiran. The 6 measured
+   Samuel Shorts carry no cover title, so no data backs them (see
+   `docs/evals/short-form-layout-measurement.md`). The title goes never over the face.
+4. **Gate it.** `python3 tools/layout_gate.py check <project> --thumb <png>` must exit 0
+   (title inside the safe area, off the face).
+5. **Verify it.** Then `thumb_verify.py init` and `check`, as in section 7.
