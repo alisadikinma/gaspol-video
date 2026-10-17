@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseEnv, loadEnv, requireKeys } from "../../tools/vidkit/js/env.mjs";
 import { tts, sfx, sttWords, assertSpeakable } from "../../tools/vidkit/js/eleven.mjs";
-import { planFetch, run } from "../../tools/vidkit/js/cast_voice.mjs";
+import { run } from "../../tools/vidkit/js/cast_voice.mjs";
 import { probeDuration } from "../../tools/vidkit/js/ff.mjs";
 
 const okBytes = (b = "AUDIO") => async () => ({ ok: true, arrayBuffer: async () => Buffer.from(b), json: async () => ({}) });
@@ -65,12 +65,22 @@ test("sfx and stt hit the right endpoints; stt drops spacing tokens", async () =
   assert.equal(j.words.length, 1);
 });
 
-test("planFetch appends voice_settings and seed to the multipart body", async () => {
-  const body = new FormData();
+test("run passes per-cast settings and seed to convertSpans as params", async () => {
   let seen;
-  await planFetch({ settings: { stability: 0.2 }, seed: 5 }, async (u, o) => { seen = o.body; return {}; })("u", { body });
-  assert.equal(seen.get("seed"), "5");
-  assert.equal(JSON.parse(seen.get("voice_settings")).stability, 0.2);
+  await run({ cast: { c1: { voice_env: "V", seed: 5, settings: { stability: 0.2 } } },
+    scenes: { S1: { cast: "c1", spans: "0-1" } } },
+  { env: {}, convert: async (o) => { seen = o; return { ok: true }; } });
+  assert.equal(seen.seed, 5);
+  assert.deepEqual(seen.voiceSettings, { stability: 0.2 });
+  assert.equal(seen.fetchImpl, undefined);
+});
+
+test("run sends no settings or seed for a cast member without them", async () => {
+  let seen;
+  await run({ cast: { c1: { voice_env: "V" } }, scenes: { S1: { cast: "c1", spans: "0-1" } } },
+    { env: {}, convert: async (o) => { seen = o; return { ok: true }; } });
+  assert.equal(seen.seed, null);
+  assert.equal(seen.voiceSettings, null);
 });
 
 test("run converts only the wanted scenes with each cast member's voice env", async () => {

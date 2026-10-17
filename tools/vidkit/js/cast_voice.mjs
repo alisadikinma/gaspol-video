@@ -1,9 +1,9 @@
-// Voice-change a clip's dialogue with PER-CHARACTER settings and seed.
-//
-// voice_changer.mjs sends no voice_settings or seed, so the account's saved settings apply
-// (a saved stability of 1.0 made a lively character read flat). This wrapper injects the
-// settings and seed from a cast file and converts only the listed spans, so the clip's SFX
-// between phrases stays original. Get the spans from `eleven.mjs stt` word timings.
+// Batch runner: voice-change many scenes with PER-CHARACTER voice_settings and seed from one
+// cast file. The request itself is voice_changer.mjs convertSpans (it takes --stability/--style/
+// --seed on the CLI); this file only maps each scene to its cast member and converts the listed
+// spans, so the clip's SFX between phrases stays original. Without per-character settings the
+// account's saved settings apply (a saved stability of 1.0 made a lively character read flat).
+// Get the spans from `eleven.mjs stt` word timings.
 //
 //   node tools/vidkit/js/cast_voice.mjs plan.json [--env .env --env .env.voices] [scene ...]
 //
@@ -17,14 +17,6 @@ import { readFileSync } from "node:fs";
 import { loadEnv } from "./env.mjs";
 import { convertSpans, parseSpans } from "../../voice_changer.mjs";
 
-export function planFetch(member, fetchImpl = globalThis.fetch) {
-  return (url, opts) => {
-    opts.body.append("voice_settings", JSON.stringify(member.settings || {}));
-    if (member.seed != null) opts.body.append("seed", String(member.seed));
-    return fetchImpl(url, opts);
-  };
-}
-
 export async function run(plan, { env, only = [], convert = convertSpans, fetchImpl } = {}) {
   const results = {};
   for (const [scene, cfg] of Object.entries(plan.scenes)) {
@@ -37,7 +29,9 @@ export async function run(plan, { env, only = [], convert = convertSpans, fetchI
       spans: parseSpans(cfg.spans),
       voiceEnv: member.voice_env,
       env,
-      fetchImpl: planFetch(member, fetchImpl),
+      voiceSettings: member.settings || null,
+      seed: member.seed ?? null,
+      fetchImpl,
     });
   }
   return results;

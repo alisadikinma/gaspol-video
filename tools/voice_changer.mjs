@@ -77,6 +77,20 @@ export function parseVoiceSettings({ stability, style } = {}) {
   return Object.keys(out).length ? out : null;
 }
 
+/**
+ * `--seed` CLI value -> integer, or null when not given (no seed field, API default kept).
+ * The same seed gives the same delivery on a re-run of one scene. Anything that is not a whole
+ * number in the API's 0-4294967295 range throws instead of being rounded or clamped.
+ */
+export function parseSeed(raw) {
+  if (raw === undefined || raw === null) return null;
+  const text = String(raw).trim();
+  if (!/^\d+$/.test(text) || Number(text) > 4294967295) {
+    throw new Error(`seed must be an integer 0-4294967295, got ${raw}`);
+  }
+  return Number(text);
+}
+
 export function parseSpans(text) {
   const spans = [];
   for (const raw of String(text).split(",")) {
@@ -206,6 +220,7 @@ export async function convert({
   durationOf = probeDuration,
   log = console.log,
   voiceSettings = null,
+  seed = null,
 }) {
   const apiKey = env.ELEVENLABS_API_KEY;
   if (!apiKey) {
@@ -242,6 +257,7 @@ export async function convert({
   const form = new FormData();
   form.append("model_id", model);
   if (voiceSettings) form.append("voice_settings", JSON.stringify(voiceSettings));
+  if (seed !== null) form.append("seed", String(seed));
   // Deliberately no text field: this converts the performance that is already there.
   // Handing it a script would re-read the line and destroy the timing that lip-sync needs.
   const { readFile } = await import("node:fs/promises");
@@ -310,6 +326,7 @@ export async function convertSpans({
   extract = extractAudio,
   durationOf = probeDuration,
   voiceSettings = null,
+  seed = null,
   splice = spliceSpans,
   rmsOf = measureRms,
   log = console.log,
@@ -369,6 +386,7 @@ export async function convertSpans({
     const form = new FormData();
     form.append("model_id", model);
     if (voiceSettings) form.append("voice_settings", JSON.stringify(voiceSettings));
+    if (seed !== null) form.append("seed", String(seed));
     form.append("audio", new Blob([await readFile(src)]), path.basename(src));
 
     const response = await fetchImpl(`${API_BASE}/${voiceId}`, {
@@ -442,7 +460,8 @@ async function main(argv) {
     console.error(
       "usage: node tools/voice_changer.mjs <clip> --voice-env ELEVENLABS_VOICE_C2 --out vo/scene-02-c2.mp3\n" +
       "       [--spans 0-3.88,5.2-7]  convert only these turns; required when the clip has a second speaker\n" +
-      "       [--stability 0.2] [--style 0.4]  ElevenLabs voice_settings (default: API default)",
+      "       [--stability 0.2] [--style 0.4]  ElevenLabs voice_settings (default: API default)\n" +
+      "       [--seed 2026091301]  same seed -> same delivery on a re-run (default: none)",
     );
     return 2;
   }
@@ -467,6 +486,7 @@ async function main(argv) {
     voiceEnv: flag("voice-env"),
     model: flag("model", DEFAULT_MODEL),
     voiceSettings: parseVoiceSettings({ stability: flag("stability"), style: flag("style") }),
+    seed: parseSeed(flag("seed")),
     env: { ...envFile, ...process.env },
   };
   const result = spansArg

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { MAX_DRIFT_S, convert, driftMessage, parseVoiceSettings } from "../../tools/voice_changer.mjs";
+import { MAX_DRIFT_S, convert, driftMessage, parseSeed, parseVoiceSettings } from "../../tools/voice_changer.mjs";
 
 function okFetch(calls) {
   return async (url, init) => {
@@ -329,4 +329,68 @@ test("parseVoiceSettings keeps only given values and rejects out-of-range ones",
   assert.deepEqual(parseVoiceSettings({ stability: "0", style: "1" }), { stability: 0, style: 1 });
   assert.throws(() => parseVoiceSettings({ stability: "1.5" }), /stability.*0-1/);
   assert.throws(() => parseVoiceSettings({ style: "abc" }), /style.*0-1/);
+});
+
+// GV-25: the seed used to exist only inside cast_voice.mjs (by wrapping fetch). It is now a
+// first-class field, so a re-run of one scene gives the same delivery from the CLI too.
+async function convertWithSeed(dir, seed) {
+  const calls = [];
+  await convert({
+    ...BASE,
+    inputPath: path.join(dir, "in.wav"),
+    outPath: path.join(dir, "vo", "a.mp3"),
+    fetchImpl: okFetch(calls),
+    extract: async () => path.join(dir, "in.wav"),
+    durationOf: async () => 3.2,
+    ...(seed === undefined ? {} : { seed }),
+  });
+  return calls;
+}
+
+test("seed is sent as a form field when given, including seed 0", async () => {
+  await withTmp(async (dir) => {
+    assert.equal((await convertWithSeed(dir, 7))[0].init.body.get("seed"), "7");
+    assert.equal((await convertWithSeed(dir, 0))[0].init.body.get("seed"), "0");
+  });
+});
+
+test("no seed field when none is given (API default kept)", async () => {
+  await withTmp(async (dir) => {
+    assert.equal((await convertWithSeed(dir, undefined))[0].init.body.get("seed"), null);
+  });
+});
+
+test("every span request carries the seed", async () => {
+  await withTmp(async (dir) => {
+    const calls = [];
+    await convertSpans({
+      ...BASE,
+      inputPath: path.join(dir, "clip.mp4"),
+      outPath: path.join(dir, "out.mp3"),
+      spans: [{ start_s: 0, end_s: 3.88 }, { start_s: 5.2, end_s: 7 }],
+      seed: 7,
+      fetchImpl: okFetch(calls),
+      extract: async (src, out) => {
+        await mkdir(path.dirname(out), { recursive: true });
+        await writeFile(out, Buffer.from("RIFF....fake wav"));
+        return out;
+      },
+      durationOf: async () => 8.0,
+      splice: async ({ outPath }) => {
+        await writeFile(outPath, Buffer.from("spliced"));
+        return outPath;
+      },
+    });
+    assert.deepEqual(calls.map((c) => c.init.body.get("seed")), ["7", "7"]);
+  });
+});
+
+test("parseSeed accepts an integer 0-4294967295 and refuses anything else", () => {
+  assert.equal(parseSeed(undefined), null);
+  assert.equal(parseSeed(null), null);
+  assert.equal(parseSeed("42"), 42);
+  assert.equal(parseSeed("4294967295"), 4294967295);
+  for (const bad of ["-1", "1.5", "abc", "", "4294967296"]) {
+    assert.throws(() => parseSeed(bad), /seed must be an integer 0-4294967295/, bad);
+  }
 });
