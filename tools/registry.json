@@ -473,6 +473,18 @@
       "internal_reason": ""
     },
     {
+      "id": "tools/vidkit/pointtrack.py",
+      "purpose": "Track points through a clip with TAPNext++ (venv-ml): positions in input pixels plus a per-frame visible flag, queries at any frame.",
+      "tasks": [
+        "point-tracking",
+        "occlusion-visibility"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": ""
+    },
+    {
       "id": "tools/vidkit/ml.py",
       "purpose": "Guard for the ML tools: venv-ml interpreter path, sha256-checked model weights, torch device pick (mps or cpu).",
       "tasks": [
@@ -1058,6 +1070,13 @@
       "use": "`vidkit.ml.require()` (re-execs under venv-ml), `vidkit.ml.weight(NAME)` (sha256-checked; `MLMissing` names `tools/setup.sh --ml`), `vidkit.ml.device()` (`GASPOL_ML_DEVICE=cpu\\|mps` overrides)",
       "tools": [
         "tools/vidkit/ml.py"
+      ]
+    },
+    {
+      "task": "Track points through a clip (occlusion-aware)",
+      "use": "`tools.vidkit.pointtrack.track(frames, queries)` in venv-ml",
+      "tools": [
+        "tools/vidkit/pointtrack.py"
       ]
     },
     {
