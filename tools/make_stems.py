@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import asset_home, mix_music
-from tools.vidkit import ff
+from tools.vidkit import ff  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg")
 
@@ -102,9 +102,9 @@ def _duration_of(path):
     try:
         value = ff.probe(path)["duration"]
     except ff.FFMissing as exc:
-        raise StemError(str(exc)) from exc
-    except ff.FFError as exc:
-        raise StemError(f"{Path(path).name}: unreadable duration") from exc
+        raise StemError(str(exc)) from None
+    except ff.FFError:
+        raise StemError(f"{Path(path).name}: unreadable duration") from None
     if value is None:
         raise StemError(f"{Path(path).name}: unreadable duration")
     return value

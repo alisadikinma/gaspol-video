@@ -137,7 +137,7 @@ def cutaway(master, shot, at_s, out_s, out):
 def _video_info(path):
     """(width, height, fps) of a video's first video stream."""
     video = _info(path)["video"]
-    if not video:
+    if not video or video["width"] is None or video["height"] is None:
         raise CompositeError(f"{Path(path).name}: unreadable")
     # 0/1 fps stays 0.0 so the filter fails loudly; only an unknown rate falls back.
     return video["width"], video["height"], 30.0 if video["fps"] is None else video["fps"]

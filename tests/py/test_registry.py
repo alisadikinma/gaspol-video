@@ -438,6 +438,11 @@ class RenderTest(FakeRoot):
         self.assertProblem(registry(routes=[route("t", "`a\\||b`")]), "pipe")
         self.assertProblem(registry(routes=[route("t", "`a|\\|b`")]), "pipe")
 
+    def test_escaped_backslash_before_pipe_rejected(self):
+        # `\\|` in a GFM cell is a literal backslash followed by a bare pipe.
+        self.assertProblem(registry(routes=[route("t", "`a\\\\|b`")]), "pipe")
+        self.assertEqual(self.problems(registry(routes=[route("t", "`a\\\\\\|b`")])), [])
+
     def test_empty_route_cell_still_reported_empty(self):
         self.assertProblem(registry(routes=[route("", "`x`")]), "task is empty")
 

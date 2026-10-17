@@ -76,7 +76,10 @@ def probe(path):
     out = run(["ffprobe", "-v", "error", "-show_entries",
                "format=duration:stream=codec_type,duration,r_frame_rate,width,height,"
                "sample_rate,channels,pix_fmt", "-of", "json", path])
-    data = json.loads(out)
+    try:
+        data = json.loads(out)
+    except ValueError:
+        raise FFError(f"ffprobe gave no JSON for {path}") from None
     info = {"duration": _num(data.get("format", {}).get("duration")), "video": None, "audio": None}
     for s in data.get("streams", []):
         if s.get("codec_type") == "video" and info["video"] is None:

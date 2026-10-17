@@ -174,7 +174,8 @@ def _check_routes(routes, ids, problems):
             v = r.get(key)
             if not isinstance(v, str) or not v.strip():
                 problems.append(f"{label}: {key} is empty")
-            elif re.search(r"(?<!\\)\|", v) or "\n" in v:
+            # A pipe is escaped only after an odd run of backslashes; `\\|` is a bare pipe in GFM.
+            elif re.search(r"(?<!\\)(?:\\\\)*\|", v) or "\n" in v:
                 problems.append(f"{label}: {key} has a pipe or newline")
         rt = r.get("tools")
         if not isinstance(rt, list):

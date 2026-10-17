@@ -382,9 +382,6 @@ class CompositeProbes(unittest.TestCase):
                     self.assertEqual(str(cm.exception), "ffprobe not found on PATH")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class ZeroValuesKept(unittest.TestCase):
     """A measured 0.0 is a value, not a missing field (GV-22 review)."""
@@ -406,3 +403,20 @@ class ZeroValuesKept(unittest.TestCase):
                 "video": {"duration": 0.0, "fps": 25.0, "width": 64, "height": 36, "pix_fmt": "yuv420p"}}
         with mock.patch.object(qa_frames.ff, "probe", return_value=info):
             self.assertEqual(qa_frames.probe("x.mp4"), (0.0, 25.0))
+
+    def test_composite_missing_width_is_unreadable(self):
+        info = {"duration": 1.0, "audio": None,
+                "video": {"duration": 1.0, "fps": 25.0, "width": None, "height": 36, "pix_fmt": "yuv420p"}}
+        with mock.patch.object(composite.ff, "probe", return_value=info):
+            with self.assertRaises(composite.CompositeError) as cm:
+                composite._video_info("x.mp4")
+            self.assertEqual(str(cm.exception), "x.mp4: unreadable")
+
+    def test_probe_output_that_is_not_json_is_fferror(self):
+        with mock.patch.object(ff, "run", return_value="not json"):
+            with self.assertRaises(ff.FFError):
+                ff.probe("x.mp4")
+
+
+if __name__ == "__main__":
+    unittest.main()
