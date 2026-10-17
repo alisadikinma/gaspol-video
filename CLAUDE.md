@@ -668,7 +668,7 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.20.0
+**Version:** 3.21.0
 **Last Updated:** 2026-10-17
 
 ### v3.21.0 Changelog
