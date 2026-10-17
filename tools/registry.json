@@ -846,6 +846,18 @@
       "replaces": [],
       "distinct_because": "",
       "internal_reason": "Loader library for layout profiles; used by the karaoke, title and layout gate tools. Public route added in the wiring phase."
+    },
+    {
+      "id": "tools/vidkit/title.py",
+      "purpose": "Stamp a cover title on a 9:16 image inside the safe area of a layout profile; writes the measured box to <out>.box.json.",
+      "tasks": [
+        "cover-title",
+        "thumbnail-title"
+      ],
+      "phase": "7",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": "Reached through `python3 -m tools.vidkit title`. Public route added in the wiring phase."
     }
   ],
   "routes": [

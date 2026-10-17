@@ -13,7 +13,7 @@ from unittest import mock
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
 from tools.vidkit import __main__ as vcli
-from tools.vidkit import layout
+from tools.vidkit import layout, title
 from tools.vidkit import beats, color, colormatch, cover, encoder, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, tidy, track
 
 
@@ -2299,3 +2299,131 @@ class TidyReviewFixesTest(unittest.TestCase):
         self.assertEqual(r["home_of"], {".tmp/image/a.png": "keyframes/same.png"})
         self.assertNotIn("other-size.png", calls)
         self.assertIn("same.png", calls)
+
+
+def _png(path, size, drawbox=None, color="black"):
+    vf = "null" if not drawbox else "drawbox=x=%d:y=%d:w=%d:h=%d:color=white:t=fill" % drawbox
+    ff.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color={color}:s={size}",
+            "-vf", vf, "-frames:v", "1", str(path)])
+
+
+@requires_ffmpeg
+class TextBoxTest(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.addCleanup(self.d.cleanup)
+
+    def test_exact_box_of_a_drawn_rectangle(self):
+        p = Path(self.d.name) / "a.png"
+        _png(p, "200x100", (20, 30, 50, 10))
+        self.assertEqual(layout.text_box(p), [20, 30, 70, 40])
+
+    def test_all_black_is_none(self):
+        p = Path(self.d.name) / "b.png"
+        _png(p, "64x64")
+        self.assertIsNone(layout.text_box(p))
+
+    def test_near_black_below_threshold_is_none(self):
+        p = Path(self.d.name) / "c.png"
+        _png(p, "64x64", color="0x101010")
+        self.assertIsNone(layout.text_box(p))
+
+
+@requires_ffmpeg
+class TitleTest(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.addCleanup(self.d.cleanup)
+        self.img = Path(self.d.name) / "in.png"
+        self.out = Path(self.d.name) / "out.png"
+        _png(self.img, "1080x1920", color="white")
+
+    def test_stamp_writes_output_and_box_inside_safe_area(self):
+        box = title.stamp(self.img, "rumah 70 miliar", self.out, profile="short-organic")
+        self.assertTrue(self.out.exists())
+        self.assertEqual(ff.probe(self.out)["video"]["width"], 1080)
+        sx0, sy0, sx1, sy1 = layout.safe_box(layout.load("short-organic"))
+        self.assertGreaterEqual(box[0], sx0)
+        self.assertGreaterEqual(box[1], sy0)
+        self.assertLessEqual(box[2], sx1)
+        self.assertLessEqual(box[3], sy1)
+        self.assertNotEqual(self.img.read_bytes(), self.out.read_bytes())
+
+    def test_box_json_has_uppercase_text_and_font(self):
+        box = title.stamp(self.img, "rumah 70 miliar", self.out)
+        doc = json.loads(Path(str(self.out) + ".box.json").read_text())
+        self.assertEqual(doc["box"], box)
+        self.assertEqual(doc["text"], "RUMAH 70 MILIAR")
+        self.assertEqual(doc["profile"], "short-organic")
+        self.assertTrue(Path(doc["font"]).exists())
+
+    def test_box_is_centred_on_x_and_near_center_y(self):
+        box = title.stamp(self.img, "RUMAH 70 MILIAR", self.out)
+        self.assertAlmostEqual((box[0] + box[2]) / 2, 540, delta=3)
+        self.assertAlmostEqual((box[1] + box[3]) / 2, 0.38 * 1920, delta=6)
+
+    def test_y_pct_override_moves_the_box(self):
+        box = title.stamp(self.img, "RUMAH 70 MILIAR", self.out, y_pct=0.45)
+        self.assertAlmostEqual((box[1] + box[3]) / 2, 0.45 * 1920, delta=6)
+
+    def test_refuses_more_than_max_words(self):
+        with self.assertRaisesRegex(ValueError, "words"):
+            title.stamp(self.img, "satu dua tiga empat lima enam", self.out)
+        self.assertFalse(self.out.exists())
+
+    def test_refuses_empty_text(self):
+        for t in ("", "   "):
+            with self.assertRaisesRegex(ValueError, "empty"):
+                title.stamp(self.img, t, self.out)
+
+    def test_refuses_line_too_wide_at_min_font(self):
+        with self.assertRaisesRegex(ValueError, "wider than the safe area"):
+            title.stamp(self.img, "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF", self.out)
+
+    def test_refuses_non_9_16_input(self):
+        wide = Path(self.d.name) / "wide.png"
+        _png(wide, "1920x1080", color="white")
+        with self.assertRaisesRegex(ValueError, "9:16"):
+            title.stamp(wide, "HALO", self.out)
+
+    def test_refuses_when_fc_match_is_missing(self):
+        with mock.patch("tools.vidkit.title.shutil.which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "fc-match"):
+                title.stamp(self.img, "HALO", self.out)
+
+    def test_refuses_when_no_font_resolves(self):
+        fake = mock.Mock(returncode=0, stdout="Nonsense\n/no/such/font.ttf")
+        real = title.subprocess.run
+
+        def fake_run(argv, *a, **k):
+            return fake if argv[0] == "fc-match" else real(argv, *a, **k)
+
+        with mock.patch("tools.vidkit.title.subprocess.run", side_effect=fake_run):
+            with self.assertRaisesRegex(ValueError, "font"):
+                title.stamp(self.img, "HALO", self.out)
+
+    def test_cli_prints_box_json_and_exit_0(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = vcli.main(["title", str(self.img), "halo dunia", str(self.out)])
+        self.assertEqual(rc, 0)
+        self.assertIn(str(self.out) + ".box.json", Path(str(self.out) + ".box.json").as_posix())
+        self.assertIn('"box"', buf.getvalue())
+
+    def test_cli_maps_every_refusal_to_exit_2(self):
+        wide = Path(self.d.name) / "wide.png"
+        _png(wide, "1920x1080", color="white")
+        cases = [(self.img, "a b c d e f"), (self.img, " "),
+                 (self.img, "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF"), (wide, "HALO")]
+        for img, text in cases:
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = vcli.main(["title", str(img), text, str(self.out)])
+            self.assertEqual(rc, 2, text)
+            self.assertIn("FAIL", err.getvalue())
+
+    def test_cli_unknown_profile_exit_2(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = vcli.main(["title", str(self.img), "HALO", str(self.out), "--profile", "nope"])
+        self.assertEqual(rc, 2)

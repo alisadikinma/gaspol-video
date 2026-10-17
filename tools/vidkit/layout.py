@@ -109,3 +109,36 @@ def validate(doc):
             if k != "inherits":
                 _leaves(v, f"{name}.{k}", problems)
     return problems
+
+
+_BRIGHT = bytes(0 if i <= 16 else 1 for i in range(256))
+
+
+def text_box(png_path):
+    """Extent of the non-black pixels of an image: [x0, y0, x1, y1], end exclusive.
+
+    A pixel counts when its gray value is above 16. Returns None when the image is all
+    black. The image is decoded by ffmpeg to raw gray, so any format ffmpeg reads works.
+    """
+    from . import ff
+    video = ff.probe(png_path)["video"]
+    if not video:
+        raise ValueError(f"{png_path}: no picture")
+    w, h = video["width"], video["height"]
+    raw = ff.run_bytes(["ffmpeg", "-v", "error", "-i", png_path, "-frames:v", "1",
+                        "-f", "rawvideo", "-pix_fmt", "gray", "-"])
+    if len(raw) < w * h:
+        raise ValueError(f"{png_path}: short raw read ({len(raw)} of {w * h} bytes)")
+    x0 = y0 = x1 = y1 = None
+    for y in range(h):
+        row = raw[y * w:(y + 1) * w].translate(_BRIGHT)
+        first = row.find(1)
+        if first < 0:
+            continue
+        last = row.rfind(1)
+        if y0 is None:
+            y0 = y
+        y1 = y + 1
+        x0 = first if x0 is None else min(x0, first)
+        x1 = last + 1 if x1 is None else max(x1, last + 1)
+    return None if y0 is None else [x0, y0, x1, y1]
