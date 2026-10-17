@@ -177,6 +177,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 | I | `embroider.grid_warp` + `shade` | 15 |
 | J | `embroider.embroider` + CLI `embroider` | 15 |
 | K | green-screen prompt rule, validator check, registry, docs, CLAUDE.md | 15 |
+| L0 | Embroidery look: min stroke, supersampled relief, colour kept, raised shadow, edge fuzz (added after owner verdict) | 15 |
 | L | Proof on owner's real clips, review, release v3.21.0 | 15 |
 
 ---
@@ -466,6 +467,34 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - [ ] `bash tests/run.sh` passes
 - [ ] `python3 tools/registry_build.py validate --coverage` and `render --check` pass
 - [ ] `docs/tool-routing.md` table was generated, not hand-edited
+
+### Phase L0: embroidery look (added 2026-10-17 after owner verdict)
+
+**Why:** first real run (REA scene-01) was judged "still looks like a print, not natural" by the owner. Measured causes: 3–4 px strokes are too thin to show satin relief at 720p; `shade` desaturates and darkens the logo colour; no raised shadow on the cloth. Owner target: real raised embroidery.
+
+**Estimated time:** 15 minutes
+
+**Files:**
+- Modify: `tools/vidkit/embroider.py`
+- Test: `tests/py/test_embroider.py`
+
+**Steps:**
+1. Write failing test for the raised-shadow ring: after `_render` on a flat lit cloth, pixels just outside the design on the side away from `LIGHT_DIR` are darker than the same distance on the light side by ≥ 4 levels, and all pixels farther than 6 px from the design are unchanged. Expected error: `AssertionError` (no shadow today).
+2. Run it, confirm it fails for that reason.
+3. Minimum stroke: before `thread_maps`, measure stroke half-width (distance transform of alpha); dilate the alpha (and extend colour by nearest opaque pixel) until the 25th-percentile half-width ≥ `MIN_STROKE_HALF_PX` (output pixels, default 1.6). Test: a 1 px-stroke logo comes out with half-width ≥ 1.6 px; a thick logo is unchanged.
+4. Supersampled relief: compute `thread_maps` at `SUPERSAMPLE` (3) × the placed logo size, compute a light-independent relief factor in design space (lambert with `LIGHT_DIR`, cavity, ridge specular, satin sheen along the stitch direction) at 3×, downsample with INTER_AREA to 1×. Per frame only the cloth light gain varies. Test: relief factor at 1× has ridge-period energy (FFT peak or variance across the stroke ≥ a measured floor) for a 140 px-wide text logo.
+5. Colour: thread colour = logo colour × relief × cloth gain applied to luminance only (convert to Lab or YCrCb, scale L/Y, keep chroma). Test: mean hue/chroma of the design under neutral light within 6% of the logo; the teal line stays teal (chroma ≥ 80% of the logo's).
+6. Raised shadow: blurred alpha, offset 1.5 px away from the light, darkening cloth by ≤ `RAISE_SHADOW_MAX` (0.28) outside the design only; hand/drawstring occluder pixels stay exact. Run the step-1 test green.
+7. Edge fuzz: seeded per-pixel alpha jitter within 1 px of the boundary (±`EDGE_FUZZ` 0.25), deterministic. Test: deterministic, interior alpha unchanged.
+8. Existing tests stay green (off-shirt and under-hand pixels exact). Run under `ML_PY` 0 skipped, `bash tests/run.sh`. Commit: `feat(GV-24): raised embroidery look`.
+9. Re-run on REA scene-01 (`--at 232,840 --width 140 --hand 220,1040 --hand 420,1020 --hand 315,880 --hand 387,880`), build the side-by-side with the VEO version, owner judges. Not accepted → back to step 3 with the owner's words, never loosen tests.
+
+**Verification:**
+- [ ] static: `python3 -m py_compile tools/vidkit/embroider.py` passes
+- [ ] `bash tests/run.sh` passes
+- [ ] `"$ML_PY" -m unittest tests.py.test_embroider -v` passes with 0 skipped
+- [ ] Owner verdict on REA scene-01 recorded
+- [ ] No placeholder/TODO comments in new code
 
 ### Phase L: proof on real clips, review, release
 
