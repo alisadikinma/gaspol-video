@@ -135,14 +135,16 @@ of referencing the file is the same Asset-First violation as Rule 10, applied to
 
 32. **(v2.2.0) Max 5 Inline References HARD CAP (Phase 4B)** — Each Phase 4B scene prompt has MAX 5 inline references combined (faces + bodies + costumes + objects + environments + UI). REPLACES old "Max 3 identity locks per scene" rule. All inline with element described. Each filename max 1× per prompt. If >5 refs needed → split scene into 2 sub-scenes OR consolidate via composite asset (Tier 5+ per §18). Validator C3 enforces. See `global-promo-config.md` §26.4.
 
-23. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
-that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
-`.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
+23. **Folder contract — twelve folders, no new ones.** Everything this skill writes goes in a folder
+that already exists: `ref/` `keyframes/` `shots/` `clips/` `vo/` `sfx/` `work/` `output/` `_arsip/`
+`.tmp/` `screens/` `packaging/`. A new folder needs the user's approval. Subfolders are not allowed
+inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/`; `output/` allows only `stems/`. Derived files (previews, QA stills, upload
 copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
 subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
 to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,
-it replaces the folder — use `ffmpeg -vf scale`. Full contract:
-`reference/post-production/10-post-production-pipeline.md` §2.
+it replaces the folder — use `ffmpeg -vf scale`. At the end of each batch run
+`python3 -m tools.vidkit tidy {output_folder}` (report only) and show the user anything it lists.
+Full contract: `reference/post-production/10-post-production-pipeline.md` §2.
 
 ---
 
@@ -298,6 +300,10 @@ After the asset library is approved (option A above), offer to render it through
      say so ("sudah up to date, dilewati") and drop it from the render list.
      `render` means it needs one. If the WHOLE batch prints `up-to-date`, skip
      step 3 entirely (no question, no render).
+     If `{output_folder}/<file>` already exists, run
+        python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"
+     BEFORE the render, so the old paid version is kept in `_arsip/` instead of
+     overwritten. Then render, then `record`.
 
 2b. REUSE generic assets from the cross-project library (Phase 4A standalone
    assets only, never Phase 4B scene keyframes): for each prompt still in the
@@ -487,7 +493,11 @@ FOR each batch (ACT or sub-batch):
         --prompt-file <temp-file>` — `up-to-date` means already `done` with
         the same prompt hash, say "sudah up to date, dilewati", drop from the
         render list. Whole batch `up-to-date` → skip to step 6 (no question,
-        no render).
+        no render). When `check` printed `render` and `{output_folder}/<file>`
+        already exists, run
+        `python3 tools/renders.py {output_folder} archive --file <file> --reason "<why it is re-rendered>"`
+        BEFORE the render, so the old paid version is kept in `_arsip/` instead
+        of overwritten. Then render, then `record`.
      b2. (v3.11.1, Rule 46) PILOT — first 4B batch of the project only, and only
         when no keyframe is `done` yet: render ONE start frame (the scene that
         carries the most cast and refs), Read it, show it, and ask

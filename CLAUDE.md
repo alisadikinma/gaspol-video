@@ -54,7 +54,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/_venv.py` | Dependency guard — re-execs into `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv` for the tools below that need it, else exits 2 naming `tools/setup.sh` |
 | `tools/setup.sh`, `requirements.txt` | Build the shared venv (Pillow, playwright, google-api-python-client, google-auth-oauthlib) |
 | `tools/cost_log.py` | Records units of billed renders (`work/cost-log.json`), failed attempts and re-rolls per scene; `add` and `report`. No prices |
-| `tools/renders.py` | Render ledger (`{output_folder}/renders.json`) shared by the Phase 4/5 render offers |
+| `tools/renders.py` | Render ledger (`{output_folder}/renders.json`) shared by the Phase 4/5 render offers; `archive --file F [--reason R]` moves an existing file into `_arsip/` before a re-render |
 | `tools/gen_app_screen.py` | `capture` (Playwright, real URL) and `mock` (Remotion `renderStill`) app screens into `ref/ui-*.png` |
 | `tools/asset_home.py` | Where the reusable libraries live: `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/{sfx,music,images}` (survives plugin updates); recipes stay in the plugin's `media/<kind>/library/palette.json`. `where` prints the dirs, `adopt` copies earlier plugin versions' clips/tracks in (never moves). SFX plans without `catalog` and music segments `library:<id>` resolve here |
 | `tools/asset_library.py` | Cross-project library for generic images in `asset_home.library("images")`: `find` (exact prompt + aspect), `add` (refuses faces, logos, UI, products, costumes, locations), `list --tag`, `use`. The Phase 4A render offer calls it before rendering |
@@ -82,7 +82,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/retention_gate.py` | Retention report on a finished cut (`report`) and in-session b-roll verdict gate (`check`): static frame, first word, Foreshadow beat, b-roll vs spoken words, BGM headroom. Course defaults tagged `source: course`, overridable; a rule FAIL never exits 1 in report mode. Test: `tests/py/test_retention_gate.py` |
 | `tools/viral_checklist.py` | `check` the `## Viral Checklist` block of `av-script.md` (7 stages, exit 1 on a missing/empty/`FAIL:` cell); `rate` a `calibration.json` entry against the course analytics thresholds (`unknown` when a key is absent). Test: `tests/py/test_viral_checklist.py` |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
-| `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: `audiostudy` (SFX/speech onsets, tempo, energy, word and cut relation of a reference clip), A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, track smoothing, motion-tracked print bond (cv2). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
+| `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: `audiostudy` (SFX/speech onsets, tempo, energy, word and cut relation of a reference clip), A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, track smoothing, motion-tracked print bond (cv2), `tidy.py` (`vidkit tidy`: report, `--apply`, `--empty-tmp` for a project folder). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
 | `tools/vidkit/js/` | Node helpers: `env.mjs` (.env loading, keys never printed), `eleven.mjs` (`tts` with settings + seed, `stt` word timings, `sfx`), `cast_voice.mjs` (voice change with per-character settings and seed, spans only). Test: `tests/node/vidkit-js.test.mjs` |
 | `templates/remotion/scripts/frames.mjs`, `qa-end.mjs` | Multi-frame and end-state Remotion QA, copied into every scaffolded workspace |
 | `templates/remotion/Overlay.template.tsx`, `lib/{overlay-fx.tsx,overlayFx.mjs}` | `KineticOverlay` (GV-17): clip, behind layer, person cut out by mask, front text, source box; six text effects as zero-import maths in `overlayFx.mjs` (unit-tested), drawn by `overlay-fx.tsx` |
@@ -641,8 +641,12 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ---
 
-**Version:** 3.18.0
+**Version:** 3.19.0
 **Last Updated:** 2026-10-17
+
+### v3.19.0 Changelog
+
+- **File cleanup (GV-21).** `python3 tools/renders.py <project> archive --file F [--reason R]` moves an existing paid file to `_arsip/<kind>-<stem>-v<N>-<reason><ext>` before a re-render; the `video-image` and `video-gen` render offers call it after a `check` that printed `render`. `python3 -m tools.vidkit tidy <project>` reports unknown folders, subfolders inside flat folders, duplicates, stale ledger entries and old `.tmp/` files and changes nothing; `--apply` moves strays into `_arsip/folder-...` (a `folder-*` entry already in `_arsip/` is never reported or moved again); `--empty-tmp` is the only deletion and never touches `_arsip/` or `shots/out/`. It deletes a `.tmp/image` or `.tmp/video` MCP copy only when the same bytes already sit in a home folder (prints `deleted <tmp> (copy of <home>)`); an unmoved paid render, or an unreadable media file there, is kept unless `--include-mcp`. The folder contract in the four skills and the pipeline doc now lists twelve folders (adds `sfx/`, `screens/`, `packaging/`) and the subfolder rule; pipeline doc gains section 2.4. Registry totals: 63 tool entries, 63 routes. Tests: `tests/py/test_renders.py`, `tests/py/test_vidkit.py`, `tests/consistency/tidy-contract.sh`.
 
 ### v3.18.0 Changelog
 

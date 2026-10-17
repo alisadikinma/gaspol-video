@@ -19,6 +19,7 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 | `loudness` | `normalize`: two-pass loudnorm, audio trimmed to picture | `mix_akhir.py` |
 | `track` | `smooth_track`: median-filter a tracked screen box, pin one angle | `haluskan-lacak.py` |
 | `bond` | `bond_print`: motion-tracked print on cloth (needs cv2) | `shirt_bond.py` |
+| `tidy` | `vidkit tidy <project>`: scan, `--apply` moves unknown folders to `_arsip/`, `--empty-tmp` empties `.tmp/` except unmoved MCP renders | hand-made cleanup `rm`/`mv` in a project |
 
 ## Lessons baked in (each cost a real re-render)
 

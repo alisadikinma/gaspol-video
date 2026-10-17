@@ -97,14 +97,16 @@ coded shot.
    a news-clipping image, store each sentence line as a box (`x, y, w, h` in image pixels) in a
    sidecar `<image-name>.lines.json` next to the image, so a marker can land on the exact line.
 
-8. **Folder contract — nine folders, no new ones.** Everything this skill writes goes in a folder
-that already exists: `ref/` `keyframes/` `clips/` `vo/` `shots/` `output/` `work/` `_arsip/`
-`.tmp/`. A new folder needs the user's approval. Derived files (previews, QA stills, upload
+8. **Folder contract — twelve folders, no new ones.** Everything this skill writes goes in a folder
+that already exists: `ref/` `keyframes/` `shots/` `clips/` `vo/` `sfx/` `work/` `output/` `_arsip/`
+`.tmp/` `screens/` `packaging/`. A new folder needs the user's approval. Subfolders are not allowed
+inside `ref/ keyframes/ clips/ vo/ sfx/ _arsip/`; `output/` allows only `stems/`. Derived files (previews, QA stills, upload
 copies, composites) go in `.tmp/` and are distinguished by a filename suffix, never by a new
 subfolder. Rejected paid artefacts go in `_arsip/` with the reason in the name. MCP renders write
 to `{output_folder}/.tmp`, then move to their permanent home. Never `sips --out <folder>/<file>`,
-it replaces the folder — use `ffmpeg -vf scale`. Full contract:
-`reference/post-production/10-post-production-pipeline.md` §2.
+it replaces the folder — use `ffmpeg -vf scale`. At the end of each batch run
+`python3 -m tools.vidkit tidy {output_folder}` (report only) and show the user anything it lists.
+Full contract: `reference/post-production/10-post-production-pipeline.md` §2.
 
 ---
 

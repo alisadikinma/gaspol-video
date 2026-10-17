@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>v3.18.0</b> · Claude Code plugin · MIT<br>
+  <b>v3.19.0</b> · Claude Code plugin · MIT<br>
   Agencies, freelancers and brand owners: ship a professional 2-3 minute promo from a single chat.
 </p>
 
