@@ -267,6 +267,15 @@ where `gen_vo.mjs` renders them as silence. FAIL names the scene.
 
 Mirrors reviewer check V16.
 
+### Check V17: Green screen phrase on an insert scene (v3.21.0)
+
+For every scene whose `Screen Source` row notes `insert: green`, the VEO/Seedance/Kling prompt in
+`video-prompts.md` must contain the phrase `flat solid chroma green screen`. A missing phrase =
+FAIL naming the scene. Without a green screen the `screen-insert --mode green` run would refuse
+(`green key missing on <n> frames`).
+
+Mirrors reviewer check V17.
+
 ### Check V12: NB2→VEO Consistency
 **How:** Compare VEO prompt visual description with corresponding NB2 prompt/image
 **Expected:** VEO description matches the actual keyframe content
@@ -654,6 +663,7 @@ Check V11: Transition Instructions .......... PASS
 Check V12: NB2→VEO Consistency .............. PASS
 Check V15: Visual QA Verdicts ............... PASS
 Check V16: No Pause Tag In Prompt ........... PASS
+Check V17: Green Screen Phrase ............... PASS
 
 --- Reference Checks (--refs) ---
 Check R1: VEO Mode Mutual Exclusivity ...... PASS

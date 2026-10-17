@@ -35,6 +35,10 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Clips of one kelompok differ in colour / grade | `python3 -m tools.vidkit colormatch CLIPS...` (report; add `--apply OUTDIR` only after the owner looked at `vidkit sheet`; `vidkit.colormatch.plan/apply`) |
 | Beat times of a music file | `python3 -m tools.vidkit beats FILE` (`vidkit.beats.detect`) |
 | Land SFX cues on the music beat | `python3 tools/sfx_snap.py <project> --music-plan work/music-plan.json` (or `--music FILE`; exit 2 bad input, 3 no beats; writes `work/sfx-plan.snapped.json`; `snap` = `vidkit.beats.snap`) |
+| Run a torch model (tracking, segmentation): find the ML venv, verify weights, pick the device | `vidkit.ml.require()` (re-execs under venv-ml), `vidkit.ml.weight(NAME)` (sha256-checked; `MLMissing` names `tools/setup.sh --ml`), `vidkit.ml.device()` (`GASPOL_ML_DEVICE=cpu\|mps` overrides) |
+| Track points through a clip (occlusion-aware) | `tools.vidkit.pointtrack.track(frames, queries)` in venv-ml |
+| Mask an object through a clip from one click or box | `tools.vidkit.segment.masks(frames, frame_idx, points=..., box=...)` in venv-ml |
+| Find the four corners of a green screen in a frame | `tools.vidkit.screen.corners_green(frame)` |
 | Skip an expensive step when its inputs did not change | `vidkit.stages.fingerprint(files, params, version)` + `StageCache(path).is_fresh/record`. `tools/edit_render.py` already uses it: a re-run skips unchanged segments (`--no-cache` forces a full render) |
 | Phone notification / alarm sound without paid files | `vidkit synth notification\|alarm` |
 | Music: generate / mix | `gen_music.py`, `mix_music.py` |
@@ -60,9 +64,9 @@ The table below is generated. Edit `tools/registry.json`, then run
 | A voice-changed line sounds pasted on (too clean for the scene) | `python3 -m tools.vidkit placevoice <clip> <voice> <words.json> <out> [--space outdoor/room/dry]` (default `--bed gaps`; `--bed stems` = Demucs, experimental, sounded worse by ear) |
 | Retention check on a finished cut (static frame, hook, foreshadow, b-roll, BGM) | `python3 tools/retention_gate.py report` / `check` |
 | Fill/check the viral checklist of a short-form script; rate analytics against course thresholds | `python3 tools/viral_checklist.py check` / `timeline` / `rate` |
-| Put an app screen into a phone/monitor in a clip | `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |
+| Put an app screen into a phone/monitor in a clip | `python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green\|track` (green: exact corners from a green screen, `--mode track --corners ...` for a clip without green); legacy or seed: `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |
 | App screen for software that does not exist | `gen_app_screen.py` |
-| Print a logo/sablon onto a person's clothing | `vidkit bond` |
+| Print a logo/sablon onto a person's clothing (flat ink, no relief) | `vidkit bond` |
 | Freeze one region of a clip (a bar that must not move) | `vidkit freeze` |
 | Look at a clip without watching it | `qa_frames.py` (gate), `vidkit sheet`, `vidkit montage` |
 | Check rendered thumbnails by looking before they are final | `thumb_verify.py init`, then `thumb_verify.py check` (gate); prompt pieces in `reference/post-production/21-thumbnail-style-elements.md` |
@@ -87,6 +91,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Stamp the thumbnail title | `python3 -m tools.vidkit title <img> "<text>" <out>` |
 | Generated skin or background looks plastic or airbrushed next to real footage | `python3 -m tools.vidkit grain <src> <out> [--strength 7]` (same strength on every clip) |
 | Wide (16:9) footage must become 9:16 with the moving subject kept in frame | `python3 -m tools.vidkit reframe <src> <out> --keys 0:0.4,2:0.7 [--zoom 1.0]` (cx = subject centre / width; read it off a contact sheet) |
+| Embroider a logo/text onto clothing (raised thread, follows folds) | `python3 -m tools.vidkit embroider <clip> <logo.png> <out> --at x,y --width W [--hand x,y] [--qa DIR]` |
 <!-- registry:routes:end -->
 
 ## When no tool fits (inject back)

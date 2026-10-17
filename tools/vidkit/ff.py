@@ -82,12 +82,16 @@ def ffmpeg(*args, capture_stderr=False):
 def probe(path):
     """Everything the other modules need to know about a file, in one ffprobe call.
 
-    Keys: duration (container), video {duration, fps, width, height, pix_fmt} or None,
-    audio {duration, sample_rate, channels} or None.
+    Keys: duration (container), video {duration, fps, avg_fps, width, height, pix_fmt, rotation}
+    or None, audio {duration, sample_rate, channels} or None. ``rotation`` is the display rotation
+    in degrees (0, 90, 180, 270) from the stream's display matrix or a legacy ``rotate`` tag;
+    ffmpeg autorotates on decode, so ``width`` and ``height`` are the displayed size, swapped for
+    90 and 270.
     """
     out = run(["ffprobe", "-v", "error", "-show_entries",
-               "format=duration:stream=codec_type,duration,r_frame_rate,width,height,"
-               "sample_rate,channels,pix_fmt", "-of", "json", path])
+               "format=duration:stream=codec_type,duration,r_frame_rate,avg_frame_rate,width,height,"
+               "sample_rate,channels,pix_fmt:stream_side_data=rotation:stream_tags=rotate",
+               "-of", "json", path])
     try:
         data = json.loads(out)
     except ValueError:
@@ -95,14 +99,34 @@ def probe(path):
     info = {"duration": _num(data.get("format", {}).get("duration")), "video": None, "audio": None}
     for s in data.get("streams", []):
         if s.get("codec_type") == "video" and info["video"] is None:
+            rotation = _rotation(s)
+            width, height = s.get("width"), s.get("height")
+            if rotation in (90, 270):
+                width, height = height, width
             info["video"] = {"duration": _num(s.get("duration")), "fps": _fps(s.get("r_frame_rate")),
-                             "width": s.get("width"), "height": s.get("height"),
-                             "pix_fmt": s.get("pix_fmt")}
+                             "avg_fps": _fps(s.get("avg_frame_rate")),
+                             "width": width, "height": height,
+                             "pix_fmt": s.get("pix_fmt"), "rotation": rotation}
         elif s.get("codec_type") == "audio" and info["audio"] is None:
             info["audio"] = {"duration": _num(s.get("duration")),
                              "sample_rate": int(s["sample_rate"]) if s.get("sample_rate") else None,
                              "channels": s.get("channels")}
     return info
+
+
+def _rotation(stream):
+    """Display rotation of a video stream in degrees, normalised to 0, 90, 180 or 270."""
+    raw = None
+    for side in stream.get("side_data_list") or []:
+        if side.get("rotation") is not None:
+            raw = side["rotation"]
+            break
+    if raw is None:
+        raw = (stream.get("tags") or {}).get("rotate")
+    value = _num(raw)
+    if value is None:
+        return 0
+    return int(round(value / 90.0)) % 4 * 90
 
 
 def duration(path):

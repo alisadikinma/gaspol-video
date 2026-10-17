@@ -455,7 +455,7 @@ class RenderTest(FakeRoot):
 
     def test_committed_registry_route_count_and_validates(self):
         reg = json.loads((ROOT / "tools/registry.json").read_text())
-        self.assertEqual(len(reg["routes"]), 73)  # +7: vidkit prosody, guide_vo, vidkit tighten, vidkit placevoice, vidkit grain, vidkit reframe, diagram-kit
+        self.assertEqual(len(reg["routes"]), 78)  # GV-24 surface tools, prosody, guide_vo, tighten, placevoice, grain, reframe
         self.assertEqual(registry_build.validate(reg, ROOT), [])
         deck = [r for r in reg["routes"] if r["task"].startswith("Deck / slide")]
         self.assertEqual(deck[0]["tools"], [])

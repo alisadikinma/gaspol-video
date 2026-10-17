@@ -342,6 +342,20 @@ class MediaTest(unittest.TestCase):
         info = ff.probe(self.clip("a.mp4", seconds=1.0))
         self.assertEqual(info["video"]["pix_fmt"], "yuv420p")
 
+    def test_probe_swaps_size_for_display_rotation(self):
+        src = self.clip("a.mp4", seconds=1.0)
+        self.assertEqual(ff.probe(src)["video"]["rotation"], 0)
+        for angle, swapped in ((90, True), (180, False), (270, True)):
+            rot = self.dir / f"r{angle}.mp4"
+            ff.ffmpeg("-display_rotation", str(angle), "-i", src, "-c", "copy", rot)
+            v = ff.probe(rot)["video"]
+            self.assertEqual(v["rotation"], angle)
+            self.assertEqual((v["width"], v["height"]), (240, 320) if swapped else (320, 240))
+
+    def test_probe_returns_average_rate(self):
+        v = ff.probe(self.clip("a.mp4", seconds=1.0, fps=25))["video"]
+        self.assertAlmostEqual(v["avg_fps"], 25.0)
+
     def test_probe_audio_only_has_no_video(self):
         wav = self.dir / "a.wav"
         ff.ffmpeg("-f", "lavfi", "-i", "sine=frequency=440:duration=1", wav)
@@ -2515,3 +2529,125 @@ class TitleTest(unittest.TestCase):
         with contextlib.redirect_stderr(err):
             rc = vcli.main(["title", str(self.img), "HALO", str(self.out), "--profile", "nope"])
         self.assertEqual(rc, 2)
+
+
+class EmbroiderCliTest(unittest.TestCase):
+    def _run(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vcli.main(argv)
+        return rc, out.getvalue(), err.getvalue()
+
+    def _patched(self, **kw):
+        from tools.vidkit import embroider
+        return mock.patch.object(embroider, "embroider", **kw)
+
+    def test_success_prints_one_json_line(self):
+        res = {"frames": 5, "lost_frames": 1, "shirt_area_ratio": 9.5}
+        with mock.patch.object(vcli, "_ensure_ml") as ens, self._patched(return_value=res) as emb:
+            rc, out, _ = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--at", "10,20", "--width", "60",
+                                    "--rot", "-3", "--hand", "1,2", "--hand", "3,4", "--qa", "qa"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out), res)
+        self.assertEqual(len(out.strip().splitlines()), 1)
+        self.assertEqual(emb.call_args.args, ("a.mp4", "l.png", "o.mp4", [10.0, 20.0], 60.0))
+        self.assertEqual(emb.call_args.kwargs, {"rot": -3.0, "hand_points": [[1.0, 2.0], [3.0, 4.0]], "qa_dir": "qa"})
+        self.assertTrue(ens.call_args.kwargs["need_torch"])
+
+    def test_no_hand_passes_none(self):
+        with mock.patch.object(vcli, "_ensure_ml"), self._patched(return_value={}) as emb:
+            rc, _, _ = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--at", "10,20", "--width", "60"])
+        self.assertEqual(rc, 0)
+        self.assertIsNone(emb.call_args.kwargs["hand_points"])
+
+    def test_refused_exits_2(self):
+        with mock.patch.object(vcli, "_ensure_ml"), self._patched(side_effect=vcli.screen.Refused("--at is not on the shirt")):
+            rc, out, err = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--at", "1,2", "--width", "6"])
+        self.assertEqual((rc, out), (2, ""))
+        self.assertEqual(err.strip(), "refused: --at is not on the shirt")
+
+    def test_ml_missing_exits_2(self):
+        with mock.patch.object(vcli, "_ensure_ml", side_effect=vcli.ml.MLMissing("missing torch: run tools/setup.sh --ml")):
+            rc, _, err = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--at", "1,2", "--width", "6"])
+        self.assertEqual(rc, 2)
+        self.assertTrue(err.startswith("refused: missing torch"))
+
+    def test_bad_at_and_hand_exit_1(self):
+        for extra in (["--at", "1,2,3"], ["--at", "1,2", "--hand", "x,y"]):
+            with mock.patch.object(vcli, "_ensure_ml") as ens:
+                rc, _, err = self._run(["embroider", "a.mp4", "l.png", "o.mp4", "--width", "6", *extra])
+            self.assertEqual(rc, 1)
+            self.assertTrue(err.startswith("FAIL: "))
+            ens.assert_not_called()
+
+
+class ScreenInsertCliTest(unittest.TestCase):
+    def _run(self, argv, **patches):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vcli.main(argv)
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_success_prints_one_json_line(self):
+        res = {"frames": 3, "mode": "green", "min_inlier": 1.0, "max_jump_px": 0.5, "lost_frames": 0}
+        with mock.patch.object(vcli, "_ensure_ml"), mock.patch.object(vcli.screen, "insert", return_value=res) as ins:
+            rc, out, _ = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "green", "--qa", "qa"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out), res)
+        self.assertEqual(len(out.strip().splitlines()), 1)
+        self.assertEqual(ins.call_args.args, ("a.mp4", "p.png", "o.mp4", "green"))
+        self.assertEqual(ins.call_args.kwargs["qa_dir"], "qa")
+
+    def test_track_arguments_parsed(self):
+        with mock.patch.object(vcli, "_ensure_ml") as ens, mock.patch.object(vcli.screen, "insert", return_value={}) as ins:
+            rc, _, _ = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "track",
+                                  "--corners", "1,2,3,4,5,6,7,8", "--occluder", "9.5,10"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(ins.call_args.kwargs["corners"], [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+        self.assertEqual(ins.call_args.kwargs["occluder_point"], [9.5, 10.0])
+        self.assertTrue(ens.call_args.kwargs["need_torch"])
+
+    def test_refused_exit_2(self):
+        with mock.patch.object(vcli, "_ensure_ml"), mock.patch.object(
+                vcli.screen, "insert", side_effect=vcli.screen.Refused("green key missing on 4 frames")):
+            rc, out, err = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "green"])
+        self.assertEqual((rc, out), (2, ""))
+        self.assertEqual(err.strip(), "refused: green key missing on 4 frames")
+
+    def test_ml_missing_exit_2(self):
+        with mock.patch.object(vcli, "_ensure_ml", side_effect=vcli.ml.MLMissing("missing torch: run tools/setup.sh --ml")):
+            rc, _, err = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "track", "--corners", "0,0,1,0,1,1,0,1"])
+        self.assertEqual(rc, 2)
+        self.assertEqual(err.strip(), "refused: missing torch: run tools/setup.sh --ml")
+
+    def test_bad_corners_is_a_failure_not_a_crash(self):
+        with mock.patch.object(vcli, "_ensure_ml"):
+            rc, _, err = self._run(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "track", "--corners", "1,2,3"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--corners needs 8", err)
+
+    def test_track_without_corners_is_usage_error(self):
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+            vcli.main(["screen-insert", "a.mp4", "p.png", "o.mp4", "--mode", "track"])
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_reexec_under_ml_venv_when_deps_missing(self):
+        import sys
+        real = __import__
+        def fake(name, *a, **k):
+            if name in ("cv2", "numpy", "torch"):
+                raise ImportError(name)
+            return real(name, *a, **k)
+        with tempfile.TemporaryDirectory() as d:
+            py = Path(d) / "venv-ml" / "bin" / "python"
+            py.parent.mkdir(parents=True)
+            py.write_text("")
+            env = {"GASPOL_VIDEO_HOME": d}
+            with mock.patch.dict(os.environ, env), mock.patch("builtins.__import__", fake), \
+                    mock.patch.object(os, "execv") as ex:
+                vcli._ensure_ml(["screen-insert", "a"], need_torch=False)
+            self.assertEqual(ex.call_args.args[1], [str(py), "-m", "tools.vidkit", "screen-insert", "a"])
+            os.environ.pop("GASPOL_VIDEO_ML_REEXEC", None)
+            with mock.patch.dict(os.environ, {**env, "GASPOL_VIDEO_ML_REEXEC": "1"}), \
+                    mock.patch("builtins.__import__", fake), self.assertRaises(vcli.ml.MLMissing):
+                vcli._ensure_ml(["x"], need_torch=True)

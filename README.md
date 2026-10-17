@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>v3.20.0</b> · Claude Code plugin · MIT<br>
+  <b>v3.21.0</b> · Claude Code plugin · MIT<br>
   Agencies, freelancers and brand owners: ship a professional 2-3 minute promo from a single chat.
 </p>
 
@@ -247,6 +247,10 @@ The script engine enforces **9 commandments (v2.2.0+)** (no opening with brand n
 ## Changelog
 
 Every release is in [CHANGELOG.md](CHANGELOG.md).
+
+## v3.21.0 Changelog
+
+- **Screen insert and embroidery that stick (GV-24).** `vidkit screen-insert` puts an app panel onto a phone/monitor: `--mode green` (screen rendered as chroma green, Hard Rule 26 + validator V17) or `--mode track` (TAPNext++ point tracking + per-frame homography); fingers come back over the panel, with motion blur, light match and glass residual. `vidkit embroider` puts a logo on clothing as raised thread: follows the folds per point, only on the shirt (SAM 2.1), never over hands or drawstrings passed as `--hand`. Both refuse (exit 2) instead of writing a wrong video. Needs `bash tools/setup.sh --ml` (separate venv-ml, ~2.6 GB of weights, Apache-2.0). Proof: REA scene 01 (`docs/evals/surface-insert-run.md`); screen insert proven on synthetic clips only.
 
 ## v3.20.0 Changelog
 

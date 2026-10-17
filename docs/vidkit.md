@@ -209,3 +209,40 @@ A part is encoded to `part-NNN.tmp.mp4` and renamed into place only when ffmpeg 
 Hardware is opt-in because its quality per bitrate differs from CRF 20. It takes a bitrate by short side (1080: 12M, 720: 6M, other: 8M). A failed hardware encode is retried once with libx264 and logs `encoder X failed, retried with libx264`. The cache fingerprint covers the final command, so a changed encoder re-encodes the parts. `edit_render` also prints `still running: <part> <s>s` every 30 seconds during an encode.
 
 Measured 2026-10-16 on this Mac (3 synthetic 1080x1920 clips of 6s, `--no-cache`): libx264 1.2s, 16.9 MB; `auto` (h264_videotoolbox used) 2.9s, 27.5 MB. Both passed the A/V gate. No benefit on that clip, so the default stays libx264.
+
+## Machine-learning tools (`ml`, `pointtrack`, `segment`)
+
+Point tracking and segmentation need torch, so they run in their own venv, `venv-ml`, kept apart from the shared `venv` (a torch upgrade never breaks Pillow, Playwright or mediapipe tools). Build it once with `bash tools/setup.sh --ml` (needs Python 3.10+; set `PYTHON_ML=/path/to/python3.10+` if the default is older). The script also fetches two weights into `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/models/`, each from a pinned URL and checked against a pinned sha256 (a mismatch deletes the download and stops): `tapnextpp_ckpt.pt` (TAPNext++, Apache-2.0) and `sam2.1_hiera_small.pt` (SAM 2.1, Apache-2.0). Rejected: CoTracker3 (CC-BY-NC, no commercial use) and SAM 3 (CUDA only).
+
+`ml.py` imports only the standard library. `ml.weight(name)` returns a weight path and re-checks its sha256; `ml.device()` picks the torch device; `ml.require()` checks torch. A missing venv, weight or torch raises `ml.MLMissing` with a message ending `run tools/setup.sh --ml`.
+
+`pointtrack.track(frames, queries)`: `frames` is uint8 `[T, H, W, 3]` RGB, `queries` is float `[N, 3]` of `(t, x, y)` pixels. Returns `tracks [T, N, 2]` and `visible [T, N]` bool. TAPNext++ follows a point through occlusion.
+
+`segment.masks(frames, frame_idx, points=[[x, y]], labels=[1], box=None)`: SAM 2.1 masks an object through the clip from a click or a box on one frame. Returns bool `[T, H, W]`; a frame where the object is gone is all False.
+
+## Screen insert (`screen`, `vidkit screen-insert`)
+
+`python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green|track [--corners x,y,x,y,x,y,x,y] [--occluder x,y] [--qa DIR]`
+
+`panel` is a PNG (held) or an mp4 (looped or cut to the clip). The output keeps the clip's size and frame count; the clip's audio is re-encoded to AAC and padded with silence to the video length, so audio shorter than the video never shortens it. The file is written to a hidden temp file and moved over `<out>` only when its duration matches the frames written, so a failure leaves a previous `<out>` alone. A phone clip with a display-rotation tag is decoded upright (`ff.probe` returns the displayed `width`/`height` and a `rotation` key). A 16-bit PNG panel is scaled to 8 bits; a video panel with an alpha channel keeps it.
+
+- `--mode green`: for a screen prompted as `flat solid chroma green screen` (video-gen Rule 26). Per frame it keys the green, takes the largest blob, fits one line per side (RANSAC) and intersects them. A finger over an edge only adds outliers, so the corner does not move. Corners are smoothed with a One-Euro filter. Refuses `green key missing on <n> frames` (over 5% of the clip) and `green key missing on frames A-B` (0.5 s running), a `corner jump` after smoothing, and `screen mostly not green on frames A-B` (over 60% of the screen not green for 0.5 s). The JSON result has `occluder_share_max`.
+- `--mode track`: for a clip with no key colour. `--corners` gives the four corners at frame 0, clockwise from top-left. TAPNext++ tracks points on and around the quad and a homography is fitted per frame. `--occluder x,y` marks a point on whatever covers the screen at frame 0 (a hand), and SAM 2.1 masks it out; an empty mask is refused (`occluder mask is empty at frame 0`), and so is one over 60% of the screen (`occluder covers P% of the screen (click landed on the screen?)`). Needs `venv-ml`.
+- Refusals print `refused: <message>` and exit 2: `track lost on frames A-B (P% points hidden)` (more than 30% of points hidden for 0.5 s or longer), `corner jump N px at frame F` (a corner moved over 8% of the screen diagonal in one frame), `homography unstable at frame F (inliers X)` (inlier ratio under 0.5), `green key missing on N frames`, `green key missing on frames A-B`, `screen mostly not green on frames A-B`, `occluder mask is empty at frame 0`, `occluder covers P% of the screen (click landed on the screen?)`, `missing <what>: run tools/setup.sh --ml`. A clip whose frame rate cannot be read raises `cannot read fps of <clip>`; a decoded size that differs from the probed one raises `frame size mismatch`.
+- `--qa DIR` writes `qa-screen.jpg`, a contact sheet. Look at it before accepting the result.
+
+## Embroider (`embroider`, `vidkit embroider`)
+
+`python3 -m tools.vidkit embroider <clip> <logo.png> <out> --at x,y --width W [--rot DEG] [--hand x,y ...] [--qa DIR]`
+
+`logo` is a PNG with alpha. `--at` is the design centre on the shirt at frame 0, `--width` its width in px, `--hand` a point on a hand over the shirt at frame 0 (repeatable). The JSON result has `frames`, `lost_frames` and `shirt_area_ratio`.
+
+How it works:
+1. SAM 2.1 masks the shirt from `--at`; hands are masked and excluded.
+2. TAPNext++ tracks points on the shirt through the clip, and a per-point warp (not one global warp) moves the design with the folds.
+3. The logo becomes a thread surface: a rounded ridge along each stroke, fine ridges from the stitches, its own normal and shading. This is why it is not `bond`, which multiplies flat ink into the cloth.
+4. The thread is shaded against the cloth lighting, composited under the hand mask and written with the clip's audio.
+
+Refusals (`refused: ...`, exit 2): `--at is not on the shirt`, `shirt area too small for design (R)`, `hand mask is empty at frame 0`, `hand mask covers P% of the design (click landed on the shirt?)`, `track lost on frames A-B (P% points hidden)`, `track lost on frames A-B (mesh warp failed)`, `track lost: only N grid points on the shirt` (fewer than 9), `shirt lost on frames A-B` (the shirt under the design fell under half its frame-0 share for 0.5 s; a hand over the design does not count), `missing <what>: run tools/setup.sh --ml`. Every "for 0.5 s" rule uses `screen.bad_runs`. A 16-bit logo PNG is scaled to 8 bits.
+
+Known gap: a click on the background is not refused if SAM returns a large mask there. Always open the QA sheet (`qa-embroider.jpg`) and check the design sits on the shirt.
