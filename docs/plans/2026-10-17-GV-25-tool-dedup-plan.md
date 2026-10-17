@@ -356,3 +356,37 @@ file in the same commit. Not applicable: runtime code.
 - [ ] unit: `bash tests/run.sh` passes (except `marketplace-version.sh` until Phase E step 8)
 - [ ] `wc -l CLAUDE.md` ≤ 400; nothing deleted, only moved (`docs/debugging.md` row count = old table row count)
 - [ ] No placeholder/TODO comments in new code
+
+### Phase H: QA gate for every new tool (owner request, 2026-10-17)
+
+**Estimated time:** 15 minutes
+
+**Completeness:** happy path = `python3 tools/registry_build.py validate --coverage` (already run by
+`tests/consistency/tool-registry-contract.sh`) refuses a tool that (1) overlaps another tool of the
+same phase on ≥50% of the smaller task list without `distinct_because` on both or a `replaces`
+link, (2) has no test file under `tests/` that names its stem as a word, (3) is named by no skill,
+agent, reference, hook or template and imported by no other tool, and has no `internal_reason`.
+`docs/` and the registry itself do not count as use (that is how `smooth-track` survived). Error
+messages: `<id>: overlaps <id> on N% of tasks (add distinct_because or replaces)`,
+`<id>: no test names it`, `<id>: not used by any skill, reference or tool (add internal_reason)`.
+Measured before the change: one overlap (`gen_music.py` / `gen_sfx.py`, 67%), zero untested, one
+unused (`guide_vo.py`). Edge: empty task list (skip overlap), generic stems like `ff` (word match),
+the tool naming itself (excluded). Not applicable: network, runtime.
+
+**Files:**
+- Modify: `tools/registry_build.py`, `tools/registry.json` (gen_music/gen_sfx `distinct_because`), `reference/post-production/11-voice-cast-and-vo.md` (name `guide_vo.py` where guide takes are described), `CLAUDE.md` (one line under the registry row)
+- Test: `tests/py/test_registry.py`
+
+**Steps:**
+1. Write failing tests for the three checks in `tests/py/test_registry.py` with a temp root: two tools in one phase sharing 2 of 3 tasks → problem `overlaps`; a tool whose stem no test names → `no test names it`; a tool named nowhere → `not used by any skill`; each passes with `distinct_because` / a test mention / an `internal_reason`. Expected error: `AssertionError: 'overlaps' not found in []`.
+2. Run them; confirm they fail for that reason.
+3. Implement in `registry_build.py`: overlap rule inside `_check_duplicates` (exact-match rule becomes the 100% case); `_check_tested` and `_check_used` under `coverage=True`.
+4. Run `python3 tools/registry_build.py validate --coverage`; fix the two real findings (distinct_because for music vs SFX; name `guide_vo.py` in reference 11 next to the guide-voice workflow).
+5. Run `bash tests/run.sh`; confirm pass except `marketplace-version.sh`. Commit: `feat(GV-25): registry gate refuses near-duplicate, untested and unused tools`.
+
+**Verification:**
+- [ ] static: `python3 -m py_compile tools/registry_build.py` passes
+- [ ] unit: `bash tests/run.sh` passes (except `marketplace-version.sh` until Phase E step 8)
+- [ ] `validate --coverage` exits 0 on the real registry
+- [ ] restoring `tools/vidkit/track.py` + its registry entry in a scratch copy makes `validate --coverage` print `not used by any skill`
+- [ ] No placeholder/TODO comments in new code

@@ -181,7 +181,7 @@
       ],
       "phase": "6",
       "replaces": [],
-      "distinct_because": "",
+      "distinct_because": "Music beds: long tonal tracks from mood recipes or composed to the picture, ElevenLabs Music.",
       "internal_reason": ""
     },
     {
@@ -194,7 +194,7 @@
       ],
       "phase": "6",
       "replaces": [],
-      "distinct_because": "",
+      "distinct_because": "Sound effects: short one-shot clips from the SFX palette, ElevenLabs sound generation.",
       "internal_reason": ""
     },
     {

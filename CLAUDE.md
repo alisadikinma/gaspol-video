@@ -303,3 +303,5 @@ Last ticket: GV-25
 ## Tool-first rule (library)
 
 Before writing any script for video, audio, animation or assembly, read `docs/tool-routing.md` and use the listed tool. If nothing fits, extend `tools/vidkit/` (Python) or `tools/vidkit/js/` (Node) in this plugin, with a test, in the same session. Register it by adding its entry (tool + route) to `tools/registry.json`, then run `python3 tools/registry_build.py render`; do not edit the table in `docs/tool-routing.md` by hand. Never leave a reusable script in a project folder.
+
+**New-tool gate (GV-25).** `python3 tools/registry_build.py validate --coverage` (run by `bash tests/run.sh`) refuses a tool that overlaps another tool of the same phase on ≥50% of tasks without `distinct_because`/`replaces`, that no test names (file name, import line, `vidkit.<stem>`), or that no skill, agent, reference, hook, template or other tool uses (a `vidkit <cmd>` mention counts; `docs/` does not). Fix the cause; `internal_reason` only for a real imported helper.

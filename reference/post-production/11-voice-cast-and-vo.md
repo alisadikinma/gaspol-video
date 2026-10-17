@@ -142,6 +142,23 @@ recordings read by the same person.
 
 Order matters: generate in **script order**, not in whatever order the scenes were approved.
 
+### Guide-voice takes, when the cast voice reads flat
+
+A cloned cast voice on `eleven_multilingual_v2` can read a lively line flat. Then perform the line
+first with an expressive stock voice and convert it afterwards:
+
+```
+python3 tools/guide_vo.py plan.json vo/guide --voice-env ELEVENLABS_VOICE_GUIDE --stabilities 0,0.5
+# per take: mono wav + AssemblyAI words json, then compare pitch range, pace and pauses
+python3 -m tools.vidkit prosody <take>.wav <take>.words.json
+python3 -m tools.vidkit tighten <best>.wav <best>.words.json <best>-tight.wav   # trim long gaps
+node tools/voice_changer.mjs <best>-tight.wav --voice-env ELEVENLABS_VOICE_C1 --out vo/scene-03-c1.mp3 --seed 2026091301
+```
+
+`guide_vo.py` runs `eleven_v3` with audio tags (`[excited]`, `[whispers]`), one take per stability.
+A take that exists is never requested again unless `--force`. Speech-to-speech keeps the
+performance and swaps the timbre.
+
 ---
 
 ## 5. Voice Changer (speech-to-speech)

@@ -52,6 +52,15 @@ HOOK_RULE = (
 )
 SCAN_GLOBS = ("tools/**/*.py", "tools/**/*.mjs")
 GLOBS = ("tools/*.py", "tools/*.mjs", "tools/vidkit/*.py", "tools/vidkit/js/*.mjs")
+# GV-25 new-tool gate. Two tools of one phase that share this share of the smaller task list need
+# distinct_because on both, or a replaces link. A tool must be named by a test, and used by a
+# skill, agent, reference, hook, template or another tool. docs/ and the registry do not count as
+# use: vidkit smooth-track had a route and a docs row, and no caller.
+OVERLAP_MAX = 0.5
+TEST_GLOBS = ("tests/**/*.py", "tests/**/*.mjs", "tests/**/*.sh")
+USE_GLOBS = ("skills/**/*.md", "agents/*.md", "reference/**/*.md", "hooks/*",
+             "templates/**/*.mjs", "templates/**/*.ts", "templates/**/*.tsx")
+CODE_GLOBS = ("tools/**/*.py", "tools/**/*.mjs", "tools/*.sh")
 
 
 class RegistryError(Exception):
@@ -151,13 +160,21 @@ def _check_duplicates(tools, problems):
         for a in clean[:i]:
             if a["id"] == b["id"]:
                 continue
-            if a.get("phase") != b.get("phase") or set(a["tasks"]) != set(b["tasks"]):
+            ta, tb = set(a["tasks"]), set(b["tasks"])
+            if a.get("phase") != b.get("phase") or not ta or not tb:
+                continue
+            share = len(ta & tb) / min(len(ta), len(tb))
+            if share < OVERLAP_MAX:
                 continue
             if a["id"] in b["replaces"] or b["id"] in a["replaces"]:
                 continue
             if a.get("distinct_because") and b.get("distinct_because"):
                 continue
-            problems.append(f"{b['id']}: duplicate of {a['id']}")
+            if ta == tb:
+                problems.append(f"{b['id']}: duplicate of {a['id']}")
+            else:
+                problems.append(f"{b['id']}: overlaps {a['id']} on {share:.0%} of tasks "
+                                "(add distinct_because or replaces)")
 
 
 def _check_routes(routes, ids, problems):
@@ -228,6 +245,68 @@ def _scan_ffprobe(reg, root, problems):
                 problems.append(f"{rel}: ffprobe outside vidkit/ff.py or vidkit/js/ff.mjs and not in ffprobe_allow")
 
 
+def _texts(root, globs):
+    out = {}
+    for pattern in globs:
+        for p in root.glob(pattern):
+            if p.is_file():
+                out[p.relative_to(root).as_posix()] = p.read_text(errors="ignore")
+    return out
+
+
+def _vidkit_commands(root):
+    """{module stem: {cli commands}} read from the dispatch in tools/vidkit/__main__.py, so a skill
+    that says `vidkit xfade` counts as using join.py."""
+    main = root / "tools/vidkit/__main__.py"
+    out = {}
+    if not main.is_file():
+        return out
+    src = main.read_text(errors="ignore")
+    for m in re.finditer(r'a\.cmd == "([\w-]+)":(.*?)(?=\n {8}(?:elif|else)\b|\Z)', src, re.S):
+        for mod in set(re.findall(r"\b(\w+)\.\w+\(", m.group(2))):
+            out.setdefault(mod, set()).add(m.group(1))
+    return out
+
+
+def _ref_patterns(tid, commands):
+    """What counts as naming a tool: its file name, an import line, `vidkit.<stem>` /
+    `tools.<stem>`, or a `vidkit <cmd>` that dispatches to it. A bare word does not: `track`
+    appears all over the skills (`--mode track`) and let vidkit/track.py pass."""
+    stem, name = Path(tid).stem, Path(tid).name
+    e = re.escape(stem)
+    pats = [r"(?<![\w-])" + re.escape(name) + r"\b",
+            r"^\s*(?:from|import)\b[^\n]*\b" + e + r"\b",
+            r"\b(?:vidkit|tools)\." + e + r"\b"]
+    if tid.startswith("tools/vidkit/") and not tid.startswith("tools/vidkit/js/"):
+        pats += [r"\bvidkit\s+" + re.escape(c) + r"\b" for c in sorted(commands.get(stem, ()))]
+    return [re.compile(p, re.M) for p in pats]
+
+
+def _check_tested_and_used(tools, root, problems):
+    tests = _texts(root, TEST_GLOBS)
+    use = _texts(root, USE_GLOBS)
+    # __main__/__init__ import every module, so they would make every vidkit module "used".
+    code = {rel: text for rel, text in _texts(root, CODE_GLOBS).items()
+            if not rel.endswith(("/__main__.py", "/__init__.py")) and not rel.startswith("tools/registry")}
+    commands = _vidkit_commands(root)
+    for t in tools:
+        if not isinstance(t, dict) or not isinstance(t.get("id"), str):
+            continue
+        tid = t["id"]
+        pats = _ref_patterns(tid, commands)
+
+        def named(texts, skip=None):
+            return any(p.search(text) for rel, text in texts.items() if rel != skip for p in pats)
+
+        if not named(tests):
+            problems.append(f"{tid}: no test names it")
+        reason = t.get("internal_reason")
+        if isinstance(reason, str) and reason.strip():
+            continue
+        if not named(use) and not named(code, skip=tid):
+            problems.append(f"{tid}: not used by any skill, reference or tool (add internal_reason)")
+
+
 def validate(reg, root, coverage=False) -> list:
     root = Path(root)
     problems = []
@@ -259,6 +338,8 @@ def validate(reg, root, coverage=False) -> list:
             reason = t.get("internal_reason")
             if t["id"] not in routed and not (isinstance(reason, str) and reason.strip()):
                 problems.append(f"{t['id']}: no route and no internal_reason")
+        _check_tested_and_used([t for t in tools if isinstance(t, dict) and t.get("id") in ids_seen],
+                               root, problems)
     return problems
 
 

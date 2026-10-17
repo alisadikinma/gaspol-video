@@ -207,6 +207,75 @@ class ValidateTest(FakeRoot):
         self.assertEqual(reg, before)
 
 
+class NewToolGateTest(FakeRoot):
+    """GV-25: three overlaps slipped past the exact-match duplicate rule and the route rule."""
+
+    def write(self, rel, text):
+        p = self.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+
+    def coverage(self, reg):
+        return registry_build.validate(reg, self.root, coverage=True)
+
+    def test_partial_task_overlap_in_one_phase_is_refused(self):
+        reg = registry(entry(tasks=["composite", "overlay", "split"]),
+                       entry(id="tools/gen_vo.mjs", tasks=["composite", "overlay", "voice"]))
+        self.assertProblem(reg, "tools/gen_vo.mjs: overlaps tools/composite.py on 67% of tasks")
+
+    def test_partial_overlap_excused_by_distinct_or_replaces(self):
+        a, b = ["composite", "overlay", "split"], ["composite", "overlay", "voice"]
+        reg = registry(entry(tasks=a, distinct_because="x"),
+                       entry(id="tools/gen_vo.mjs", tasks=b, distinct_because="y"))
+        self.assertEqual(self.problems(reg), [])
+        reg = registry(entry(tasks=a, replaces=["tools/gen_vo.mjs"]), entry(id="tools/gen_vo.mjs", tasks=b))
+        self.assertEqual(self.problems(reg), [])
+
+    def test_small_overlap_is_not_a_duplicate(self):
+        reg = registry(entry(tasks=["composite", "overlay", "split"]),
+                       entry(id="tools/gen_vo.mjs", tasks=["composite", "voice", "tts"]))
+        self.assertEqual(self.problems(reg), [])
+
+    def test_tool_without_a_test_is_refused(self):
+        self.assertIn("tools/composite.py: no test names it", self.coverage(registry(entry())))
+        self.write("tests/py/test_composite.py", "from tools import composite\n")
+        self.assertNotIn("tools/composite.py: no test names it", self.coverage(registry(entry())))
+
+    def test_stem_inside_another_word_is_not_a_test(self):
+        self.write("tests/py/test_x.py", "compositeX = 1\n")
+        self.assertIn("tools/composite.py: no test names it", self.coverage(registry(entry())))
+
+    def test_tool_used_nowhere_is_refused(self):
+        msg = "tools/composite.py: not used by any skill, reference or tool (add internal_reason)"
+        self.write("docs/vidkit.md", "composite\n")  # docs do not count as use
+        self.assertIn(msg, self.coverage(registry(entry())))
+        self.write("skills/video-post/SKILL.md", "run tools/composite.py\n")
+        self.assertNotIn(msg, self.coverage(registry(entry())))
+
+    def test_use_by_another_tool_or_internal_reason_counts(self):
+        msg = "tools/composite.py: not used by any skill, reference or tool (add internal_reason)"
+        self.write("tools/composite.py", "import composite  # names itself, does not count\n")
+        self.assertIn(msg, self.coverage(registry(entry())))
+        self.write("tools/other.py", "from tools import composite\n")
+        self.assertNotIn(msg, self.coverage(registry(entry())))
+        (self.root / "tools/other.py").unlink()
+        self.assertNotIn(msg, self.coverage(registry(entry(internal_reason="imported helper"))))
+
+    def test_bare_word_is_not_use_but_vidkit_command_is(self):
+        # The case GV-25 found: vidkit/track.py survived because "track" is everywhere.
+        tid = "tools/vidkit/track.py"
+        self.write(tid, "def smooth_track(p): return p\n")
+        self.write("tools/vidkit/__main__.py",
+                   'from . import track\n        if a.cmd == "smooth-track":\n            track.smooth_track(x)\n')
+        self.write("tests/py/test_track.py", "from tools.vidkit import track\n")
+        msg = f"{tid}: not used by any skill, reference or tool (add internal_reason)"
+        reg = registry(entry(id=tid, phase="shared"))
+        self.write("skills/video-gen/SKILL.md", "use --mode track for a clip without green\n")
+        self.assertIn(msg, self.coverage(reg))
+        self.write("skills/video-gen/SKILL.md", "run `python3 -m tools.vidkit smooth-track t.json`\n")
+        self.assertNotIn(msg, self.coverage(reg))
+
+
 class CoverageTest(FakeRoot):
     def test_uncovered_tool_reported(self):
         probs = registry_build.validate(registry(), self.root, coverage=True)
