@@ -62,7 +62,7 @@ def weight(name: str) -> Path:
         return path
     got = _sha256_of(path)
     if got != expected:
-        raise MLMissing(f"weight {path} has wrong sha256 {got} (expected {expected}): {FIX}")
+        raise MLMissing(f"missing valid weight {path} (sha256 {got}, expected {expected}): {FIX}")
     _verified[key] = expected
     return path
 

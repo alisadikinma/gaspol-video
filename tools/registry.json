@@ -498,7 +498,7 @@
     },
     {
       "id": "tools/vidkit/screen.py",
-      "purpose": "Green-screen corners per frame (RANSAC line per side, finger-proof) and a One-Euro filter for corner tracks.",
+      "purpose": "App panel onto a phone/monitor in a clip: green-key or tracked corners, finger occlusion, blur, light match; vidkit screen-insert.",
       "tasks": [
         "screen-insert",
         "screen-corners",

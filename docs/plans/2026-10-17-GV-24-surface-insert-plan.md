@@ -523,6 +523,13 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - [ ] Owner verdict recorded for each real clip
 - [ ] No placeholder/TODO comments in new code
 
+## Changes recorded after execution (2026-10-17, plan-verifier follow-up)
+
+- `MIN_STROKE_HALF_PX` ships at 1.0, not 1.6: 1.6 merged the real REA text into blobs; the owner accepted the 1.0 result on REA scene 01.
+- Screen seed corners come only from `--corners x,y,x,y,x,y,x,y` (copy them from `track_screen.py` output by hand); the spec's `--seed x,y` and a track_screen JSON input are not built. `insert(seed=None)` stays unused for signature stability.
+- QA sheets are written as `<--qa DIR>/qa-screen.jpg` and `<--qa DIR>/qa-embroider.jpg` (the caller picks the scene folder), not `.tmp/qa-<kind>-<scene>.jpg`.
+- A wrong weight hash prints `refused: missing valid weight <path> (sha256 ..., expected ...): run tools/setup.sh --ml`.
+
 ## Out of scope
 
 - CoTracker3, SAM 3, any CUDA path.

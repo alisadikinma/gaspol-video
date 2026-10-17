@@ -12,6 +12,7 @@ so the scene was re-rendered in VEO 3.1 with the print baked in (`clips/scene-01
 shirt_source: REA-Reverse_Engineer_Anything/clips/_v2-baju-tempel/scene-01.mp4 + work/print-sablon.png (1600×392 RGBA)
 shirt_command: python3 -m tools.vidkit embroider <source> print-sablon.png emb-l0.mp4 --at 232,840 --width 140 --hand 220,1040 --hand 420,1020 --hand 315,880 --hand 387,880
 shirt_result: {"frames": 96, "lost_frames": 1, "shirt_area_ratio": 344.319}, 85.8 s wall time
+shirt_qa: docs/evals/surface-insert-rea-zoom.png (frame 30, 4× crop: top = run 2, bottom = run 3 accepted)
 shirt_verdict: owner, 2026-10-17 — "sudah oke.. lanjut" (accepted after three runs, see below)
 
 ### The three runs

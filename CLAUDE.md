@@ -678,9 +678,9 @@ All configurable values live in `reference/global-promo-config.md` — single so
   - **Embroider.** Thread height map, per-point cloth warp from tracked points, thread shading. Differs from `bond`, which is a flat print.
   - **Models.** TAPNext++ (Apache-2.0) and SAM 2.1 small (Apache-2.0), in their own `venv-ml` (`bash tools/setup.sh --ml`), weights pinned by sha256. Rejected: CoTracker3 (CC-BY-NC) and SAM 3 (CUDA only).
   - **Refusals.** Seven messages, each a row in the Debugging table. A bad track exits 2 and writes no output.
-  - **Evidence.** Numbers so far come from synthetic clips and are not claims about real footage. The real-clip proof is Phase L.
+  - **Evidence.** Synthetic-clip numbers are not claims about real footage. Real-clip proof: REA scene 01 embroidery, accepted by the owner (`docs/evals/surface-insert-run.md`); screen insert has no real-clip proof yet (owner skipped it).
   - **Known gaps.** A click on the background is not refused by `embroider` (check the QA sheet). The whole clip is held in RAM. Short occlusions of 5 frames or fewer are not flagged by TAPNext++ visibility; the SAM masks handle fingers.
-  - **Not released yet.** `**Version:**` and `plugin.json` stay at 3.20.0 until Phase L. Contract test: `tests/consistency/surface-insert-contract.sh`.
+  - **Tests.** Contract `tests/consistency/surface-insert-contract.sh`, real-clip evidence `tests/consistency/surface-insert-evidence.sh`, plus `test_{ml,pointtrack,segment,screen,embroider}.py` (run under venv-ml for the model tests).
 
 ### v3.20.0 Changelog
 
