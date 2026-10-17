@@ -84,6 +84,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Face box per frame, for the layout gate | `face_box.py` |
 | Check text and watermark sit in the 9:16 safe area | `python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>] [--overlay <shots dir>]` |
 | Stamp the thumbnail title | `python3 -m tools.vidkit title <img> "<text>" <out>` |
+| Embroider a logo/text onto clothing (raised thread, follows folds) | `tools.vidkit.embroider.thread_maps(rgba)` (full CLI in a later phase) |
 <!-- registry:routes:end -->
 
 ## When no tool fits (inject back)
