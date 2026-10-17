@@ -3,7 +3,7 @@
 
     python3 tools/viral_checklist.py check <av-script.md>
     python3 tools/viral_checklist.py rate  <packaging/calibration.json>
-    python3 tools/viral_checklist.py timeline <av-script.md>
+    python3 tools/viral_checklist.py timeline <av-script.md> [--max-s N]
 
 `check` reads the `## Viral Checklist` block of an av-script.md: a table
 `| Stage | Item | Verdict |` with one row per item of the 7 stages. Verdict is `PASS`,
@@ -16,7 +16,8 @@ thresholds. A missing figure gives `unknown` and names the key; it is never gues
 
 `timeline` (F13) reads the A/V table's `Tahap` and `Detik` columns and checks the short-form
 order Thumbnail (optional), Hook, Foreshadow, Body, CTA, with Hook ending by 3 s and Foreshadow
-by 6 s, plus `timeline_tolerance_s` from media/layout-profiles.json. Exit 0 = OK, 1 = problems,
+by 6 s, Body by 50 s, a 2-4 s CTA as the last stage, total length within `--max-s` (default 60),
+plus `timeline_tolerance_s` from media/layout-profiles.json. Exit 0 = OK, 1 = problems,
 2 = the file is unreadable or has no `Tahap`/`Detik` columns.
 
 Stages, item ids and thresholds mirror reference/storytelling_script_gen/F12_Viral_Framework.md
@@ -207,7 +208,9 @@ def rate(stats):
 TIMELINE_ORDER = ("thumbnail", "hook", "foreshadow", "body", "cta")
 TIMELINE_REQUIRED = ("hook", "foreshadow", "body", "cta")
 # Stage -> latest end second (F13, notebook fd70ee32), before tolerance.
-TIMELINE_END_MAX = {"hook": 3.0, "foreshadow": 6.0}
+TIMELINE_END_MAX = {"hook": 3.0, "foreshadow": 6.0, "body": 50.0}
+CTA_LEN = (2.0, 4.0)
+MAX_S_DEFAULT = 60.0
 PROFILES = Path(__file__).resolve().parent.parent / "media" / "layout-profiles.json"
 RANGE = re.compile(r"^(\d+(?:\.\d+)?)\s*[-\u2013]\s*(\d+(?:\.\d+)?)\s*s?$")
 
@@ -238,12 +241,13 @@ def _timeline_rows(text):
     return rows, found
 
 
-def timeline_problems(text, tolerance=None):
+def timeline_problems(text, tolerance=None, max_s=None):
     """Problems in the Tahap/Detik table of `text`; None when the table has no such columns."""
     rows, found = _timeline_rows(text)
     if not found:
         return None
     tol = timeline_tolerance() if tolerance is None else tolerance
+    max_s = MAX_S_DEFAULT if max_s is None else float(max_s)
     problems, spans = [], []
     for tahap, detik in rows:
         stage = tahap.lower()
@@ -266,6 +270,16 @@ def timeline_problems(text, tolerance=None):
     for stage in TIMELINE_REQUIRED:
         if stage not in present and not any(r[0].lower() == stage for r in rows):
             problems.append(f"{stage}: stage missing")
+    for stage, a, b in spans:
+        if stage == "cta" and not (CTA_LEN[0] <= b - a <= CTA_LEN[1] + tol):
+            problems.append(
+                f"CTA: lasts {b - a:g} s, must last {CTA_LEN[0]:g}-{CTA_LEN[1]:g} s (+{tol:g} s tolerance on the long side)")
+    cta_at = [i for i, sp in enumerate(spans) if sp[0] == "cta"]
+    if cta_at and cta_at[-1] != len(spans) - 1:
+        problems.append("CTA: must be the last stage, nothing after it")
+    if spans and max(b for _, _, b in spans) > max_s + tol:
+        problems.append(
+            f"total length {max(b for _, _, b in spans):g} s exceeds max {max_s:g} s (+{tol:g} s tolerance)")
     idx = [TIMELINE_ORDER.index(s) for s in present]
     if idx != sorted(idx):
         problems.append("stages are out of order: expected Thumbnail, Hook, Foreshadow, Body, CTA")
@@ -275,9 +289,9 @@ def timeline_problems(text, tolerance=None):
     return problems
 
 
-def _cmd_timeline(path):
+def _cmd_timeline(path, max_s=None):
     try:
-        found = timeline_problems(Path(path).read_text(encoding="utf-8"))
+        found = timeline_problems(Path(path).read_text(encoding="utf-8"), max_s=max_s)
     except (OSError, UnicodeDecodeError, ValueError, KeyError) as exc:
         print(f"viral_checklist: cannot read {path}: {exc}", file=sys.stderr)
         return 2
@@ -329,13 +343,15 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check", help="verify the Viral Checklist block of an av-script.md").add_argument("script")
     sub.add_parser("rate", help="verdict from packaging/calibration.json").add_argument("calibration")
-    sub.add_parser("timeline", help="verify the Tahap/Detik table of an av-script.md (F13)").add_argument("script")
+    tp = sub.add_parser("timeline", help="verify the Tahap/Detik table of an av-script.md (F13)")
+    tp.add_argument("script")
+    tp.add_argument("--max-s", type=float, default=None, help="max total seconds (default 60)")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
     if args.cmd == "timeline":
-        return _cmd_timeline(args.script)
+        return _cmd_timeline(args.script, args.max_s)
     return _cmd_check(args.script) if args.cmd == "check" else _cmd_rate(args.calibration)
 
 
