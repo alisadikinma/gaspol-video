@@ -37,7 +37,8 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 | Modular assets | `reference/storytelling_script_gen/F10_Modular_Asset_and_AB_Testing.md` |
 | Pattern interrupts | `reference/storytelling_script_gen/F11_Pattern_Interrupt_and_Retention.md` |
 | EV products ONLY | `reference/storytelling_script_gen/F4_EV_Persona_Matrix.md` |
-| Short-form target (Shorts/Reels/TikTok) ONLY: viral 7-stage checklist, title formula, loop ending | `reference/storytelling_script_gen/F12_Viral_Framework.md` |
+| Short-form target (`aspect: 9:16`, or Shorts/Reels/TikTok) ONLY: viral 7-stage checklist, title formula, loop ending | `reference/storytelling_script_gen/F12_Viral_Framework.md` |
+| Short-form target (`aspect: 9:16`) ONLY: timeline Thumbnail 0-1, Hook 0-3, Foreshadow 3-6, Body 6-50, CTA last 2-4 s | `reference/storytelling_script_gen/F13_Short_Form_Timeline.md` |
 
 ### Phase 3: Scene Breakdown
 | Task | Read |
@@ -98,7 +99,9 @@ Generates a complete A/V script with 7-beat narrative arc, auto-calculates scene
 
 26. **(v3.11.1) Rewrite output files clean after each decision.** When a decision changes `strategic-brief.md`, `av-script.md` or `scene-plan.md`, rewrite the affected sections so the file reads as the current truth. Do not append "UPDATE" notes under stale tables. Keep a short `## Riwayat` section at the end: date, what changed, why.
 
-27. **(GV-19) Short-form scripts carry the filled Viral Checklist.** For a platform Shorts/Reels/TikTok target, the generated `av-script.md` MUST end with the `## Viral Checklist` block of `F12_Viral_Framework.md`, every `{verdict}` replaced by a real verdict. Run `python3 tools/viral_checklist.py check {output_folder}/av-script.md` before the approval gate and show its findings. A `FAIL:` is reported to the owner, who fixes it or accepts it with a reason in Production Notes. F12 adds to the 9 Commandments and the Hook/CTA vaults; it never overrides them.
+27. **(GV-19) Short-form scripts carry the filled Viral Checklist.** For a short-form target (`aspect: 9:16`, or a Shorts/Reels/TikTok platform), the generated `av-script.md` MUST end with the `## Viral Checklist` block of `F12_Viral_Framework.md`, every `{verdict}` replaced by a real verdict. Run `python3 tools/viral_checklist.py check {output_folder}/av-script.md` before the approval gate and show its findings. A `FAIL:` is reported to the owner, who fixes it or accepts it with a reason in Production Notes. F12 adds to the 9 Commandments and the Hook/CTA vaults; it never overrides them.
+
+28. **(GV-23) 9:16 scripts follow the F13 timeline.** When `aspect: 9:16`, the A/V table has `Tahap` (Thumbnail, Hook, Foreshadow, Body, CTA) and `Detik` columns, loads `F13_Short_Form_Timeline.md`, and runs `python3 tools/viral_checklist.py timeline {output_folder}/av-script.md` before the approval gate (exit 0 pass, 1 problems, 2 no `Tahap`/`Detik` columns). Show the findings. A FAIL is fixed, or accepted by the owner with a reason in Production Notes. The script stays within `max_duration_s` from the brief.
 
 ## Workflow
 
@@ -117,7 +120,7 @@ READ these files ONLY:
 9. `reference/storytelling_script_gen/F10_Modular_Asset_and_AB_Testing.md`
 10. `reference/storytelling_script_gen/F11_Pattern_Interrupt_and_Retention.md`
 11. IF product is EV-related: `reference/storytelling_script_gen/F4_EV_Persona_Matrix.md`
-12. IF the platform is short-form (Shorts/Reels/TikTok): `reference/storytelling_script_gen/F12_Viral_Framework.md` (adds to the files above, never overrides the 9 Commandments, F5 or F6)
+12. IF `aspect: 9:16` in `strategic-brief.md` (or the platform is Shorts/Reels/TikTok): `reference/storytelling_script_gen/F12_Viral_Framework.md` and `reference/storytelling_script_gen/F13_Short_Form_Timeline.md` (add to the files above, never override the 9 Commandments, F5 or F6)
 Total: 10-11 files. This is the heaviest phase — script generation needs most references.
 IMPORTANT: Do NOT load image-video-gen/ files in this phase.
 
@@ -155,6 +158,13 @@ Output format: 3-column A/V table with beat labels
 | 0:01.7-0:05 | {visual} | {audio} | Hook |
 | 0:05-0:08 | {visual} | {audio} | Foreshadow |
 | ... | ... | ... | ... |
+
+For `aspect: 9:16` (Rule 28) the table adds two columns, `Tahap` and `Detik`:
+
+| Tahap | Detik | Video (Visual Direction) | Audio (Narration + SFX + Music) | Beat |
+|-------|-------|--------------------------|--------------------------------|------|
+| Hook | 0-3 | {visual} | {audio} | Hook |
+| Foreshadow | 3-6 | {visual} | {audio} | Foreshadow |
 
 ## CTA Execution
 {specific CTA details}
