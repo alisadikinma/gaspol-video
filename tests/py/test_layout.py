@@ -25,7 +25,7 @@ class LayoutTest(unittest.TestCase):
 
     def test_value_dotted_key(self):
         prof = layout.load("short-organic")
-        self.assertEqual(layout.value(prof, "subtitle.per_group"), 2)
+        self.assertEqual(layout.value(prof, "subtitle.per_group"), 4)
         self.assertEqual(layout.value(prof, "width"), 1080)
 
     def test_value_missing_key(self):
@@ -93,6 +93,24 @@ class LayoutTest(unittest.TestCase):
     def test_safe_box_missing_edge(self):
         with self.assertRaises(KeyError):
             layout.safe_box({"width": 100, "height": 100, "safe": {}})
+
+    def _leaf(self, key):
+        node = json.loads(layout.DEFAULT_PATH.read_text())["profiles"]["short-organic"]
+        for part in key.split("."):
+            node = node[part]
+        return node
+
+    def test_subtitle_values_are_measured(self):
+        for key in ("subtitle.font_pct", "subtitle.per_group"):
+            src = self._leaf(key)["source"]
+            self.assertTrue(src.startswith("data:"), key)
+            self.assertIn("docs/evals/short-form-layout-measurement.md", src, key)
+
+    def test_title_values_name_the_measurement_that_found_no_title(self):
+        for key in ("title.font_pct", "title.center_y_pct"):
+            src = self._leaf(key)["source"]
+            self.assertTrue(src.startswith("tafsiran:"), key)
+            self.assertIn("docs/evals/short-form-layout-measurement.md", src, key)
 
 
 if __name__ == "__main__":
