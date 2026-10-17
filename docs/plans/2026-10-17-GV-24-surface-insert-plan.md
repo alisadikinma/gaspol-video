@@ -453,7 +453,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/consistency/surface-insert-contract.sh`
 
 **Steps:**
-1. Write failing test `tests/consistency/surface-insert-contract.sh`: asserts the video-gen rule phrase, the validator check id in both validator files, both routes in `docs/tool-routing.md`, and each refusal message in CLAUDE.md debugging. Expected error: exit 1 `missing green-screen rule`.
+1. Write failing test for the docs contract `tests/consistency/surface-insert-contract.sh`: asserts the video-gen rule phrase, the validator check id in both validator files, both routes in `docs/tool-routing.md`, and each refusal message in CLAUDE.md debugging. Expected error: exit 1 `missing green-screen rule`.
 2. Run, confirm it fails for that reason.
 3. Make the edits; run `python3 tools/registry_build.py render`.
 4. Run `python3 tools/registry_build.py validate --coverage`, `render --check`, `bash tests/run.sh`; commit: `docs(GV-24): green-screen rule, validator check, routes`.
@@ -477,7 +477,7 @@ def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None
 - Test: `tests/consistency/surface-insert-evidence.sh`
 
 **Steps:**
-1. Write failing test `surface-insert-evidence.sh`: the eval doc lists ≥ 1 real screen clip and ≥ 1 real shirt clip, each with source path, command, returned JSON, QA sheet path and an owner verdict line. Expected error: exit 1 `surface-insert-run.md missing`.
+1. Write failing test for the real-clip evidence `tests/consistency/surface-insert-evidence.sh`: the eval doc lists ≥ 1 real screen clip and ≥ 1 real shirt clip, each with source path, command, returned JSON, QA sheet path and an owner verdict line. Expected error: exit 1 `surface-insert-run.md missing`.
 2. Run, confirm it fails.
 3. **Ask the owner for the real failing clip paths** (pending since brainstorm). Never substitute synthetic clips here.
 4. Run `screen-insert` and `embroider` on them; produce before/after contact sheets; look at them; record honest results including any refusal.
