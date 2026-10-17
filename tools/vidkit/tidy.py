@@ -1,7 +1,9 @@
-"""Read-only scan of a project folder against the folder contract.
+"""Scan a project folder against the folder contract, and clean what the scan finds.
 
 ``scan`` reports stray folders and subfolders, duplicate files, stale ledger entries, old
 ``.tmp`` files and MCP renders that were not moved home. It never writes.
+``apply_unknown_dirs`` moves stray folders into ``_arsip/``. ``empty_tmp`` is the only deletion
+and it stays inside ``.tmp/``.
 """
 import hashlib
 import os
@@ -17,6 +19,7 @@ MCP_SUBDIRS = (".tmp/image", ".tmp/video")
 MEDIA_EXT = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".mp3", ".wav"}
 FLAT_DIRS = ("ref", "keyframes", "clips", "vo", "sfx", "_arsip")
 ALLOWED_SUBDIRS = {"output": {"stems"}}
+ARCHIVED_PREFIX = "folder-"
 
 _KEYS = ("unknown_dirs", "unknown_subdirs", "duplicates", "stale_ledger", "old_tmp",
          "unmoved_mcp", "mcp_already_home", "unreadable")
@@ -110,6 +113,8 @@ def scan(project, tmp_days=7, now=None):
         for e in _entries(base):
             if e.name in allowed:
                 continue
+            if d == "_arsip" and e.name.startswith(ARCHIVED_PREFIX):
+                continue  # a folder this tool moved here earlier
             if e.is_dir(follow_symlinks=False) or (e.is_symlink() and e.is_dir()):
                 report["unknown_subdirs"].append(f"{d}/{e.name}")
     report["unknown_subdirs"].sort()
@@ -123,14 +128,17 @@ def scan(project, tmp_days=7, now=None):
         mcp.extend(p for p in _files(root, d) if Path(p).suffix.lower() in MEDIA_EXT)
     groups = _hash_groups(home + mcp, unreadable)
     home_set = set(home)
+    stray = tuple(u + "/" for u in report["unknown_subdirs"])
     for paths in groups.values():
         in_home = sorted(_rel(root, p) for p in paths if p in home_set)
         in_mcp = sorted(_rel(root, p) for p in paths if p not in home_set)
         if len(in_home) >= 2:
             report["duplicates"].append(in_home)
         if in_home:
+            clean = [h for h in in_home if not h.startswith("_arsip/") and not h.startswith(stray)]
+            pick = (clean or in_home)[0]
             for m in in_mcp:
-                report["mcp_already_home"].append(f"{m} = {in_home[0]}")
+                report["mcp_already_home"].append(f"{m} = {pick}")
     already = {e.split(" = ")[0] for e in report["mcp_already_home"]}
     for p in mcp:
         rel = _rel(root, p)
@@ -189,3 +197,78 @@ def format_report(report):
         for item in items:
             lines.append("  " + (" == ".join(item) if isinstance(item, list) else item))
     return "\n".join(lines) if lines else "clean"
+
+
+def apply_unknown_dirs(project, report):
+    """Move stray folders to ``_arsip/folder-X`` or ``_arsip/folder-P-X``. Returns (src, dst) pairs."""
+    root = _check_project(project)
+    entries = list(report.get("unknown_dirs", [])) + list(report.get("unknown_subdirs", []))
+    entries = [e for e in entries if os.path.lexists(root / e)]
+    if not entries:
+        return []
+    arsip = root / "_arsip"
+    if arsip.is_symlink():
+        raise ValueError(f"_arsip is a symlink: {arsip}")
+    arsip.mkdir(exist_ok=True)
+    moved = []
+    for rel in entries:
+        base = ARCHIVED_PREFIX + rel.replace("/", "-")
+        dst, n = arsip / base, 1
+        while os.path.lexists(dst):
+            n += 1
+            dst = arsip / f"{base}-{n}"
+        os.replace(root / rel, dst)
+        moved.append((rel, _rel(root, dst)))
+    return moved
+
+
+def empty_tmp(project, include_mcp=False):
+    """Delete the content of ``.tmp/``. Unmoved MCP renders stay unless ``include_mcp``.
+
+    Returns ``{"deleted": [...], "kept_mcp": [...], "home_of": {tmp_path: home_path}}``.
+    """
+    root = _check_project(project)
+    tmp = root / ".tmp"
+    result = {"deleted": [], "kept_mcp": [], "home_of": {}}
+    if not tmp.is_dir():
+        return result
+    report = scan(root)
+    keep = set()
+    if not include_mcp:
+        keep.update(report["unmoved_mcp"])
+        keep.update(u for u in report["unreadable"]
+                    if u.startswith(MCP_SUBDIRS) and Path(u).suffix.lower() in MEDIA_EXT)
+    for line in report["mcp_already_home"]:
+        tmp_path, home_path = line.split(" = ", 1)
+        result["home_of"][tmp_path] = home_path
+    root_real = os.path.realpath(root)
+    tmp_real = os.path.realpath(tmp)
+    if os.path.dirname(tmp_real) != root_real:
+        raise ValueError(f".tmp resolves outside the project: {tmp_real}")
+
+    def inside(path):
+        return os.path.commonpath([tmp_real, path]) == tmp_real and path != tmp_real
+
+    for dp, dn, fn in os.walk(tmp_real, topdown=False, followlinks=False):
+        for name in fn + [d for d in dn if os.path.islink(os.path.join(dp, d))]:
+            path = os.path.join(dp, name)
+            rel = Path(os.path.relpath(path, root_real)).as_posix()
+            if not inside(path):
+                continue
+            if rel in keep:
+                result["kept_mcp"].append(rel)
+                continue
+            os.unlink(path)
+            result["deleted"].append(rel)
+        for name in dn:
+            path = os.path.join(dp, name)
+            if os.path.islink(path) or not inside(path):
+                continue
+            try:
+                os.rmdir(path)
+            except OSError:
+                pass
+    result["deleted"].sort()
+    result["kept_mcp"].sort()
+    result["home_of"] = {k: v for k, v in result["home_of"].items() if k in set(result["deleted"])}
+    return result

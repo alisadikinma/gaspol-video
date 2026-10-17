@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import audiostudy, beats, colormatch, cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, track, unwhite
+from . import audiostudy, beats, colormatch, cover, ff, gates, ingest, join, karaoke, mixdown, loudness, patch, sheet, speech, synth, tidy, track, unwhite
 
 
 def _json(p):
@@ -53,6 +53,19 @@ def main(argv=None):
 
     s = sub.add_parser("mixdown", help="final mix from a plan json: voice + sfx cues + ducked music, -14 LUFS, subs, thumbnail")
     s.add_argument("plan")
+
+    s = sub.add_parser("tidy", help="report stray folders, duplicates, stale entries, old .tmp; "
+                                    "optionally move strays to _arsip/ and empty .tmp/ "
+                                    "(do not run while a render is writing to .tmp/)",
+                       description="With no flag this only reports and changes nothing. "
+                                   "Warning: do not run while a render is writing to .tmp/.")
+    s.add_argument("project")
+    s.add_argument("--tmp-days", type=int, default=7, help="a .tmp file older than N days counts as old (default 7)")
+    s.add_argument("--apply", action="store_true", help="move stray folders and subfolders into _arsip/folder-...")
+    s.add_argument("--empty-tmp", action="store_true",
+                   help="delete the content of .tmp/ (paid MCP renders with no home copy are kept)")
+    s.add_argument("--include-mcp", action="store_true",
+                   help="with --empty-tmp, also delete paid MCP renders that have no home copy")
 
     s = sub.add_parser("probe", help="print stream facts as JSON")
     s.add_argument("file")
@@ -141,6 +154,8 @@ def main(argv=None):
     s.add_argument("--rot", type=float, default=-1.2)
 
     a = ap.parse_args(argv)
+    if a.cmd == "tidy" and a.include_mcp and not a.empty_tmp:
+        ap.error("--include-mcp needs --empty-tmp")
     try:
         if a.cmd == "ingest":
             print(ingest.download(a.url, a.out_dir, a.name))
@@ -168,6 +183,23 @@ def main(argv=None):
         elif a.cmd == "mixdown":
             r = mixdown.run(_json(a.plan))
             print(f"ok {r['out']} (was {r['lufs_before']:.1f} LUFS, gain {r['gain_db']:+.1f} dB)")
+        elif a.cmd == "tidy":
+            if not (a.apply or a.empty_tmp):
+                print(tidy.format_report(tidy.scan(a.project, a.tmp_days)))
+            if a.apply:
+                moved = tidy.apply_unknown_dirs(a.project, tidy.scan(a.project, a.tmp_days))
+                for src, dst in moved:
+                    print(f"moved {src} -> {dst}")
+                if not moved:
+                    print("nothing to move")
+            if a.empty_tmp:
+                r = tidy.empty_tmp(a.project, a.include_mcp)
+                for path in r["deleted"]:
+                    home = r["home_of"].get(path)
+                    print(f"deleted {path} (copy of {home})" if home else f"deleted {path}")
+                for path in r["kept_mcp"]:
+                    print(f"paid render not moved yet, kept: {path}")
+                print(f"emptied .tmp: {len(r['deleted'])} deleted, {len(r['kept_mcp'])} kept")
         elif a.cmd == "probe":
             print(json.dumps(ff.probe(a.file), indent=1))
         elif a.cmd == "gate-av":

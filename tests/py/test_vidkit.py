@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import io
 import json
@@ -10,6 +11,7 @@ import unittest
 from pathlib import Path
 
 from tests.py.media import duration_of, make_clip, requires_ffmpeg
+from tools.vidkit import __main__ as vcli
 from tools.vidkit import beats, color, colormatch, cover, encoder, ff, gates, ingest, join, karaoke, mixdown, unwhite, loudness, patch, sheet, speech, synth, tidy, track
 
 
@@ -1573,3 +1575,324 @@ class TidyScanTest(unittest.TestCase):
         self.assertIn("ref/b.png", text)
         self.assertNotIn("clean", text)
         self.assertIn("1", text)
+
+
+def _sha(p):
+    return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+
+
+def _tree_hashes(base):
+    out = {}
+    for dp, dn, fn in os.walk(base):
+        for n in fn:
+            p = os.path.join(dp, n)
+            out[os.path.relpath(p, base)] = _sha(p)
+    return out
+
+
+class TidyApplyTest(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.addCleanup(self._td.cleanup)
+        self.root = Path(self._td.name) / "proj"
+        self.root.mkdir()
+
+    def w(self, rel, data=b"x"):
+        p = self.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data if isinstance(data, bytes) else data.encode())
+        return p
+
+    def apply(self):
+        return tidy.apply_unknown_dirs(self.root, tidy.scan(self.root))
+
+    def test_unknown_dir_moves_to_arsip(self):
+        self.w("_up/a.png", b"AAA")
+        moved = self.apply()
+        self.assertEqual(moved, [("_up", "_arsip/folder-_up")])
+        self.assertFalse((self.root / "_up").exists())
+        self.assertEqual((self.root / "_arsip/folder-_up/a.png").read_bytes(), b"AAA")
+
+    def test_subdir_moves_with_parent_in_name_and_keeps_bytes(self):
+        self.w("keyframes/_up/a.png", b"AAA")
+        moved = self.apply()
+        self.assertEqual(moved, [("keyframes/_up", "_arsip/folder-keyframes-_up")])
+        self.assertEqual((self.root / "_arsip/folder-keyframes-_up/a.png").read_bytes(), b"AAA")
+
+    def test_same_subdir_name_in_two_parents_gets_two_destinations(self):
+        self.w("keyframes/_up/a.png", b"1")
+        self.w("clips/_up/b.mp4", b"2")
+        moved = dict(self.apply())
+        self.assertEqual(moved["keyframes/_up"], "_arsip/folder-keyframes-_up")
+        self.assertEqual(moved["clips/_up"], "_arsip/folder-clips-_up")
+
+    def test_existing_destination_gets_suffix_and_is_not_overwritten(self):
+        self.w("_arsip/folder-_up/old.png", b"OLD")
+        self.w("_up/new.png", b"NEW")
+        moved = self.apply()
+        self.assertEqual(moved, [("_up", "_arsip/folder-_up-2")])
+        self.assertEqual((self.root / "_arsip/folder-_up/old.png").read_bytes(), b"OLD")
+        self.assertEqual((self.root / "_arsip/folder-_up-2/new.png").read_bytes(), b"NEW")
+        self.w("_up/third.png", b"3")
+        self.assertEqual(self.apply(), [("_up", "_arsip/folder-_up-3")])
+
+    def test_nothing_to_move_returns_empty(self):
+        self.assertEqual(self.apply(), [])
+        self.assertFalse((self.root / "_arsip").exists())
+
+    def test_apply_is_idempotent_and_does_not_reflag_archived_folders(self):
+        self.w("_up/a.png", b"A")
+        self.apply()
+        self.assertEqual(tidy.scan(self.root)["unknown_subdirs"], [])
+        self.assertEqual(self.apply(), [])
+
+    def test_symlinked_subdir_moved_as_link_target_untouched(self):
+        with tempfile.TemporaryDirectory() as other:
+            Path(other, "keep.png").write_bytes(b"KEEP")
+            (self.root / "keyframes").mkdir()
+            os.symlink(other, self.root / "keyframes" / "_gen")
+            moved = self.apply()
+            dst = self.root / "_arsip/folder-keyframes-_gen"
+            self.assertEqual(moved, [("keyframes/_gen", "_arsip/folder-keyframes-_gen")])
+            self.assertTrue(dst.is_symlink())
+            self.assertFalse(os.path.lexists(self.root / "keyframes/_gen"))
+            self.assertEqual(Path(other, "keep.png").read_bytes(), b"KEEP")
+
+    def test_arsip_content_untouched_by_apply(self):
+        self.w("_arsip/keyframe-scene-01-v1-x.png", b"PAID")
+        self.w("_up/a.png")
+        before = _tree_hashes(self.root / "_arsip")
+        self.apply()
+        after = _tree_hashes(self.root / "_arsip")
+        self.assertEqual(before["keyframe-scene-01-v1-x.png"], after["keyframe-scene-01-v1-x.png"])
+
+    # --- empty_tmp ---
+    def test_empty_tmp_deletes_file_nested_dir_and_keeps_tmp(self):
+        self.w(".tmp/a.txt")
+        self.w(".tmp/deep/er/b.txt")
+        r = tidy.empty_tmp(self.root)
+        self.assertEqual(sorted(r["deleted"]), [".tmp/a.txt", ".tmp/deep/er/b.txt"])
+        self.assertEqual(r["kept_mcp"], [])
+        self.assertTrue((self.root / ".tmp").is_dir())
+        self.assertEqual(list((self.root / ".tmp").iterdir()), [])
+
+    def test_empty_tmp_missing_tmp_is_empty_result(self):
+        self.assertEqual(tidy.empty_tmp(self.root)["deleted"], [])
+        self.assertFalse((self.root / ".tmp").exists())
+
+    def test_empty_tmp_not_a_directory_raises(self):
+        with self.assertRaises(ValueError):
+            tidy.empty_tmp(self.root / "nope")
+
+    def test_empty_tmp_symlinked_tmp_raises_and_target_survives(self):
+        with tempfile.TemporaryDirectory() as other:
+            Path(other, "a.png").write_bytes(b"AAA")
+            Path(other, "sub").mkdir()
+            Path(other, "sub", "b.png").write_bytes(b"BBB")
+            before = _tree_hashes(other)
+            os.symlink(other, self.root / ".tmp")
+            with self.assertRaises(ValueError):
+                tidy.empty_tmp(self.root)
+            with self.assertRaises(ValueError):
+                tidy.empty_tmp(self.root, include_mcp=True)
+            self.assertEqual(before, _tree_hashes(other))
+
+    def test_empty_tmp_symlink_inside_unlinked_target_survives(self):
+        with tempfile.TemporaryDirectory() as other:
+            Path(other, "f.png").write_bytes(b"F")
+            Path(other, "d").mkdir()
+            Path(other, "d", "g.png").write_bytes(b"G")
+            before = _tree_hashes(other)
+            (self.root / ".tmp").mkdir()
+            os.symlink(Path(other, "f.png"), self.root / ".tmp" / "link-file")
+            os.symlink(Path(other, "d"), self.root / ".tmp" / "link-dir")
+            r = tidy.empty_tmp(self.root)
+            self.assertEqual(sorted(r["deleted"]), [".tmp/link-dir", ".tmp/link-file"])
+            self.assertEqual(list((self.root / ".tmp").iterdir()), [])
+            self.assertEqual(before, _tree_hashes(other))
+
+    def test_unmoved_mcp_kept_by_default_and_deleted_with_include(self):
+        self.w(".tmp/image/a.png", b"PAID")
+        self.w(".tmp/image/notes.txt", b"n")
+        r = tidy.empty_tmp(self.root)
+        self.assertEqual(r["kept_mcp"], [".tmp/image/a.png"])
+        self.assertEqual(r["deleted"], [".tmp/image/notes.txt"])
+        self.assertTrue((self.root / ".tmp/image/a.png").exists())
+        r2 = tidy.empty_tmp(self.root, include_mcp=True)
+        self.assertEqual(r2["deleted"], [".tmp/image/a.png"])
+        self.assertEqual(r2["kept_mcp"], [])
+        self.assertEqual(list((self.root / ".tmp").iterdir()), [])
+
+    def test_already_home_copy_deleted_home_untouched(self):
+        self.w("keyframes/scene-01.png", b"PAID")
+        self.w(".tmp/image/scene-01.png", b"PAID")
+        r = tidy.empty_tmp(self.root)
+        self.assertEqual(r["deleted"], [".tmp/image/scene-01.png"])
+        self.assertEqual(r["home_of"], {".tmp/image/scene-01.png": "keyframes/scene-01.png"})
+        self.assertEqual((self.root / "keyframes/scene-01.png").read_bytes(), b"PAID")
+
+    def test_arsip_and_shots_out_untouched(self):
+        self.w("_arsip/keyframe-scene-01-v1-x.png", b"PAID1")
+        self.w("_arsip/folder-_up/z.png", b"PAID2")
+        self.w("shots/out/s.mp4", b"RENDER")
+        self.w(".tmp/junk.txt")
+        before_a = _tree_hashes(self.root / "_arsip")
+        before_s = _tree_hashes(self.root / "shots/out")
+        tidy.empty_tmp(self.root, include_mcp=True)
+        self.assertEqual(before_a, _tree_hashes(self.root / "_arsip"))
+        self.assertEqual(before_s, _tree_hashes(self.root / "shots/out"))
+
+    def test_second_empty_tmp_is_noop(self):
+        self.w(".tmp/a.txt")
+        self.w(".tmp/image/keep.png", b"PAID")
+        tidy.empty_tmp(self.root)
+        r = tidy.empty_tmp(self.root)
+        self.assertEqual(r["deleted"], [])
+        self.assertEqual(r["kept_mcp"], [".tmp/image/keep.png"])
+
+    def test_apply_then_empty_tmp_sees_final_layout(self):
+        self.w("keyframes/_up/scene-01.png", b"PAID")
+        self.w(".tmp/image/scene-01.png", b"PAID")
+        self.apply()
+        r = tidy.empty_tmp(self.root)
+        self.assertEqual(r["deleted"], [".tmp/image/scene-01.png"])
+        self.assertTrue((self.root / "_arsip/folder-keyframes-_up/scene-01.png").exists())
+
+    def test_scan_prefers_clean_home_over_stray_or_arsip(self):
+        self.w("_arsip/old.png", b"PAID")
+        self.w("keyframes/_up/x.png", b"PAID")
+        self.w("keyframes/scene-02.png", b"PAID")
+        self.w(".tmp/image/x.png", b"PAID")
+        r = tidy.scan(self.root)
+        self.assertEqual(r["mcp_already_home"], [".tmp/image/x.png = keyframes/scene-02.png"])
+
+    def test_scan_falls_back_to_first_match_when_all_homes_are_stray(self):
+        self.w("keyframes/_up/x.png", b"PAID")
+        self.w("_arsip/old.png", b"PAID")
+        self.w(".tmp/image/x.png", b"PAID")
+        r = tidy.scan(self.root)
+        self.assertEqual(r["mcp_already_home"], [".tmp/image/x.png = _arsip/old.png"])
+        self.assertEqual(r["unmoved_mcp"], [])
+
+
+class TidyCliTest(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.addCleanup(self._td.cleanup)
+        self.root = Path(self._td.name) / "proj"
+        self.root.mkdir()
+
+    def w(self, rel, data=b"x"):
+        p = self.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+        return p
+
+    def run_cli(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = vcli.main(["tidy", str(self.root), *argv])
+            except SystemExit as exc:
+                code = exc.code
+        return code, out.getvalue(), err.getvalue()
+
+    def snapshot(self):
+        return sorted(os.path.relpath(os.path.join(dp, n), self.root)
+                      for dp, dn, fn in os.walk(self.root) for n in dn + fn)
+
+    def test_dry_run_changes_nothing_and_reports(self):
+        self.w("_up/a.png")
+        self.w("keyframes/_gen/b.png")
+        self.w(".tmp/image/c.png", b"PAID")
+        before = self.snapshot()
+        code, out, _ = self.run_cli()
+        self.assertEqual(code, 0)
+        self.assertIn("_up", out)
+        self.assertIn("keyframes/_gen", out)
+        self.assertEqual(before, self.snapshot())
+
+    def test_clean_project_prints_clean(self):
+        code, out, _ = self.run_cli()
+        self.assertEqual((code, out.strip()), (0, "clean"))
+
+    def test_apply_prints_each_move(self):
+        self.w("_up/a.png")
+        code, out, _ = self.run_cli("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("moved _up -> _arsip/folder-_up", out)
+        self.assertTrue((self.root / "_arsip/folder-_up/a.png").exists())
+
+    def test_apply_nothing_to_move(self):
+        code, out, _ = self.run_cli("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("nothing to move", out)
+
+    def test_empty_tmp_prints_count_copy_and_kept(self):
+        self.w("keyframes/scene-01.png", b"PAID")
+        self.w(".tmp/image/scene-01.png", b"PAID")
+        self.w(".tmp/image/new.png", b"UNIQUE")
+        code, out, _ = self.run_cli("--empty-tmp")
+        self.assertEqual(code, 0)
+        self.assertIn("deleted .tmp/image/scene-01.png (copy of keyframes/scene-01.png)", out)
+        self.assertIn("paid render not moved yet, kept", out)
+        self.assertIn(".tmp/image/new.png", out)
+        self.assertIn("1 deleted", out)
+        self.assertTrue((self.root / ".tmp/image/new.png").exists())
+        self.assertFalse((self.root / ".tmp/image/scene-01.png").exists())
+
+    def test_empty_tmp_include_mcp_deletes_unmoved(self):
+        self.w(".tmp/image/new.png", b"UNIQUE")
+        code, out, _ = self.run_cli("--empty-tmp", "--include-mcp")
+        self.assertEqual(code, 0)
+        self.assertFalse((self.root / ".tmp/image/new.png").exists())
+
+    def test_include_mcp_without_empty_tmp_is_usage_error(self):
+        self.w(".tmp/image/new.png", b"UNIQUE")
+        code, _, err = self.run_cli("--include-mcp")
+        self.assertEqual(code, 2)
+        self.assertIn("--include-mcp", err)
+        self.assertTrue((self.root / ".tmp/image/new.png").exists())
+
+    def test_apply_and_empty_tmp_together_in_order(self):
+        self.w("keyframes/_up/scene-01.png", b"PAID")
+        self.w(".tmp/image/scene-01.png", b"PAID")
+        code, out, _ = self.run_cli("--apply", "--empty-tmp")
+        self.assertEqual(code, 0)
+        self.assertLess(out.index("moved keyframes/_up"), out.index("deleted .tmp/image/scene-01.png"))
+        self.assertIn("(copy of _arsip/folder-keyframes-_up/scene-01.png)", out)
+
+    def test_not_a_directory_fails_with_exit_1(self):
+        import shutil
+        shutil.rmtree(self.root)
+        code, _, err = self.run_cli()
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL: not a directory", err)
+
+    def test_symlinked_tmp_fails_with_exit_1_target_survives(self):
+        with tempfile.TemporaryDirectory() as other:
+            Path(other, "a.png").write_bytes(b"A")
+            os.symlink(other, self.root / ".tmp")
+            code, _, err = self.run_cli("--empty-tmp")
+            self.assertEqual(code, 1)
+            self.assertIn("FAIL: .tmp is a symlink", err)
+            self.assertEqual(Path(other, "a.png").read_bytes(), b"A")
+
+    def test_tmp_days_flag_controls_old_tmp(self):
+        p = self.w(".tmp/old.txt")
+        old = time.time() - 3 * 86400
+        os.utime(p, (old, old))
+        _, out, _ = self.run_cli("--tmp-days", "1")
+        self.assertIn(".tmp/old.txt", out)
+        _, out2, _ = self.run_cli("--tmp-days", "10")
+        self.assertNotIn(".tmp/old.txt", out2)
+
+    def test_help_lists_flags_and_warning(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit):
+                vcli.main(["tidy", "--help"])
+        text = " ".join(out.getvalue().split())
+        for flag in ("--tmp-days", "--apply", "--empty-tmp", "--include-mcp"):
+            self.assertIn(flag, text)
+        self.assertIn("do not run while a render is writing to .tmp/", text)
