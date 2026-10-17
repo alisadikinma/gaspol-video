@@ -43,6 +43,7 @@ Run from the plugin root: `python3 -m tools.vidkit --help`. Import: `from tools.
 |---|---|---|
 | `env.mjs` | `parseEnv`, `loadEnv`, `requireKeys` (names missing keys, never values) | the `parse()` pasted at the top of every project script, with a hard-coded .env path |
 | `eleven.mjs` | `tts` (settings + seed), `sttWords` (Scribe word timings), `sfx`; CLI `tts|stt|sfx` | `tts-satu`, `tes-suara`, `stt`, `sfx/gen` |
+| `ff.mjs` | `probeDuration` (seconds, or `null` when the binary is missing or the file unreadable); the only Node file that calls the probe binary | the `probeDuration` copies in `gen_vo.mjs` and `voice_changer.mjs` |
 | `cast_voice.mjs` | voice change with per-character settings and seed, spans only; plan json | `voice-changer/run.mjs` (which also imported the plugin by a versioned cache path) |
 
 `templates/remotion/scripts/frames.mjs` and `qa-end.mjs` (multi-frame / end-state QA) now ship with every scaffold.

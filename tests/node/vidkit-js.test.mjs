@@ -1,11 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseEnv, loadEnv, requireKeys } from "../../tools/vidkit/js/env.mjs";
 import { tts, sfx, sttWords, assertSpeakable } from "../../tools/vidkit/js/eleven.mjs";
 import { planFetch, run } from "../../tools/vidkit/js/cast_voice.mjs";
+import { probeDuration } from "../../tools/vidkit/js/ff.mjs";
 
 const okBytes = (b = "AUDIO") => async () => ({ ok: true, arrayBuffer: async () => Buffer.from(b), json: async () => ({}) });
 
@@ -80,4 +82,29 @@ test("run converts only the wanted scenes with each cast member's voice env", as
   assert.equal(calls[0].voiceEnv, "VB");
   assert.equal(calls[0].inputPath, "clips/S2.mp4");
   await assert.rejects(run({ cast: {}, scenes: { S9: { cast: "zz", spans: "0-1" } } }, { env: {}, convert: async () => ({}) }), /unknown cast/);
+});
+
+const hasFfmpeg = spawnSync("ffmpeg", ["-version"]).status === 0 && spawnSync("ffprobe", ["-version"]).status === 0;
+
+test("probeDuration measures a real clip", { skip: !hasFfmpeg }, async () => {
+  const f = path.join(mkdtempSync(path.join(tmpdir(), "vk-")), "a.wav");
+  execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1", f]);
+  const d = await probeDuration(f);
+  assert.ok(Math.abs(d - 1) < 0.1, `got ${d}`);
+});
+
+test("probeDuration gives null for a non-media file", async () => {
+  const f = path.join(mkdtempSync(path.join(tmpdir(), "vk-")), "note.txt");
+  writeFileSync(f, "not media");
+  assert.equal(await probeDuration(f), null);
+});
+
+test("probeDuration gives null when the binary is not on PATH", async () => {
+  const saved = process.env.PATH;
+  process.env.PATH = mkdtempSync(path.join(tmpdir(), "vk-"));
+  try {
+    assert.equal(await probeDuration("whatever.wav"), null);
+  } finally {
+    process.env.PATH = saved;
+  }
 });

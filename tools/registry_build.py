@@ -37,7 +37,7 @@ EXCLUDED = {"tools/_venv.py", "tools/vidkit/__main__.py"}
 DOC_REL = "docs/tool-routing.md"
 BEGIN_MARK = "<!-- registry:routes:begin -->"
 END_MARK = "<!-- registry:routes:end -->"
-FF_EXEMPT = "tools/vidkit/ff.py"
+FF_OWNERS = ("tools/vidkit/ff.py", "tools/vidkit/js/ff.mjs")
 FFPROBE_RE = re.compile(r"\bffprobe\b")
 WORD_RE = re.compile(r"[a-z0-9]+")
 TOKEN_RE = re.compile(r"[a-z0-9-]+")
@@ -217,14 +217,14 @@ def _scan_ffprobe(reg, root, problems):
     for pattern in SCAN_GLOBS:
         for p in sorted(root.glob(pattern)):
             rel = p.relative_to(root).as_posix()
-            if rel == FF_EXEMPT or not p.is_file():
+            if rel in FF_OWNERS or not p.is_file():
                 continue
             try:
                 hit = FFPROBE_RE.search(p.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError):
                 continue
             if hit and rel not in listed:
-                problems.append(f"{rel}: ffprobe outside vidkit/ff.py and not in ffprobe_allow")
+                problems.append(f"{rel}: ffprobe outside vidkit/ff.py or vidkit/js/ff.mjs and not in ffprobe_allow")
 
 
 def validate(reg, root, coverage=False) -> list:

@@ -641,6 +641,18 @@
       "internal_reason": "Imported by eleven.mjs and cast_voice.mjs; no CLI of its own."
     },
     {
+      "id": "tools/vidkit/js/ff.mjs",
+      "purpose": "Measure a media file's duration for the Node tools through the one allowed probe call.",
+      "tasks": [
+        "duration-probe",
+        "media-duration"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "",
+      "internal_reason": "Imported by gen_vo.mjs and voice_changer.mjs; no CLI of its own."
+    },
+    {
       "id": "tools/vidkit/karaoke.py",
       "purpose": "Build karaoke ASS subtitles from a word list plus an optional centre watermark line.",
       "tasks": [
@@ -1268,10 +1280,6 @@
       "reason": "format=duration probe with its own missing-binary fallback; migrate under follow-up"
     },
     {
-      "id": "tools/gen_vo.mjs",
-      "reason": "Node tool; format=duration probe via execFile that returns null when ffprobe is absent; vidkit.ff is Python-only"
-    },
-    {
       "id": "tools/make_stems.py",
       "reason": "format=duration probe raising StemError when ffprobe is absent; migrate under follow-up"
     },
@@ -1310,10 +1318,6 @@
     {
       "id": "tools/vidkit/color.py",
       "reason": "needs color_space/primaries/transfer/range fields ff.probe does not return"
-    },
-    {
-      "id": "tools/voice_changer.mjs",
-      "reason": "Node tool; format=duration probe via execFile that returns null on failure; vidkit.ff is Python-only"
     }
   ]
 }

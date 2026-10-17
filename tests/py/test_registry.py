@@ -555,7 +555,8 @@ class FfprobeScanTest(FakeRoot):
         (self.root / "tools/new_probe.py").write_text("# uses ffprobe\n")
         probs = self.scan(self.probe_reg())
         self.assertEqual(
-            probs, ["tools/new_probe.py: ffprobe outside vidkit/ff.py and not in ffprobe_allow"]
+            probs, ["tools/new_probe.py: ffprobe outside vidkit/ff.py or vidkit/js/ff.mjs "
+            "and not in ffprobe_allow"]
         )
 
     def test_allowed_ffprobe_passes(self):
@@ -568,11 +569,17 @@ class FfprobeScanTest(FakeRoot):
         probs = self.scan(self.probe_reg())
         self.assertEqual(probs, [])
 
+    def test_ff_mjs_is_exempt(self):
+        (self.root / "tools/vidkit/js").mkdir(parents=True, exist_ok=True)
+        (self.root / "tools/vidkit/js/ff.mjs").write_text("execFile('ffprobe')\n")
+        self.assertEqual(self.scan(self.probe_reg()), [])
+
     def test_init_file_is_scanned(self):
         (self.root / "tools/vidkit/__init__.py").write_text("# ffprobe\n")
         probs = self.scan(self.probe_reg())
         self.assertIn(
-            "tools/vidkit/__init__.py: ffprobe outside vidkit/ff.py and not in ffprobe_allow",
+            "tools/vidkit/__init__.py: ffprobe outside vidkit/ff.py or vidkit/js/ff.mjs "
+            "and not in ffprobe_allow",
             probs,
         )
 
