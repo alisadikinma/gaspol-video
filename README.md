@@ -236,7 +236,7 @@ Run any phase independently:
 | Voice | ElevenLabs `eleven_multilingual_v2` (TTS) and `eleven_multilingual_sts_v2` (voice changing) |
 | Caption Timing | AssemblyAI. Caption TEXT always comes from the script, never from the recognizer |
 | Assembly and Mix | ffmpeg — concat, sidechain duck, loudnorm, burned subtitles |
-| Screen-Attached Overlays | `tools/track_screen.py` (four-corner tracking) + CSS `matrix3d` homography in `QuadScreenTracked` |
+| Screen-Attached Overlays | `vidkit screen-insert` (`--mode green` / `--mode track`); `tools/track_screen.py` reads `--corners` |
 
 ## Storytelling Philosophy
 

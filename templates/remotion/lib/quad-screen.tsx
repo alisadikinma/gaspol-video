@@ -1,3 +1,6 @@
+// LEGACY (v3.21.1, GV-25): no skill uses this. Screen panels are placed with
+// `python3 -m tools.vidkit screen-insert` (tools/vidkit/screen.py). Kept for projects scaffolded before v3.21.0.
+//
 // Attach an overlay panel to a screen that is NOT facing the camera square-on (v3.4.0).
 //
 // A monitor or phone seen off-axis is a TRAPEZOID, not a rotated rectangle. Measured on one
