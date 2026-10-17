@@ -934,6 +934,19 @@
       "replaces": [],
       "distinct_because": "",
       "internal_reason": ""
+    },
+    {
+      "id": "tools/vidkit/embroider.py",
+      "purpose": "Embroider a logo onto clothing: satin thread texture, cloth-following warp, shirt-only mask.",
+      "tasks": [
+        "embroidery",
+        "logo-on-clothing",
+        "thread-texture"
+      ],
+      "phase": "shared",
+      "replaces": [],
+      "distinct_because": "bond prints flat ink by multiply; embroider renders raised satin thread with relief and follows the cloth per point",
+      "internal_reason": ""
     }
   ],
   "routes": [
@@ -1432,6 +1445,13 @@
       "use": "`python3 -m tools.vidkit title <img> \"<text>\" <out>`",
       "tools": [
         "tools/vidkit/title.py"
+      ]
+    },
+    {
+      "task": "Embroider a logo/text onto clothing (raised thread, follows folds)",
+      "use": "`tools.vidkit.embroider.thread_maps(rgba)` (full CLI in a later phase)",
+      "tools": [
+        "tools/vidkit/embroider.py"
       ]
     }
   ],
