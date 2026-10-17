@@ -77,15 +77,19 @@ def play_res(ass_text):
     return (int(x.group(1)), int(y.group(1))) if x and y else None
 
 
-def _render_box(ass_lines, t, size, tmp):
-    """Render the given ASS lines alone on black at time t; return the text box or None."""
+def _render_box(ass_lines, t, size, tmp, background="0x808080"):
+    """Render the given ASS lines alone on `background` at time t; return the text box or None.
+
+    Mid-grey by default so a black outline and shadow differ from the canvas and count in
+    the box. A near-transparent white line (the watermark) needs "black": on grey its
+    contrast is below the detection threshold."""
     w, h = size
     ass_path = os.path.join(tmp, "only.ass")
     Path(ass_path).write_text("\n".join(ass_lines) + "\n", encoding="utf-8")
     png = os.path.join(tmp, "frame.png")
-    ff.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color=black:s={w}x{h}:r=25:d={t + 2:.3f}",
+    ff.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color={background}:s={w}x{h}:r=25:d={t + 2:.3f}",
             "-vf", f"ass=filename={_filter_path(ass_path)}", "-ss", f"{t:.3f}", "-frames:v", "1", png])
-    return layout.text_box(png)
+    return layout.text_box(png, background=0 if background == "black" else 0x80)
 
 
 def _filter_path(path):
@@ -131,7 +135,7 @@ def watermark_box(ass_path, size=None):
     s, e, _ = marks[0]
     lines = _only(ass_text, want_watermark=True)
     with tempfile.TemporaryDirectory() as tmp:
-        return _render_box(lines, round((s + e) / 2, 3), _size_for(ass_text, size), tmp)
+        return _render_box(lines, round((s + e) / 2, 3), _size_for(ass_text, size), tmp, background="black")
 
 
 def title_box(thumb_path):

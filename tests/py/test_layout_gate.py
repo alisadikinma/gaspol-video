@@ -61,6 +61,21 @@ class TextBoxesFromAss(unittest.TestCase):
         self.assertGreater(boxes[0]["box"][1], 1050)
 
 
+class OutlineInBox(unittest.TestCase):
+    def test_box_on_grey_includes_the_black_outline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ass = Path(write_ass(tmp))
+            size = layout_gate.play_res(ass.read_text())
+            lines = layout_gate._only(ass.read_text(), False)
+            on_black = layout_gate._render_box(lines, 0.8, size, tmp, background="black")
+            on_grey = layout_gate.text_boxes_from_ass(str(ass), [0.8])[0]["box"]
+        outline = 6  # Outline 7; the faintest anti-aliased edge px falls under the threshold
+        self.assertLessEqual(on_grey[0], on_black[0] - outline)
+        self.assertLessEqual(on_grey[1], on_black[1] - outline)
+        self.assertGreaterEqual(on_grey[2], on_black[2] + outline)
+        self.assertGreaterEqual(on_grey[3], on_black[3] + outline)
+
+
 class WatermarkBox(unittest.TestCase):
     def test_measured_at_the_centre(self):
         with tempfile.TemporaryDirectory() as tmp:

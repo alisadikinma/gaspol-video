@@ -2323,6 +2323,19 @@ class TextBoxTest(unittest.TestCase):
         _png(p, "64x64")
         self.assertIsNone(layout.text_box(p))
 
+    def test_grey_background_finds_dark_and_light_marks(self):
+        p = Path(self.d.name) / "g.png"
+        ff.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=0x808080:s=100x60",
+                "-vf", "drawbox=x=10:y=10:w=5:h=5:color=black:t=fill,"
+                       "drawbox=x=60:y=40:w=5:h=5:color=white:t=fill", "-frames:v", "1", str(p)])
+        self.assertEqual(layout.text_box(p, background=0x80), [10, 10, 65, 45])
+        self.assertEqual(layout.text_box(p), [0, 0, 100, 60])
+
+    def test_flat_grey_is_none_on_grey_background(self):
+        p = Path(self.d.name) / "h.png"
+        _png(p, "64x64", color="0x808080")
+        self.assertIsNone(layout.text_box(p, background=0x80))
+
     def test_near_black_below_threshold_is_none(self):
         p = Path(self.d.name) / "c.png"
         _png(p, "64x64", color="0x101010")
