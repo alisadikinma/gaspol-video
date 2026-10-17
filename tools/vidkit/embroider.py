@@ -28,7 +28,22 @@ SPECULAR_MAX = 0.12        # peak specular added on ridges
 SPECULAR_POWER = 16        # lambert ** SPECULAR_POWER, weighted by height
 CAVITY_MAX = 0.15          # darkening in valleys: 1 - CAVITY_MAX * (1 - height)
 EDGE_AO_MAX = 0.30         # darkening at the thread boundary, fading over EDGE_AO_SIGMA
-EDGE_AO_SIGMA = 2.0        # px, blur of the alpha edge
+EDGE_AO_SIGMA = 1.0        # px, blur of the alpha edge
+
+MIN_STROKE_HALF_PX = 1.0   # thin strokes (25th percentile of the centre-line half-width, output px) are grown to this
+SUPERSAMPLE = 3            # relief is computed at this multiple of the placed size, then area-averaged down
+STITCH_OUT_PX = 3.0        # satin ridge spacing along a stroke, in output pixels
+SATIN_SHEEN = 0.55         # directional sheen of the satin columns (peak, added to luminance)
+RAISE_SHADOW_MAX = 0.28    # darkening of the cloth right next to the thread, on the side away from the light
+RAISE_SHADOW_OFFSET_PX = 1.5   # shadow is displaced this far away from the light
+RAISE_SHADOW_SIGMA = 1.1   # px, softness of the raised shadow
+RAISE_SHADOW_REACH = 6     # px; the cloth farther than this from the design is never touched
+GROW_SMOOTH_PX = 1.5       # px, how far the width measure is averaged along a stroke so its outline stays smooth
+RELIEF_STRENGTH = 3.0      # NORMAL_STRENGTH of the supersampled relief, per output pixel
+RELIEF_RIDGE_DEPTH = 0.45  # RIDGE_DEPTH of the supersampled relief: satin ridges stand out more than in thread_maps
+RELIEF_MAX = 1.6          # clamp of the diffuse relief factor
+EDGE_FUZZ = 0.25           # +- alpha jitter on the one-pixel boundary band, so the outline is not razor clean
+_FUZZ_SEED = 241
 
 MIN_SHIRT_RATIO = 1.5      # shirt area at frame 0 must be at least this times the design's opaque area
 GRID_COARSE = 7            # tracking grid over the design box
@@ -46,19 +61,28 @@ def _deps():
 
 
 def _local_half_width(dist, cv2, np):
-    """Half-width of the stroke each pixel belongs to: the largest distance value within its own
-    radius (the widest inscribed circle covering it). Radii are bucketed so a big logo stays fast."""
+    """Half-width of the stroke each pixel belongs to: the radius of the widest inscribed circle
+    that covers it.
+
+    Every pixel with distance value ``d`` stands for a circle of radius ``d``; that value is
+    spread over the disc and the maximum is kept. Radii are bucketed (each bucket 15 % wider than
+    the last, the disc takes the bucket's upper radius) so a big logo stays fast. Pixels outside
+    the shape (distance 0) stay 0.
+    """
     out = dist.copy()
     top = float(dist.max())
-    radius, previous = 1, 0.0
-    while previous < top:
-        sel = (dist > previous) & (dist <= radius)
+    low = 0.0
+    high = 1.0
+    while low < top:
+        sel = (dist > low) & (dist <= high)
         if sel.any():
+            radius = int(math.ceil(high))
             k = 2 * radius + 1
-            grown = cv2.dilate(dist, np.ones((k, k), np.uint8))
-            out[sel] = grown[sel]
-        previous = radius
-        radius = max(radius + 1, int(math.ceil(radius * 1.25)))
+            grown = cv2.dilate(np.where(sel, dist, 0.0).astype(np.float32),
+                               cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+            out = np.where(dist > 0, np.maximum(out, grown), out)
+        low = high
+        high = max(high + 1.0, high * 1.15)
     return out
 
 
@@ -78,25 +102,13 @@ def _stitch_angles(dist, mask, labels, count, np, cv2):
     return 0.5 * np.arctan2(sxy, sxx)
 
 
-def thread_maps(rgba, stitch_px=3.0, angle_deg=None):
-    """Return ``(height, normal, albedo)`` for a satin-stitched version of ``rgba``.
+def _thread_core(rgba, stitch_px, angle_deg, strength=None, ridge_depth=None):
+    """The work of ``thread_maps``, plus the stitch angle per pixel: ``(height, normal, albedo, theta)``.
 
-    ``rgba`` is a uint8 ``[h, w, 4]`` image in OpenCV channel order (BGRA, as
-    ``cv2.imread(..., cv2.IMREAD_UNCHANGED)`` returns it). A logo wider than 2000 px is
-    downscaled to 2000 px wide first, so the returned maps have that smaller size.
-
-    * ``height`` float32 ``[h, w]`` in 0..1: 0 where alpha is 0, a dome across every stroke
-      (normalised by the local stroke width, so a thin stroke rises as high as a thick one) times
-      satin ridges that repeat every ``stitch_px`` pixels along the stroke.
-    * ``normal`` float32 ``[h, w, 3]`` unit vectors with z > 0, from the Sobel slope of ``height``
-      scaled by ``NORMAL_STRENGTH``.
-    * ``albedo`` float32 ``[h, w, 3]`` in 0..1, the logo colour (same BGR order as the input) with
-      a seeded brightness change of up to +-6 % per ridge.
-
-    ``angle_deg`` is the stitch direction in degrees (0 = along +x, 90 = along +y), so ridges
-    repeat across it. With ``None`` each connected shape gets the direction in which its distance
-    field rises (across its strokes), one angle per shape so the ridge phase stays continuous.
-    """
+    ``theta`` (radians) is the direction the stitches run in: across the stroke. ``strength`` and
+    ``ridge_depth`` default to ``NORMAL_STRENGTH`` and ``RIDGE_DEPTH``."""
+    strength = NORMAL_STRENGTH if strength is None else strength
+    ridge_depth = RIDGE_DEPTH if ridge_depth is None else ridge_depth
     cv2, np = _deps()
     rgba = np.asarray(rgba)
     if rgba.ndim != 3 or rgba.shape[2] != 4 or rgba.dtype != np.uint8:
@@ -127,19 +139,247 @@ def thread_maps(rgba, stitch_px=3.0, angle_deg=None):
         theta = np.float32(math.radians(angle_deg))
     u = -xs * np.sin(theta) + ys * np.cos(theta)
     ridge = 0.5 + 0.5 * np.cos(2.0 * np.pi * u / stitch_px)
-    height = (dome * ((1.0 - RIDGE_DEPTH) + RIDGE_DEPTH * ridge) * alpha).astype(np.float32)
+    height = (dome * ((1.0 - ridge_depth) + ridge_depth * ridge) * alpha).astype(np.float32)
     height[~mask] = 0.0
 
     sx = cv2.Sobel(height, cv2.CV_32F, 1, 0, ksize=3) / 8.0
     sy = cv2.Sobel(height, cv2.CV_32F, 0, 1, ksize=3) / 8.0
-    normal = np.dstack([-NORMAL_STRENGTH * sx, -NORMAL_STRENGTH * sy, np.ones_like(height)])
+    normal = np.dstack([-strength * sx, -strength * sy, np.ones_like(height)])
     normal = (normal / np.linalg.norm(normal, axis=2, keepdims=True)).astype(np.float32)
 
     jitter = np.random.default_rng(_JITTER_SEED).uniform(-1.0, 1.0, _JITTER_TABLE)
     index = np.floor(u / stitch_px).astype(np.int64) % _JITTER_TABLE
     gain = (1.0 + ALBEDO_JITTER * jitter[index]).astype(np.float32)
     albedo = np.clip(rgba[..., :3].astype(np.float32) / 255.0 * gain[..., None], 0.0, 1.0)
-    return height, normal, albedo.astype(np.float32)
+    return height, normal, albedo.astype(np.float32), np.broadcast_to(theta, height.shape).astype(np.float32)
+
+
+def thread_maps(rgba, stitch_px=3.0, angle_deg=None):
+    """Return ``(height, normal, albedo)`` for a satin-stitched version of ``rgba``.
+
+    ``rgba`` is a uint8 ``[h, w, 4]`` image in OpenCV channel order (BGRA, as
+    ``cv2.imread(..., cv2.IMREAD_UNCHANGED)`` returns it). A logo wider than 2000 px is
+    downscaled to 2000 px wide first, so the returned maps have that smaller size.
+
+    * ``height`` float32 ``[h, w]`` in 0..1: 0 where alpha is 0, a dome across every stroke
+      (normalised by the local stroke width, so a thin stroke rises as high as a thick one) times
+      satin ridges that repeat every ``stitch_px`` pixels along the stroke.
+    * ``normal`` float32 ``[h, w, 3]`` unit vectors with z > 0, from the Sobel slope of ``height``
+      scaled by ``NORMAL_STRENGTH``.
+    * ``albedo`` float32 ``[h, w, 3]`` in 0..1, the logo colour (same BGR order as the input) with
+      a seeded brightness change of up to +-6 % per ridge.
+
+    ``angle_deg`` is the stitch direction in degrees (0 = along +x, 90 = along +y), so ridges
+    repeat across it. With ``None`` each connected shape gets the direction in which its distance
+    field rises (across its strokes), one angle per shape so the ridge phase stays continuous.
+    """
+    return _thread_core(rgba, stitch_px, angle_deg)[:3]
+
+
+def _premultiplied(img, np):
+    f = img.astype(np.float32)
+    f[..., :3] *= f[..., 3:4] / 255.0
+    return f
+
+
+def _straight(img, np):
+    a = img[..., 3:4]
+    rgb = np.where(a > 1e-3, img[..., :3] * (255.0 / np.maximum(a, 1e-3)), 0.0)
+    return np.clip(np.rint(np.concatenate([rgb, a], axis=2)), 0, 255).astype(np.uint8)
+
+
+def _resize_rgba(img, size, interp, cv2, np):
+    """Resize BGRA with premultiplied colour, so transparent pixels never bleed a dark fringe."""
+    return _straight(cv2.resize(_premultiplied(img, np), size, interpolation=interp), np)
+
+
+def _nearest_valid(valid, cv2, np):
+    """Index arrays ``(ys, xs)`` giving, for every pixel, the nearest pixel where ``valid`` is True."""
+    inv = (~valid).astype(np.uint8)
+    _, labels = cv2.distanceTransformWithLabels(inv, cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
+    zy, zx = np.nonzero(valid)
+    idx = labels - 1
+    return zy[idx], zx[idx]
+
+
+def _stroke_field(alpha, cv2, np):
+    """Local stroke half-width of an alpha channel: ``(half, centre, scale)``.
+
+    Computed at ``scale`` (1..4) times the size of ``alpha``. ``half`` is in output pixels (about
+    0.5 for a one-pixel line, 1.6 for a stroke 3.2 px wide); ``centre`` marks the centre-line
+    pixels of the strokes (where the distance to the outline is the local maximum), so a long
+    thin line counts by its length and not by the area its edge pixels add.
+    """
+    h, w = alpha.shape
+    s = int(max(1, min(4, math.sqrt(4e6 / float(h * w)))))
+    big = cv2.resize(alpha, (w * s, h * s), interpolation=cv2.INTER_CUBIC) if s > 1 else alpha
+    mask = big >= 128
+    dist = cv2.distanceTransform(np.pad(mask.astype(np.uint8), 1), cv2.DIST_L2, 5)[1:-1, 1:-1]
+    wide = _local_half_width(dist, cv2, np)
+    centre = mask & (dist >= wide - 1e-3)
+    return (wide - 0.5) / s, centre, s
+
+
+def _fill_holes(logo, shrink, cv2, np):
+    """Close holes in the alpha that are smaller than a third of an output pixel.
+
+    ``shrink`` is source pixels per output pixel. A printed or grainy logo has speckled alpha;
+    averaged down to thread size no pixel stays opaque and the design turns into faded ink.
+    Thread is solid, so alpha holes up to ``0.6 * shrink`` source px wide are filled (colour from
+    the nearest solid pixel). A logo that is not being shrunk is returned unchanged.
+    """
+    radius = int(round(0.3 * shrink))
+    if radius < 1:
+        return logo
+    k = 2 * radius + 1
+    alpha = logo[..., 3]
+    closed = cv2.morphologyEx(alpha, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    filled = closed > alpha
+    solid = alpha >= 200
+    out = logo.copy()
+    if solid.any():
+        ny, nx = _nearest_valid(solid, cv2, np)
+        out[..., :3][filled] = logo[ny, nx, :3][filled]
+    out[..., 3] = closed
+    return out
+
+
+def stroke_half_width(rgba):
+    """25th percentile of the stroke half-width along the stroke centre-lines of ``rgba``.
+
+    In the pixels of ``rgba``, measured on the alpha channel at up to 4x resolution so a sub-pixel
+    change in width shows. A one-pixel line measures about 0.5; a stroke 3.2 px wide measures 1.6.
+    """
+    cv2, np = _deps()
+    half, centre, _ = _stroke_field(np.asarray(rgba)[..., 3], cv2, np)
+    if not centre.any():
+        return 0.0
+    return float(np.percentile(half[centre], 25))
+
+
+def _grow(img, min_half, cv2, np):
+    """Widen only the strokes thinner than ``min_half``, each up to that half-width.
+
+    A pixel whose local half-width is ``hw`` pushes the outline out by ``min_half - hw``, so thin
+    lines (an underline, an icon outline) reach the minimum while strokes that are already wide
+    keep their shape and counters stay open. The push is sub-pixel (antialiased). New pixels take
+    the colour of the nearest opaque pixel; the existing opaque pixels are kept.
+    """
+    alpha = img[..., 3].astype(np.float32) / 255.0
+    solid = alpha >= 0.5
+    half, mask_big, s = _stroke_field(img[..., 3], cv2, np)
+    local = half[s // 2::s, s // 2::s][:alpha.shape[0], :alpha.shape[1]]
+    need = np.where(solid, np.maximum(min_half - local, 0.0), 0.0).astype(np.float32)
+    weight = cv2.GaussianBlur(solid.astype(np.float32), (0, 0), GROW_SMOOTH_PX)
+    need = np.where(solid, cv2.GaussianBlur(need, (0, 0), GROW_SMOOTH_PX) / np.maximum(weight, 1e-3), 0.0)
+    cover = np.zeros_like(alpha)
+    levels = np.unique(np.round(need[need > 0] * 4.0) / 4.0)
+    for radius in levels:
+        src = solid & (np.abs(need - radius) <= 0.125 + 1e-6)
+        if not src.any():
+            continue
+        dist = cv2.distanceTransform((~src).astype(np.uint8), cv2.DIST_L2, 5)
+        cover = np.maximum(cover, np.clip(radius + 1.0 - dist, 0.0, 1.0))
+    cover[solid] = 0.0
+    new_alpha = np.maximum(alpha, cover)
+    changed = new_alpha > alpha
+    ny, nx = _nearest_valid(solid, cv2, np)
+    out = img.copy()
+    out[..., :3][changed] = img[ny, nx, :3][changed]
+    out[..., 3] = np.rint(new_alpha * 255.0).astype(np.uint8)
+    return out
+
+
+def ensure_min_stroke(rgba, min_half=None):
+    """Return ``rgba`` with thin strokes widened until ``stroke_half_width`` reaches ``min_half``.
+
+    ``min_half`` defaults to ``MIN_STROKE_HALF_PX``. Thread thinner than about three output pixels
+    cannot show a satin ridge at all, so thin strokes are grown (colour extended from the nearest
+    opaque pixel) before stitching; wide strokes are left as they are. A logo already wide enough
+    is returned unchanged.
+    """
+    cv2, np = _deps()
+    target = MIN_STROKE_HALF_PX if min_half is None else float(min_half)
+    base = np.asarray(rgba)
+    if stroke_half_width(base) >= target:
+        return base
+    out = base
+    for extra in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0):
+        out = _grow(base, target + extra, cv2, np)
+        if stroke_half_width(out) >= target:
+            break
+    return out
+
+
+def edge_fuzz(alpha):
+    """Jitter the alpha of the one-pixel boundary band by up to ``EDGE_FUZZ``; deterministic.
+
+    Real thread has a slightly ragged outline. Pixels inside the shape (all eight neighbours
+    covered) and pixels outside it are returned unchanged.
+    """
+    cv2, np = _deps()
+    alpha = np.asarray(alpha, np.float32)
+    covered = alpha > 0
+    inner = cv2.erode(covered.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    band = covered & ~inner
+    noise = np.random.default_rng(_FUZZ_SEED).uniform(-1.0, 1.0, alpha.shape).astype(np.float32)
+    out = alpha.copy()
+    out[band] = np.clip(alpha[band] + EDGE_FUZZ * noise[band], 0.0, 1.0)
+    return out
+
+
+def _light_dir(np):
+    ldir = np.array(LIGHT_DIR, np.float32)
+    return ldir / np.linalg.norm(ldir)
+
+
+def relief_maps(rgba, stitch_px=None, angle_deg=None):
+    """Light-independent thread look at output size: ``(albedo, alpha, relief, sheen)``.
+
+    The thread surface is built at ``SUPERSAMPLE`` times the size of ``rgba`` (so a ridge only
+    two or three output pixels apart is still resolved) and area-averaged back down.
+    ``relief`` ``[h, w]`` is the diffuse factor (1.0 on flat thread under the fixed light, above
+    1 on ridges facing it, below 1 in valleys and at the boundary); ``sheen`` ``[h, w]`` is the
+    directional satin highlight, strongest where the stitches run across the light and on the
+    crest of a column. ``albedo`` is the logo colour with the per-ridge jitter. Values outside
+    the shape repeat the nearest thread pixel so a warp never blends them with black.
+    ``stitch_px`` (output pixels) defaults to ``STITCH_OUT_PX``.
+    """
+    cv2, np = _deps()
+    stitch_px = STITCH_OUT_PX if stitch_px is None else stitch_px
+    rgba = np.asarray(rgba)
+    if rgba.ndim != 3 or rgba.shape[2] != 4 or rgba.dtype != np.uint8:
+        raise ValueError("logo must be a uint8 RGBA (BGRA) image of shape [h, w, 4]")
+    h, w = rgba.shape[:2]
+    s = max(1, min(SUPERSAMPLE, MAX_LOGO_WIDTH // w))
+    big = _resize_rgba(rgba, (w * s, h * s), cv2.INTER_CUBIC, cv2, np) if s > 1 else rgba.copy()
+    big[..., 3] = np.where(big[..., 3] >= 128, 255, 0)
+    height, normal, albedo, theta = _thread_core(big, stitch_px * s, angle_deg, RELIEF_STRENGTH * s, RELIEF_RIDGE_DEPTH)
+
+    ldir = _light_dir(np)
+    lam = np.clip(normal @ ldir, 0.0, 1.0)
+    flat = AMBIENT + (1.0 - AMBIENT) * float(ldir[2])
+    cavity = 1.0 - CAVITY_MAX * (1.0 - height)
+    cover = (big[..., 3] > 0).astype(np.float32)
+    edge = 1.0 - EDGE_AO_MAX * (1.0 - cv2.GaussianBlur(cover, (0, 0), EDGE_AO_SIGMA * s))
+    relief = np.clip((AMBIENT + (1.0 - AMBIENT) * lam) / flat * cavity * edge, 0.0, RELIEF_MAX)
+
+    light_xy = ldir[:2] / np.linalg.norm(ldir[:2])
+    across = np.cos(theta) * light_xy[0] + np.sin(theta) * light_xy[1]
+    aniso = np.sqrt(np.clip(1.0 - across * across, 0.0, 1.0))
+    sheen = (SPECULAR_MAX * lam ** SPECULAR_POWER + SATIN_SHEEN * aniso * height ** 3) * cover
+
+    weight = cv2.resize(cover, (w, h), interpolation=cv2.INTER_AREA)
+    stack = np.dstack([albedo, relief, sheen]) * cover[..., None]
+    small = cv2.resize(stack, (w, h), interpolation=cv2.INTER_AREA) if s > 1 else stack
+    valid = weight > 0.05
+    small = small / np.maximum(weight, 1e-6)[..., None]
+    if valid.any() and not valid.all():
+        ny, nx = _nearest_valid(valid, cv2, np)
+        small = small[ny, nx]
+    small = small.astype(np.float32)
+    alpha = rgba[..., 3].astype(np.float32) / 255.0
+    return small[..., 0:3], alpha, small[..., 3], small[..., 4]
 
 
 def _triangles(src, np, cv2):
@@ -227,24 +467,31 @@ def grid_warp(layer, src_pts, dst_pts, visible, size):
     return out
 
 
-def shade(frame_bgr, albedo, normal, height, alpha):
-    """Composite warped thread onto ``frame_bgr`` (uint8 ``[H, W, 3]``) lit like the cloth around it.
+def shade(frame_bgr, albedo, normal, height, alpha, relief=None, sheen=None, under=None):
+    """Composite warped thread onto the frame, lit like the cloth around it.
 
-    ``albedo`` ``[H, W, 3]`` 0..1 BGR, ``normal`` ``[H, W, 3]``, ``height`` ``[H, W]`` 0..1 and
-    ``alpha`` ``[H, W]`` 0..1 are already warped to the frame. The local cloth light is the frame
-    luminance blurred by ``CLOTH_LIGHT_SIGMA``, divided by its median under the thread (clamped to
+    ``frame_bgr`` is uint8 ``[H, W, 3]``; ``albedo`` ``[H, W, 3]`` 0..1 BGR and ``alpha``
+    ``[H, W]`` 0..1 are already warped to the frame. The local cloth light is the frame luminance
+    blurred by ``CLOTH_LIGHT_SIGMA``, divided by its median under the thread (clamped to
     ``LIGHT_GAIN_RANGE``), so thread tracks every fold and shadow of the cloth while its mean
-    brightness stays the albedo. Lambert uses the fixed light ``LIGHT_DIR`` (upper left). A small
-    specular (``SPECULAR_MAX * lambert**SPECULAR_POWER * height``) sits on ridges; valleys are
-    darkened by ``CAVITY_MAX`` and the thread boundary by up to ``EDGE_AO_MAX``. Pixels with
-    alpha 0 are returned unchanged. Returns uint8 BGR.
+    brightness stays the albedo.
+
+    Colour is kept: the light only scales the luminance (Y of YCrCb); the chroma stays the thread's
+    own, so a teal thread stays teal. Luminance is ``albedo_Y * relief * gain`` plus
+    ``sheen * (0.35 + 0.65 * albedo_Y) * gain`` (dark thread gets a dimmer highlight).
+
+    ``relief`` and ``sheen`` ``[H, W]`` come from ``relief_maps`` (already warped). When they are
+    None they are derived from ``normal`` ``[H, W, 3]`` and ``height`` ``[H, W]``: Lambert with
+    ``LIGHT_DIR``, cavity darkening by ``CAVITY_MAX``, boundary darkening by ``EDGE_AO_MAX`` and a
+    specular of ``SPECULAR_MAX * lambert**SPECULAR_POWER * height``. The thread is drawn over
+    ``under`` (default the frame itself, which also feeds the light estimate); pixels with alpha 0
+    return ``under`` unchanged. Returns uint8 BGR.
     """
     cv2, np = _deps()
     frame = np.asarray(frame_bgr)
+    base = frame if under is None else np.asarray(under)
     alpha = np.clip(np.asarray(alpha, np.float32), 0.0, 1.0)
-    height = np.clip(np.asarray(height, np.float32), 0.0, 1.0)
-    normal = np.asarray(normal, np.float32)
-    albedo = np.asarray(albedo, np.float32)
+    albedo = np.ascontiguousarray(albedo, np.float32)
 
     lum = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
     light = cv2.GaussianBlur(lum, (0, 0), CLOTH_LIGHT_SIGMA) / 255.0
@@ -252,19 +499,59 @@ def shade(frame_bgr, albedo, normal, height, alpha):
     ref = float(np.median(light[covered])) if covered.any() else float(light.mean())
     gain = np.clip(light / max(ref, 1e-3), *LIGHT_GAIN_RANGE)
 
-    ldir = np.array(LIGHT_DIR, np.float32)
-    ldir /= np.linalg.norm(ldir)
-    lambert = np.clip(normal @ ldir, 0.0, 1.0)
-    diffuse = albedo * (AMBIENT + (1.0 - AMBIENT) * lambert)[..., None] * gain[..., None]
-    specular = SPECULAR_MAX * lambert ** SPECULAR_POWER * height
-    cavity = 1.0 - CAVITY_MAX * (1.0 - height)
-    edge = 1.0 - EDGE_AO_MAX * (1.0 - cv2.GaussianBlur(alpha, (0, 0), EDGE_AO_SIGMA))
-    thread = np.clip((diffuse + specular[..., None]) * (cavity * edge)[..., None], 0.0, 1.0) * 255.0
+    if relief is None:
+        height = np.clip(np.asarray(height, np.float32), 0.0, 1.0)
+        lambert = np.clip(np.asarray(normal, np.float32) @ _light_dir(np), 0.0, 1.0)
+        cavity = 1.0 - CAVITY_MAX * (1.0 - height)
+        edge = 1.0 - EDGE_AO_MAX * (1.0 - cv2.GaussianBlur(alpha, (0, 0), EDGE_AO_SIGMA))
+        relief = (AMBIENT + (1.0 - AMBIENT) * lambert) * cavity * edge
+        sheen = SPECULAR_MAX * lambert ** SPECULAR_POWER * height
+    relief = np.asarray(relief, np.float32)
+    sheen = np.asarray(sheen, np.float32)
 
-    out = frame.astype(np.float32) * (1.0 - alpha[..., None]) + thread * alpha[..., None]
+    ycc = cv2.cvtColor(albedo, cv2.COLOR_BGR2YCrCb)
+    y = ycc[..., 0]
+    ycc[..., 0] = np.clip((y * relief + sheen * (0.35 + 0.65 * y)) * gain, 0.0, 1.0)
+    thread = np.clip(cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR), 0.0, 1.0) * 255.0
+
+    out = base.astype(np.float32) * (1.0 - alpha[..., None]) + thread * alpha[..., None]
     out = np.clip(np.rint(out), 0, 255).astype(np.uint8)
-    out[alpha <= 0] = frame[alpha <= 0]
+    out[alpha <= 0] = base[alpha <= 0]
     return out
+
+
+def raised_shadow(frame_bgr, alpha, valid):
+    """Darken the cloth beside the thread, on the side away from the light: the thread stands up.
+
+    ``alpha`` ``[H, W]`` 0..1 is the warped design; ``valid`` bool ``[H, W]`` marks the pixels that
+    may change (shirt and not hand). The blurred alpha, displaced ``RAISE_SHADOW_OFFSET_PX`` away
+    from the light, darkens the frame by up to ``RAISE_SHADOW_MAX``. Only pixels outside the
+    design, inside ``valid`` and within ``RAISE_SHADOW_REACH`` px of the design change; every other
+    pixel is returned exactly.
+    """
+    cv2, np = _deps()
+    frame = np.asarray(frame_bgr)
+    alpha = np.clip(np.asarray(alpha, np.float32), 0.0, 1.0)
+    height, width = alpha.shape
+    light_xy = _light_dir(np)[:2]
+    shift = -light_xy / np.linalg.norm(light_xy) * RAISE_SHADOW_OFFSET_PX
+    blurred = cv2.GaussianBlur(alpha, (0, 0), RAISE_SHADOW_SIGMA)
+    moved = cv2.warpAffine(blurred, np.array([[1, 0, shift[0]], [0, 1, shift[1]]], np.float32), (width, height),
+                           flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    k = 2 * RAISE_SHADOW_REACH + 1
+    reach = cv2.dilate((alpha > 0).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))) > 0
+    amount = RAISE_SHADOW_MAX * np.clip(moved, 0.0, 1.0) * (1.0 - alpha)
+    amount[~(reach & np.asarray(valid, bool))] = 0.0
+    out = np.clip(np.rint(frame.astype(np.float32) * (1.0 - amount[..., None])), 0, 255).astype(np.uint8)
+    keep = amount <= 0
+    out[keep] = frame[keep]
+    return out
+
+
+def _shade_layer(frame_bgr, layer, alpha, under=None):
+    """``shade`` for a warped design layer (albedo 0:3, alpha 3, relief 4, sheen 5)."""
+    return shade(frame_bgr, layer[..., 0:3], None, None, alpha, relief=layer[..., 4], sheen=layer[..., 5],
+                 under=under)
 
 
 def _place_logo(logo, width, rot, at, size, cv2, np):
@@ -279,25 +566,25 @@ def _place_logo(logo, width, rot, at, size, cv2, np):
     scale = width / float(w0)
     new_w, new_h = max(int(round(w0 * scale)), 1), max(int(round(h0 * scale)), 1)
     interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
-    rgba = cv2.resize(logo, (new_w, new_h), interpolation=interp)
+    rgba = _resize_rgba(_fill_holes(logo, 1.0 / scale, cv2, np), (new_w, new_h), interp, cv2, np)
     if rot:
         c, s_ = abs(math.cos(math.radians(rot))), abs(math.sin(math.radians(rot)))
         out_w, out_h = int(math.ceil(new_w * c + new_h * s_)), int(math.ceil(new_w * s_ + new_h * c))
         mat = cv2.getRotationMatrix2D((new_w / 2.0, new_h / 2.0), rot, 1.0)
         mat[0, 2] += out_w / 2.0 - new_w / 2.0
         mat[1, 2] += out_h / 2.0 - new_h / 2.0
-        rgba = cv2.warpAffine(rgba, mat, (out_w, out_h), flags=cv2.INTER_LINEAR,
-                              borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+        rgba = _straight(cv2.warpAffine(_premultiplied(rgba, np), mat, (out_w, out_h), flags=cv2.INTER_LINEAR,
+                                        borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0)), np)
     x0 = int(round(at[0] - rgba.shape[1] / 2.0))
     y0 = int(round(at[1] - rgba.shape[0] / 2.0))
     return rgba, x0, y0
 
 
 def _canvas_layer(rgba, x0, y0, size, np):
-    """Thread maps of ``rgba`` placed on a frame-sized float32 layer: albedo 3, normal 3, height, alpha."""
-    height, normal, albedo = thread_maps(rgba)
-    alpha = rgba[..., 3].astype(np.float32) / 255.0
-    stack = np.concatenate([albedo, normal, height[..., None], alpha[..., None]], axis=2).astype(np.float32)
+    """Thread look of ``rgba`` placed on a frame-sized float32 layer: albedo 3, alpha, relief, sheen."""
+    albedo, alpha, relief, sheen = relief_maps(ensure_min_stroke(rgba))
+    alpha = edge_fuzz(alpha)
+    stack = np.concatenate([albedo, alpha[..., None], relief[..., None], sheen[..., None]], axis=2).astype(np.float32)
     width, frame_h = size
     layer = np.zeros((frame_h, width, stack.shape[2]), np.float32)
     h, w = stack.shape[:2]
@@ -343,11 +630,11 @@ def _render(frames_bgr, logo, at, width, rot, hand_points, fps):
     size = (fwidth, height)
     rgba, x0, y0 = _place_logo(logo, width, rot, at, size, cv2, np)
     layer = _canvas_layer(rgba, x0, y0, size, np)
-    opaque = layer[..., 7] > 0.5
+    opaque = layer[..., 3] > 0.5
     design_area = int(opaque.sum())
     if design_area == 0:
         raise ValueError("logo has no opaque pixels")
-    ys, xs = np.nonzero(layer[..., 7] > 0)
+    ys, xs = np.nonzero(layer[..., 3] > 0)
     box = (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
 
     rgb = np.ascontiguousarray(frames[..., ::-1])
@@ -383,19 +670,20 @@ def _render(frames_bgr, logo, at, width, rot, hand_points, fps):
                 raise
             warped = prev
             lost += 1
-        alpha = warped[..., 7] * shirt[t] * ~hand[t]
-        normal = warped[..., 3:6]
-        normal = normal / np.maximum(np.linalg.norm(normal, axis=2, keepdims=True), 1e-6)
-        out.append(shade(frames[t], warped[..., 0:3], normal, warped[..., 6], alpha))
+        valid = shirt[t] & ~hand[t]
+        design = warped[..., 3]
+        out.append(_shade_layer(frames[t], warped, design * valid, raised_shadow(frames[t], design, valid)))
     return np.stack(out), {"frames": n, "lost_frames": lost, "shirt_area_ratio": round(ratio, 3)}
 
 
 def embroider(clip, logo, out, at, width, rot=0.0, hand_points=None, qa_dir=None):
     """Stitch ``logo`` (BGRA PNG path) onto the clothing at ``at`` in ``clip`` and write ``out``.
 
-    The design is thread (``thread_maps``) warped by a mesh that follows 7x7 tracked points on the
-    shirt (``grid_warp``), lit like the cloth around it (``shade``) and shown only where SAM 2.1
-    says shirt and not hand. ``hand_points`` are ``[x, y]`` clicks on one occluding hand at frame
+    Thin strokes are widened (``ensure_min_stroke``), the thread look is built at 3x size and
+    averaged down (``relief_maps``), warped by a mesh that follows 7x7 tracked points on the shirt
+    (``grid_warp``), lit like the cloth around it with its own colour kept (``shade``), given a
+    soft raised shadow on the cloth (``raised_shadow``) and shown only where SAM 2.1 says shirt
+    and not hand. ``hand_points`` are ``[x, y]`` clicks on one occluding hand at frame
     0. The clip is decoded whole into memory; output is H.264 crf 15 with the audio copied.
     Returns ``{"frames", "lost_frames", "shirt_area_ratio"}``; raises ``screen.Refused`` when the
     track or the shirt cannot be trusted.

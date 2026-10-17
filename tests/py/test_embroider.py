@@ -278,6 +278,151 @@ class ShadeTest(unittest.TestCase):
         self.assertTrue(np.array_equal(out[alpha == 0], frame[alpha == 0]))
 
 
+def _text_logo(w=140, h=40):
+    """Small logo like the REA design at output size: teal underline, black strokes, 3 px wide."""
+    import numpy as np
+    img = np.zeros((h, w, 4), np.uint8)
+    img[30:34, 10:130] = (166, 166, 0, 255)                       # teal underline, BGR
+    for x in range(12, 128, 12):
+        img[6:26, x:x + 3] = (0, 0, 0, 255)                       # black stems
+        img[6:9, x:x + 8] = (0, 0, 0, 255)
+    return img
+
+
+@needs_cv
+class MinimumStrokeTest(unittest.TestCase):
+    def setUp(self):
+        from tools.vidkit import embroider
+        self.e = embroider
+
+    def test_one_pixel_stroke_grows(self):
+        import numpy as np
+        thin = _bar(w=200, h=60, rows=(30, 31), cols=(10, 190))
+        before = self.e.stroke_half_width(thin)
+        grown = self.e.ensure_min_stroke(thin)
+        after = self.e.stroke_half_width(grown)
+        print("1 px stroke half-width %.2f -> %.2f" % (before, after))
+        self.assertLess(before, self.e.MIN_STROKE_HALF_PX)
+        self.assertGreaterEqual(after, self.e.MIN_STROKE_HALF_PX)
+        self.assertTrue((grown[30, 20:180, :3] == thin[30, 20:180, :3]).all())
+        self.assertTrue((grown[29, 20:180, 3] > 0).all() and (grown[31, 20:180, 3] > 0).all())
+
+    def test_thick_logo_unchanged(self):
+        import numpy as np
+        thick = _bar()
+        self.assertTrue(np.array_equal(self.e.ensure_min_stroke(thick), thick))
+
+    def test_grown_pixels_take_the_nearest_colour(self):
+        import numpy as np
+        thin = _bar(w=200, h=60, rows=(30, 31), cols=(10, 190), color=(40, 90, 200))
+        grown = self.e.ensure_min_stroke(thin)
+        sel = grown[..., 3] > 0
+        self.assertTrue((grown[sel][:, :3] == np.array([40, 90, 200])).all())
+
+
+@needs_cv
+class ReliefTest(unittest.TestCase):
+    def setUp(self):
+        from tools.vidkit import embroider
+        self.e = embroider
+
+    def test_relief_has_stitch_structure_at_output_size(self):
+        import numpy as np
+        logo = _text_logo()
+        albedo, alpha, relief, sheen = self.e.relief_maps(self.e.ensure_min_stroke(logo))
+        core = cv2_erode(alpha > 0.99)
+        std = float(relief[core].std())
+        print("relief std in stroke cores = %.4f (mean %.3f), sheen max %.3f" % (std, relief[core].mean(), sheen.max()))
+        self.assertEqual(relief.shape, logo.shape[:2])
+        self.assertGreaterEqual(std, 0.05)
+        self.assertGreater(sheen.max(), 0.02)
+
+    def test_relief_deterministic(self):
+        import numpy as np
+        a = self.e.relief_maps(_text_logo())
+        b = self.e.relief_maps(_text_logo())
+        for x, y in zip(a, b):
+            self.assertTrue(np.array_equal(x, y))
+
+
+def cv2_erode(mask):
+    import cv2
+    import numpy as np
+    return cv2.erode(mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+
+
+def _lab_stats(bgr_float, sel):
+    import cv2
+    import numpy as np
+    lab = cv2.cvtColor(bgr_float.astype(np.float32), cv2.COLOR_BGR2Lab)
+    a, b = lab[..., 1][sel].mean(), lab[..., 2][sel].mean()
+    return float(np.hypot(a, b)), float(np.degrees(np.arctan2(b, a)))
+
+
+@needs_cv
+class ThreadColourTest(unittest.TestCase):
+    def setUp(self):
+        import numpy as np
+        from tools.vidkit import embroider
+        self.e = embroider
+        self.logo = _text_logo()
+        size = (200, 100)
+        layer = embroider._canvas_layer(embroider.ensure_min_stroke(self.logo), 30, 30, size, np)
+        frame = np.full((100, 200, 3), 128, np.uint8)
+        self.layer = layer
+        self.out = embroider._shade_layer(frame, layer, layer[..., 3])
+
+    def test_teal_line_stays_teal_and_black_stays_black(self):
+        import numpy as np
+        ys, xs = 30 + 31, slice(30 + 30, 30 + 110)
+        teal_out = self.out[ys, xs].astype(np.float32) / 255
+        teal_logo = np.array([[[166, 166, 0]]], np.float32) / 255
+        c_out, h_out = _lab_stats(teal_out[None], np.ones((1, teal_out.shape[0]), bool))
+        c_logo, h_logo = _lab_stats(teal_logo, np.ones((1, 1), bool))
+        print("teal chroma ratio %.3f, hue %.1f vs %.1f" % (c_out / c_logo, h_out, h_logo))
+        self.assertGreaterEqual(c_out / c_logo, 0.8)
+        self.assertLessEqual(abs(h_out - h_logo) / abs(h_logo), 0.06)
+        stem = self.out[30 + 12:30 + 22, 30 + 24:30 + 27].astype(np.float32)
+        print("black stem mean level %.1f" % stem.mean())
+        self.assertLess(float(stem.mean()), 45.0)
+
+    def test_design_chroma_within_six_percent_under_neutral_light(self):
+        import numpy as np
+        sel = self.layer[..., 3] > 0.99
+        sel = cv2_erode(sel)
+        logo_full = np.zeros((100, 200, 3), np.float32)
+        logo_full[30:70, 30:170] = self.logo[..., :3].astype(np.float32) / 255
+        teal = np.zeros(sel.shape, bool)
+        teal[61:64, 60:140] = True
+        teal &= sel
+        c_out, _ = _lab_stats(self.out.astype(np.float32) / 255, teal)
+        c_logo, _ = _lab_stats(logo_full, teal)
+        print("design chroma ratio %.3f" % (c_out / c_logo))
+        self.assertLessEqual(abs(c_out / c_logo - 1.0), 0.06)
+
+
+@needs_cv
+class EdgeFuzzTest(unittest.TestCase):
+    def setUp(self):
+        from tools.vidkit import embroider
+        self.e = embroider
+
+    def test_deterministic_and_interior_untouched(self):
+        import cv2
+        import numpy as np
+        alpha = (_bar(w=100, h=60, rows=(15, 45), cols=(10, 90))[..., 3] / 255.0).astype(np.float32)
+        a = self.e.edge_fuzz(alpha)
+        b = self.e.edge_fuzz(alpha)
+        self.assertTrue(np.array_equal(a, b))
+        interior = cv2.erode((alpha > 0).astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+        self.assertTrue(np.array_equal(a[interior], alpha[interior]))
+        self.assertTrue((a[alpha == 0] == 0).all())
+        edge = (alpha > 0) & ~interior
+        self.assertGreater(float(np.abs(a[edge] - alpha[edge]).max()), 0.05)
+        self.assertLessEqual(float(np.abs(a - alpha).max()), self.e.EDGE_FUZZ + 1e-6)
+        self.assertTrue(((a >= 0) & (a <= 1)).all())
+
+
 def _ml_ready():
     if not (HAS_CV and importlib.util.find_spec("torch") and importlib.util.find_spec("tapnet")):
         return False
@@ -406,6 +551,54 @@ class EmbroiderRenderTest(unittest.TestCase):
             return np.array([xs.mean(), ys.mean()])
         drift = np.linalg.norm(centroid(0) - centroid(5))
         self.assertLess(drift, 12.0)
+
+
+FLAT_FRAMES = 6
+
+
+def _flat_clip():
+    """Static clip: uniform grey shirt (no texture, no hand) on a green background."""
+    import numpy as np
+    frame = np.empty((SIZE, SIZE, 3), np.uint8)
+    frame[:] = (30, 100, 60)
+    frame[40:291, 50:271] = 128
+    return np.repeat(frame[None], FLAT_FRAMES, axis=0)
+
+
+@needs_ml
+class EmbroideryRaisedShadowTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tools.vidkit import embroider
+        cls.frames = _flat_clip()
+        cls.out, _ = embroider._render(cls.frames, _red_bar(), AT, 60, 0.0, None, 24.0)
+
+    def test_shadow_falls_away_from_the_light(self):
+        import numpy as np
+        t = FLAT_FRAMES - 1
+        delta = self.out[t].astype(np.float32).mean(axis=2) - self.frames[t].astype(np.float32).mean(axis=2)
+        strong = delta < -30                              # the red bar: much darker than the grey cloth
+        ys, xs = np.nonzero(strong)
+        x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
+        mid_y, mid_x = slice((y0 + y1) // 2 - 6, (y0 + y1) // 2 + 7), slice((x0 + x1) // 2 - 15, (x0 + x1) // 2 + 16)
+        shadow_side = delta[mid_y, x1 + 1:x1 + 4].mean()  # right of the bar: away from the light (upper left)
+        light_side = delta[mid_y, x0 - 3:x0].mean()   # left of the bar: toward the light
+        below = delta[y1 + 1:y1 + 4, mid_x].mean()
+        above = delta[y0 - 3:y0, mid_x].mean()
+        print("shadow delta: right %.2f left %.2f below %.2f above %.2f" % (shadow_side, light_side, below, above))
+        self.assertGreaterEqual(light_side - shadow_side, 4.0)
+        self.assertGreaterEqual(above - below, 4.0)
+
+    def test_far_pixels_unchanged(self):
+        import numpy as np
+        for t in range(FLAT_FRAMES):
+            changed = (self.out[t] != self.frames[t]).any(axis=2)
+            ys, xs = np.nonzero(changed)
+            self.assertGreater(len(ys), 0)
+            self.assertGreaterEqual(xs.min(), 130 - 8)
+            self.assertLessEqual(xs.max(), 189 + 8)
+            self.assertGreaterEqual(ys.min(), 145 - 8)
+            self.assertLessEqual(ys.max(), 174 + 8)
 
 
 @needs_ml
