@@ -80,6 +80,22 @@ def device() -> str:
     return "mps" if torch.backends.mps.is_available() else "cpu"
 
 
+def reexec_argv(python, argv=None):
+    """argv that re-runs the current command under `python`.
+
+    A `python -m pkg` run keeps `-m pkg`: `sys.argv[0]` is then the path of `__main__.py`, and
+    running that path as a plain script breaks its relative imports.
+    """
+    argv = list(sys.argv if argv is None else argv)
+    spec = getattr(sys.modules.get("__main__"), "__spec__", None)
+    name = getattr(spec, "name", None)
+    if name:
+        if name.endswith(".__main__"):
+            name = name[: -len(".__main__")]
+        return [str(python), "-m", name, *argv[1:]]
+    return [str(python), *argv]
+
+
 def require():
     """Return torch; when this interpreter lacks it, re-exec the script under venv-ml."""
     try:
@@ -92,6 +108,6 @@ def require():
         if os.environ.get("GASPOL_VIDEO_ML_REEXEC") == "1":
             raise MLMissing(f"missing torch: {FIX}")
         os.environ["GASPOL_VIDEO_ML_REEXEC"] = "1"
-        os.execv(str(python), [str(python)] + sys.argv)
+        os.execv(str(python), reexec_argv(python))
 
     raise MLMissing(f"missing torch: {FIX}")

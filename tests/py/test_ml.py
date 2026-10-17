@@ -1,7 +1,9 @@
 import hashlib
+import importlib.util
 import os
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -149,6 +151,50 @@ class RequireTest(unittest.TestCase):
                         self.assertEqual(os.environ["GASPOL_VIDEO_ML_REEXEC"], "1")
             ex.assert_called_once()
             self.assertEqual(ex.call_args[0][0], str(py))
+
+
+class ReexecArgvTest(unittest.TestCase):
+    """`python -m tools.vidkit ...` must come back as `-m tools.vidkit`, not as the path of
+    `__main__.py`: run as a plain script, its relative imports fail."""
+
+    def test_module_run_keeps_dash_m(self):
+        main = types.SimpleNamespace(__spec__=types.SimpleNamespace(name="tools.vidkit.__main__"))
+        with mock.patch.dict(sys.modules, {"__main__": main}):
+            argv = ml.reexec_argv("/py", ["/x/tools/vidkit/__main__.py", "embroider", "a.mp4"])
+        self.assertEqual(argv, ["/py", "-m", "tools.vidkit", "embroider", "a.mp4"])
+
+    def test_plain_module_name_kept(self):
+        main = types.SimpleNamespace(__spec__=types.SimpleNamespace(name="tools.foo"))
+        with mock.patch.dict(sys.modules, {"__main__": main}):
+            self.assertEqual(ml.reexec_argv("/py", ["/x/tools/foo.py", "a"]), ["/py", "-m", "tools.foo", "a"])
+
+    def test_script_run_passes_path(self):
+        main = types.SimpleNamespace(__spec__=None)
+        with mock.patch.dict(sys.modules, {"__main__": main}):
+            self.assertEqual(ml.reexec_argv("/py", ["tool.py", "a"]), ["/py", "tool.py", "a"])
+
+
+class LoaderSafetyTest(unittest.TestCase):
+    """The sha256 pin is checked once per process; the second defence against a pickled payload
+    in a checkpoint is `weights_only=True` inside tapnet and sam2. A dependency bump that drops it
+    must fail here, not pass silently."""
+
+    def _source(self, module, rel):
+        try:
+            spec = importlib.util.find_spec(module)
+        except (ImportError, ValueError):
+            spec = None
+        if spec is None or not spec.submodule_search_locations:
+            self.skipTest(f"{module} not installed in this interpreter (venv-ml only)")
+        return (Path(list(spec.submodule_search_locations)[0]) / rel).read_text()
+
+    def test_tapnextpp_loads_weights_only(self):
+        src = self._source("tapnet", "tapnextpp/votsp2026/model.py")
+        self.assertRegex(src, r"torch\.load\([^)]*weights_only\s*=\s*True")
+
+    def test_sam2_loads_weights_only(self):
+        src = self._source("sam2", "build_sam.py")
+        self.assertRegex(src, r"torch\.load\([^)]*weights_only\s*=\s*True")
 
 
 if __name__ == "__main__":
