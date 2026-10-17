@@ -20,7 +20,11 @@ and platform to `<project>/.tmp/layout-overlay-<scene>-{tiktok,reels,shorts}.jpg
 fails only by touching the face; the subtitle chin gap does not apply.
 
 Exit 0: no finding. Exit 1: at least one finding. Exit 2: bad input (missing file, unknown
-profile, not 9:16, thumbnail without `<thumb>.box.json`, missing face model or venv).
+profile, not 9:16, thumbnail without `<thumb>.box.json`, missing face model or venv, overlay clip
+aspect different from the overlay) or nothing measured at all ("nothing measured: <why>", never a
+PASS). Exit 3 (INCOMPLETE): no finding, but `--overlay <dir>` held overlay jsons the workspace is not
+wired to; only the wired one is measured, the rest are listed as not measured. When no face check
+found a face in any sample, the Result line says "face check not run".
 The report goes to stdout and `<project>/work/layout-report.md`; one preview per platform to
 `<project>/.tmp/layout-{tiktok,reels,shorts}.jpg`. Face samples with no face are listed under
 "Skipped", never counted as a pass.
@@ -37,6 +41,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -47,7 +52,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tools import _venv, face_box  # noqa: E402
 from tools.vidkit import ff, layout  # noqa: E402
 
+# The watermark `vidkit karaoke` writes: centred by \an5\pos, faint fill (\1a alpha), no outline
+# (\3a&HFF&) and no border. A centred subtitle from another tool has \an5\pos but not this look.
 WATERMARK_RE = re.compile(r"\\an5\\pos\(")
+WATERMARK_ALPHA_RE = re.compile(r"\\1a&H[0-9A-Fa-f]{2}&")
 EDGE_ORDER = ("left", "top", "right", "bottom")
 
 
@@ -73,7 +81,9 @@ def _split_ass(ass_text):
 
 
 def is_watermark(line):
-    return bool(WATERMARK_RE.search(line))
+    if not WATERMARK_RE.search(line) or "\\3a&HFF&" not in line or "\\bord0" not in line:
+        return False
+    return bool(WATERMARK_ALPHA_RE.search(line))
 
 
 def subtitle_times(ass_text):
@@ -264,6 +274,22 @@ def find_overlays(target):
     return str(shots), plans
 
 
+WIRED_ID_RE = re.compile(r"""id\s*:\s*['"]KineticOverlay['"]""")
+WIRED_IMPORT_RE = re.compile(r"""from\s+['"]\./(overlay-[^'"/]+\.json)['"]""")
+
+
+def wired_plans(shots_dir):
+    """Names of the overlay jsons the workspace's KineticOverlay scene files import (same rule as
+    wiredPlan in scripts/render-overlay-text.mjs). One composition id, so normally one name."""
+    names = []
+    for tsx in sorted((Path(shots_dir) / "src" / "shots").glob("*.tsx")):
+        src = tsx.read_text(encoding="utf-8", errors="replace")
+        m = WIRED_IMPORT_RE.search(src)
+        if WIRED_ID_RE.search(src) and m:
+            names.append(m.group(1))
+    return names
+
+
 def render_overlay_text(shots_dir, plan_path, out_dir):
     """Render the text-only stills of one overlay json with the workspace's Remotion.
     Returns [{"id", "frame", "inF", "outF", "png"}], one per cue. Raises InputError with the
@@ -393,15 +419,19 @@ def write_preview(out, platform, source, size, safe, ass=None, t=0.0, boxes=()):
     else:
         cmd += ["-f", "lavfi", "-i", f"color=black:s={w}x{h}:r=25:d={t + 2:.3f}"]
         seek = ["-ss", f"{t:.3f}"]
-    chain = []
-    if ass and (source is None or source[0] == "video"):
-        chain.append(f"ass=filename={_filter_path(ass)}")
-    chain += [_drawbox(b, BAND_COLOR, "fill") for b in ui_bands(platform, w, h)]
-    chain.append(_drawbox((safe[0], safe[1], safe[2], safe[3]), SAFE_COLOR, 3))
-    chain += [_drawbox(b, BOX_COLOR, 2) for b in boxes if b]
     ff.ensure_parent(out)
-    ff.run(cmd + seek + ["-vf", ",".join(chain), "-frames:v", "1", "-pix_fmt", "yuvj420p",
-                         "-q:v", "3", str(out)])
+    with tempfile.TemporaryDirectory() as tmp:
+        chain = []
+        if ass and (source is None or source[0] == "video"):
+            # copied to a plain temp name: a quote in the user's path breaks filtergraph quoting
+            safe_ass = os.path.join(tmp, "preview.ass")
+            shutil.copyfile(ass, safe_ass)
+            chain.append(f"ass=filename={_filter_path(safe_ass)}")
+        chain += [_drawbox(b, BAND_COLOR, "fill") for b in ui_bands(platform, w, h)]
+        chain.append(_drawbox((safe[0], safe[1], safe[2], safe[3]), SAFE_COLOR, 3))
+        chain += [_drawbox(b, BOX_COLOR, 2) for b in boxes if b]
+        ff.run(cmd + seek + ["-vf", ",".join(chain), "-frames:v", "1", "-pix_fmt", "yuvj420p",
+                             "-q:v", "3", str(out)])
 
 
 # ------------------------------------------------------------------ report and CLI
@@ -417,9 +447,27 @@ def _fmt(f):
     return f"| {f['what']} | {t} | {kind} | {f['box']} |"
 
 
+def result_of(info):
+    """(result line text, exit code). FAIL 1 on any finding; INCOMPLETE 3 when an overlay json was
+    not measured; else PASS 0, qualified when no face check found a face."""
+    if info["findings"]:
+        result, code = "FAIL", 1
+    elif info["not_measured"]:
+        result, code = f"INCOMPLETE: {len(info['not_measured'])} overlay json(s) not measured, see Notes", 3
+    else:
+        result, code = "PASS", 0
+    notes = []
+    if info["face_runs"] and not info["face_hits"]:
+        notes.append("face check not run: no face found in any sample")
+    if info["skipped"]:
+        notes.append(f"{len(info['skipped'])} face sample(s) skipped, see below")
+    if notes:
+        result += " (" + "; ".join(notes) + ")"
+    return result, code
+
+
 def render_report(result, info):
-    tail = f" ({len(info['skipped'])} face sample(s) skipped, see below)" if info["skipped"] else ""
-    lines = ["# Layout report", "", f"Result: {result}{tail}", ""]
+    lines = ["# Layout report", "", f"Result: {result}", ""]
     lines += [f"- profile: {info['profile']}", f"- frame: {info['size'][0]}x{info['size'][1]}",
               f"- safe box: {list(info['safe'])}"]
     for k in ("video", "ass", "thumbs", "overlays"):
@@ -440,7 +488,7 @@ def render_report(result, info):
     else:
         lines.append("none")
     lines += ["", "## Notes", ""]
-    lines += [f"- {n}" for n in info["notes"]] or ["none"]
+    lines += [f"- {n}" for n in info["notes"] + info.get("not_measured", [])] or ["none"]
     lines += ["", "## Previews", ""]
     lines += [f"- {p}" for p in info["previews"]] or ["none"]
     return "\n".join(lines) + "\n"
@@ -476,7 +524,7 @@ def run_check(args, detect=None, render=None):
         raise InputError(str(e)) from e
 
     info = {"profile": args.profile, "findings": [], "skipped": [], "notes": [], "previews": [],
-            "overlay_boxes": []}
+            "overlay_boxes": [], "not_measured": [], "measured": 0, "face_runs": 0, "face_hits": 0}
     holder = {"detect": detect}
 
     def detector():
@@ -524,9 +572,12 @@ def run_check(args, detect=None, render=None):
                 info["notes"].append("the watermark drew nothing (opacity too low to measure?), not checked")
             else:
                 extra.append({"what": "watermark", "t": None, "box": wb})
+        info["measured"] += sum(1 for b in sub_boxes + extra if b["box"] is not None)
         info["findings"] += check_safe(sub_boxes + extra, prof)
         if video and sub_boxes:
             faces = face_box.boxes(str(video), args.every, detector())
+            info["face_runs"] += 1
+            info["face_hits"] += any(r["box"] is not None for r in faces)
             found, skipped = check_face(sub_boxes, faces, prof)
             info["findings"] += found
             info["skipped"] += skipped
@@ -546,6 +597,7 @@ def run_check(args, detect=None, render=None):
             tsize = (pic["width"], pic["height"])
             _need_nine_sixteen(th, *tsize)
             tbox = title_box(th)
+            info["measured"] += 1
             tprof = {**base, "width": tsize[0], "height": tsize[1]}
             info["findings"] += check_safe([{"what": "title", "t": None, "box": tbox}], tprof)
             clean = title_source(th)
@@ -554,6 +606,8 @@ def run_check(args, detect=None, render=None):
             face_img = clean or th
             recs = face_box.boxes(face_img, 1, detector())
             face = recs[0]["box"] if recs else None
+            info["face_runs"] += 1
+            info["face_hits"] += face is not None
             if face is None:
                 info["skipped"].append({"frame": 0, "t": 0.0,
                                         "reason": f"no face detected on {'source of ' if clean else ''}thumbnail {Path(th).name}"})
@@ -562,9 +616,20 @@ def run_check(args, detect=None, render=None):
                 size = tsize
     overlay_runs = []
     if args.overlay:
-        shots_dir, plans = find_overlays(_resolve(proj, args.overlay))
+        target = _resolve(proj, args.overlay)
+        shots_dir, plans = find_overlays(target)
         info["overlays"] = ", ".join(plans)
         renderer = render or render_overlay_text
+        if not Path(target).is_file():
+            # one workspace renders ONE KineticOverlay: only the json it is wired to can be measured
+            wired = wired_plans(shots_dir)
+            keep = [p for p in plans if Path(p).name in wired]
+            for p in plans:
+                if p not in keep:
+                    info["not_measured"].append(
+                        f"{Path(p).name}: not measured (workspace wired to {', '.join(wired) or 'no overlay json'}); "
+                        f"measure it with --overlay {p} after wiring the scene file to it")
+            plans = keep
         for plan_path in plans:
             plan = json.loads(Path(plan_path).read_text())
             osize = (plan["width"], plan["height"])
@@ -579,6 +644,7 @@ def run_check(args, detect=None, render=None):
                 if o["box"] is None:
                     info["notes"].append(f"{o['what']} drew nothing at t={o['t']:.2f}s, so it was not checked")
             info["overlay_boxes"] += [o for o in obox if o["box"] is not None]
+            info["measured"] += sum(1 for o in obox if o["box"] is not None)
             info["findings"] += check_safe(obox, oprof)
             clip = Path(shots_dir) / "public" / plan["clip"]
             if not clip.is_file():
@@ -586,15 +652,22 @@ def run_check(args, detect=None, render=None):
             cw, ch, _, _ = face_box.probe(clip)
             if cw == 0:
                 raise InputError(f"cannot read overlay clip: {clip}")
+            if abs(cw / ch - osize[0] / osize[1]) > 0.01:
+                raise InputError(f"overlay clip {clip} is {cw}x{ch}, overlay {name} is {osize[0]}x{osize[1]}: "
+                                 "the aspect differs, so face boxes cannot be mapped onto the text")
             faces = face_box.boxes(str(clip), args.every, detector())
+            info["face_runs"] += 1
+            info["face_hits"] += any(r["box"] is not None for r in faces)
             found, skipped = check_overlay_face(obox, faces, osize[0] / cw)
             info["findings"] += found
             info["skipped"] += skipped
             overlay_runs.append((plan, obox, str(clip), oprof))
             if size is None:
                 size = osize
+    if info["measured"] == 0:
+        why = info["notes"] + info["not_measured"] or ["no text box was drawn"]
+        raise InputError("nothing measured: " + "; ".join(why))
     if size is None:
-        # only a non-9:16 overlay was given: nothing was measured, say so and stop here
         size = (base["width"], base["height"])
     prof = {**base, "width": size[0], "height": size[1]}
     safe = layout.safe_box(prof)
@@ -646,14 +719,14 @@ def main(argv=None, detect=None, render=None):
     except (InputError, face_box.VideoUnreadable, ff.FFError, _venv.DependencyMissing) as e:
         print(str(e), file=sys.stderr)
         return 2
-    result = "FAIL" if info["findings"] else "PASS"
+    result, code = result_of(info)
     text = render_report(result, info)
     report = Path(args.project) / "work" / "layout-report.md"
     ff.ensure_parent(report)
     report.write_text(text, encoding="utf-8")
     print(text, end="")
     print(f"report: {report}")
-    return 1 if info["findings"] else 0
+    return code
 
 
 if __name__ == "__main__":

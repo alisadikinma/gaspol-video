@@ -97,7 +97,7 @@ satu") sets **`key_words`** to the spoken tokens; the keyword is timed on them.
   `KineticOverlay` keeps text inside it: default anchors start at the box edges, an anchor point is
   clamped into it and `maxWidth` never passes its sides (`anchorGeometry` in `overlayFx.mjs`). It
   cannot know the block height, so a tall block can still run past the bottom edge: the layout gate
-  (`layout_gate.py check <project> --overlay <shots dir>`) renders the text alone and measures it.
+  (`layout_gate.py check <project> --overlay <overlay-<scene>.json>`) renders the text alone and measures it.
   A scene that is not 9:16 gets no `safe`; a json without `safe` behaves as before.
 - A `behind` cue may sit over the head on purpose; the head then covers part of it.
 - Keep off other burned text (subtitles at the bottom, a Remotion card).
@@ -126,13 +126,18 @@ Over a red flash keep the keyword in `ink` or `highlight`, never red.
    import together, render `KineticOverlay`.
 6. Look at enter-mid, hold and exit-mid of every cue (`scripts/qa-frames.mjs`). Fix placement,
    not the style.
-7. Measure the text (GV-23): `python3 tools/layout_gate.py check <project> --overlay <project>/shots`.
-   It renders each cue's text alone on mid-grey with the real `KineticOverlay` (`textOnly`, via
+7. Measure the text (GV-23), one scene at a time:
+   `python3 tools/layout_gate.py check <project> --overlay <project>/shots/src/shots/overlay-<scene>.json`.
+   A workspace renders ONE `KineticOverlay`, wired to one overlay json, so wire the scene file to the
+   scene first. Given the `shots` dir instead, the gate measures only the wired json, lists the others
+   as "not measured" and exits 3 (`INCOMPLETE`), never a clean PASS. It renders each cue's text alone on mid-grey with the real `KineticOverlay` (`textOnly`, via
    `scripts/render-overlay-text.mjs`), at full size (`settledCue`), measures the box and checks it
    against the safe area and the face boxes of the scene clip. The workspace needs `npm install`,
    and its `KineticOverlay` must be wired to the scene being measured (the script says so when it
    is not). Stills land in `.tmp/overlay-text/`, previews in `.tmp/layout-overlay-<scene>-*.jpg`.
    Not 9:16: skipped with a note. Cannot render: exit 2 with the reason, never a guessed width.
+   Nothing measured at all (only non-9:16 overlays, or every cue drew nothing): exit 2 `nothing
+   measured: <why>`. A clip whose aspect differs from the overlay: exit 2.
 
 ## 8. Viral vocabulary (GV-19)
 

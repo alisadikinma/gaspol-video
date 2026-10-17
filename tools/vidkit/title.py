@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -78,7 +79,9 @@ def _filter(textfiles, font, size, pad, cy, box_color, cx=0.5):
         else:
             # lines tile exactly: pitch = text_h + 2*pad, the stack is centred on cy
             y = f"h*{cy}+({i}-{k}/2)*(text_h+2*{pad})+{pad}"
-        parts.append(f"drawtext=fontfile='{font}':textfile='{tf}':fontsize={size}:fontcolor=white"
+        # expansion=none: drawtext would read "%" in the text as an expansion code and silently
+        # drop the whole line ("DISKON 50%")
+        parts.append(f"drawtext=fontfile='{font}':textfile='{tf}':expansion=none:fontsize={size}:fontcolor=white"
                      f":x=w*{cx}-text_w/2:y={y}:box=1:boxcolor={box_color}:boxborderw={pad}")
     return ",".join(parts)
 
@@ -111,7 +114,7 @@ def stamp(img, text, out, profile="short-organic", y_pct=None):
     if abs(w / h - 9 / 16) > 0.01:
         raise ValueError(f"{img} is {w}x{h}, a title needs a 9:16 image")
     font = resolve_font()
-    print(f"title font: {font}")
+    print(f"title font: {font}", file=sys.stderr)  # stdout of `vidkit title` is pure JSON
     cy = layout.value(prof, "title.center_y_pct") if y_pct is None else y_pct
     pct = layout.value(prof, "title.font_pct")
     min_pct = layout.value(prof, "title.min_font_pct")

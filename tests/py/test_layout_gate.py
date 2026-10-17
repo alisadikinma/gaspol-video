@@ -61,6 +61,18 @@ class TextBoxesFromAss(unittest.TestCase):
         self.assertGreater(boxes[0]["box"][1], 1050)
 
 
+class WatermarkDetection(unittest.TestCase):
+    def test_karaoke_watermark_is_a_watermark(self):
+        line = karaoke.watermark_event("ALISADIKIN", 4.0)
+        self.assertTrue(layout_gate.is_watermark(line))
+
+    def test_third_party_centred_subtitle_is_a_subtitle(self):
+        line = "Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,{\\an5\\pos(540,1700)}HALO DUNIA"
+        self.assertFalse(layout_gate.is_watermark(line))
+        ass = write_ass_text = karaoke.build_ass([], 4.0) + line + "\n"
+        self.assertEqual(layout_gate.subtitle_times(ass), [1.0])
+
+
 class OutlineInBox(unittest.TestCase):
     def test_box_on_grey_includes_the_black_outline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -286,9 +298,42 @@ class Cli(unittest.TestCase):
             proj = Path(tmp) / "proj"
             proj.mkdir()
             (proj / "subs.ass").write_text(karaoke.build_ass([], 4.0))
-            code, out, _ = run_cli(["check", str(proj), "--ass", "subs.ass"])
-        self.assertEqual(code, 0)
-        self.assertIn("no subtitles found", out)
+            code, out, err = run_cli(["check", str(proj), "--ass", "subs.ass"])
+        self.assertEqual(code, 2, out)
+        self.assertIn("nothing measured", err)
+        self.assertIn("no subtitles found", err)
+
+    def test_subtitles_that_draw_nothing_exit_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "proj"
+            proj.mkdir()
+            ass = karaoke.build_ass(WORDS, 4.0, profile="short-organic", per_group=2)
+            (proj / "subs.ass").write_text(ass.replace("{\\fscx85", "{\\alpha&HFF&\\fscx85"))
+            code, out, err = run_cli(["check", str(proj), "--ass", "subs.ass"])
+        self.assertEqual(code, 2, out)
+        self.assertIn("nothing measured", err)
+        self.assertIn("drew nothing", err)
+
+    def test_no_face_in_any_sample_is_said_in_the_result_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp)
+            clip = small_video(tmp)
+            code, out, _ = run_cli(["check", str(proj), "--video", clip, "--ass", "subs.ass"],
+                                   detect=fake_face(None))
+        result = next(line for line in out.splitlines() if line.startswith("Result:"))
+        self.assertIn("face check not run", result)
+        self.assertNotEqual(result.strip(), "Result: PASS")
+
+    def test_preview_with_a_quote_in_the_ass_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "Ali's dir"
+            d.mkdir()
+            ass = d / "a.ass"
+            ass.write_text(karaoke.build_ass(WORDS, 4.0, profile="short-organic", per_group=2))
+            out = Path(tmp) / "pv.jpg"
+            layout_gate.write_preview(out, "tiktok", None, (1080, 1920), (54, 192, 1026, 1440),
+                                      ass=str(ass), t=0.8)
+            self.assertTrue(out.is_file())
 
     def test_face_overlap_exit_1_and_scaled_to_the_video(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -416,20 +461,31 @@ class Cli(unittest.TestCase):
 
 # ---- GV-23: overlay text measured from a text-only Remotion render -------------------------
 
-def overlay_workspace(tmp, size=(180, 320), cues=None, scene="03"):
-    """proj/shots/{src/shots/overlay-<scene>.json, public/overlay/<scene>/clip.mp4}."""
+def wire(shots, scene):
+    """The scene file a scaffolded workspace has: KineticOverlay importing overlay-<scene>.json."""
+    (shots / "src" / "shots" / "Overlay.tsx").write_text(
+        f"import rawPlan from './overlay-{scene}.json';\n"
+        "export const compositionConfig = { id: 'KineticOverlay', width: 1, height: 1 };\n")
+
+
+def overlay_workspace(tmp, size=(180, 320), cues=None, scene="03", wired=True, clip_size=None):
+    """proj/shots/{src/shots/overlay-<scene>.json, public/overlay/<scene>/clip.mp4}, the scene file
+    wired to it (wired=False: no scene file)."""
     proj = Path(tmp) / "proj"
     shots = proj / "shots"
-    (shots / "src" / "shots").mkdir(parents=True)
+    (shots / "src" / "shots").mkdir(parents=True, exist_ok=True)
     pub = shots / "public" / "overlay" / scene
     pub.mkdir(parents=True)
+    cs = clip_size or size
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
-                    f"testsrc=s={size[0]}x{size[1]}:r=10:d=4", "-pix_fmt", "yuv420p",
+                    f"testsrc=s={cs[0]}x{cs[1]}:r=10:d=4", "-pix_fmt", "yuv420p",
                     str(pub / "clip.mp4")], check=True)
     plan = {"scene": scene, "fps": 10, "width": size[0], "height": size[1],
             "durationInFrames": 40, "clip": f"overlay/{scene}/clip.mp4", "mask": None,
             "cues": cues or [{"id": "c1", "inF": 5, "keyF": 8, "outF": 30}]}
     (shots / "src" / "shots" / f"overlay-{scene}.json").write_text(json.dumps(plan))
+    if wired:
+        wire(shots, scene)
     return proj, shots
 
 
@@ -624,14 +680,47 @@ class OverlayCli(unittest.TestCase):
                 return [{"id": "c1", "frame": 19, "inF": 5, "outF": 30, "png": str(png)}]
             code, out, err = run_cli_render(["check", str(proj), "--overlay", str(shots)],
                                             detect=fake_face(None), render=blank)
-        self.assertEqual(code, 0)
-        self.assertIn("drew nothing", out)
+        self.assertEqual(code, 2, out)
+        self.assertIn("drew nothing", err)
 
     def test_overlay_that_is_not_nine_sixteen_is_noted_and_not_rendered(self):
         with tempfile.TemporaryDirectory() as tmp:
             proj, code, out, err, calls = self.run_gate(tmp, [20, 100, 150, 140], size=(320, 180))
         self.assertEqual(calls, [])
-        self.assertIn("not 9:16", out)
+        self.assertEqual(code, 2, out)
+        self.assertIn("nothing measured", err)
+        self.assertIn("not 9:16", err)
+
+    def test_dir_mode_measures_only_the_wired_scene(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp, scene="03")
+            overlay_workspace(tmp, scene="04", wired=False)
+            calls = []
+            code, out, err = run_cli_render(
+                ["check", str(proj), "--overlay", str(shots)], detect=fake_face(None),
+                render=stub_render({"c1": [20, 100, 150, 140]}, calls=calls))
+        self.assertEqual([Path(c[1]).name for c in calls], ["overlay-03.json"])
+        self.assertEqual(code, 3, out + err)
+        self.assertIn("overlay-04.json: not measured (workspace wired to overlay-03.json)", out)
+        result = next(line for line in out.splitlines() if line.startswith("Result:"))
+        self.assertIn("INCOMPLETE", result)
+
+    def test_dir_mode_with_nothing_wired_exit_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp, wired=False)
+            code, out, err = run_cli_render(["check", str(proj), "--overlay", str(shots)],
+                                            detect=fake_face(None), render=stub_render({"c1": [20, 100, 150, 140]}))
+        self.assertEqual(code, 2, out)
+        self.assertIn("nothing measured", err)
+        self.assertIn("not measured", err)
+
+    def test_clip_aspect_differs_from_the_overlay_exit_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, shots = overlay_workspace(tmp, clip_size=(320, 180))
+            code, out, err = run_cli_render(["check", str(proj), "--overlay", str(shots)],
+                                            detect=fake_face(None), render=stub_render({"c1": [20, 100, 150, 140]}))
+        self.assertEqual(code, 2, out)
+        self.assertIn("aspect", err)
 
     def test_profile_flag_changes_the_safe_area(self):
         with tempfile.TemporaryDirectory() as tmp:

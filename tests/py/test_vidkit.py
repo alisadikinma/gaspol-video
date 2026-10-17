@@ -2457,6 +2457,24 @@ class TitleTest(unittest.TestCase):
             self.assertEqual(rc, 2, text)
             self.assertIn("FAIL", err.getvalue())
 
+    def test_percent_and_brace_text_draws_every_line(self):
+        # drawtext expands % sequences in textfile by default: "DISKON 50%" vanished (GV-23 review)
+        for text, control in (("DISKON 50% HARI INI", "DISKON 50X HARI INI"), ("A %{pts} B", "A X{PTS} B")):
+            got = title.stamp(self.img, text, self.out)
+            want = title.stamp(self.img, control, self.out)
+            self.assertAlmostEqual(got[1], want[1], delta=4, msg=(text, got, want))
+            self.assertAlmostEqual(got[3], want[3], delta=4, msg=(text, got, want))
+            self.assertGreaterEqual(got[2] - got[0], 0.8 * (want[2] - want[0]), (text, got, want))
+
+    def test_cli_stdout_is_pure_json(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vcli.main(["title", str(self.img), "halo dunia", str(self.out)])
+        self.assertEqual(rc, 0)
+        doc = json.loads(out.getvalue())
+        self.assertEqual(doc["out"], str(self.out))
+        self.assertIn("title font:", err.getvalue())
+
     def test_cli_unknown_profile_exit_2(self):
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
