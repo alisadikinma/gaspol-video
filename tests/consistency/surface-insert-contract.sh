@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # GV-24 docs contract: green-screen prompt rule, validator check V17, both routes,
-# and one CLAUDE.md debugging row per refusal message of screen-insert / embroider.
+# and one docs/debugging.md row per refusal message of screen-insert / embroider.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
@@ -38,7 +38,7 @@ for stem in \
   "shirt area too small for design" \
   "--at is not on the shirt" \
   "run tools/setup.sh --ml"; do
-  need CLAUDE.md "$stem" "missing CLAUDE.md debugging row for: $stem"
+  need docs/debugging.md "$stem" "missing docs/debugging.md row for: $stem"
 done
 
 if [ "$fail" -eq 0 ]; then echo "PASS surface-insert-contract"; fi

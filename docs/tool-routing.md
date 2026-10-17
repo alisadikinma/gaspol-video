@@ -64,7 +64,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | A voice-changed line sounds pasted on (too clean for the scene) | `python3 -m tools.vidkit placevoice <clip> <voice> <words.json> <out> [--space outdoor/room/dry]` (default `--bed gaps`; `--bed stems` = Demucs, experimental, sounded worse by ear) |
 | Retention check on a finished cut (static frame, hook, foreshadow, b-roll, BGM) | `python3 tools/retention_gate.py report` / `check` |
 | Fill/check the viral checklist of a short-form script; rate analytics against course thresholds | `python3 tools/viral_checklist.py check` / `timeline` / `rate` |
-| Put an app screen into a phone/monitor in a clip | `python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green\|track` (green: exact corners from a green screen, `--mode track --corners ...` for a clip without green); legacy or seed: `track_screen.py` (+ `vidkit smooth-track` for jitter), Remotion `quad-screen.tsx` |
+| Put an app screen into a phone/monitor in a clip | `python3 -m tools.vidkit screen-insert <clip> <panel> <out> --mode green\|track` (green: exact corners from a green screen, `--mode track --corners ...` for a clip without green); `track_screen.py` only reads the four `--corners` numbers for `--mode track`. Remotion `quad-screen.tsx` is legacy, no skill uses it |
 | App screen for software that does not exist | `gen_app_screen.py` |
 | Print a logo/sablon onto a person's clothing (flat ink, no relief) | `vidkit bond` |
 | Freeze one region of a clip (a bar that must not move) | `vidkit freeze` |

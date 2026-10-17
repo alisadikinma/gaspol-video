@@ -21,17 +21,14 @@ import hashlib
 import math
 import os
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import renders  # noqa: E402
-from tools.vidkit import ff  # noqa: E402
+from tools.vidkit import ff, sheet  # noqa: E402
 
-FFMPEG = shutil.which("ffmpeg")
 
 DEFAULT_FPS = 25.0
 
@@ -188,31 +185,15 @@ def probe(clip):
     return (info["duration"] if duration is None else duration), video.get("fps") or DEFAULT_FPS
 
 
-def _run(args):
-    proc = subprocess.run(args, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.strip()[-400:] or "ffmpeg failed")
-
-
 def make_sheet(clip, project, scene, times):
-    """Extract one frame per timestamp, tile them into .tmp/qa-scene-NN.jpg, delete the frames."""
+    """Tile one frame per timestamp into .tmp/qa-scene-NN.jpg (vidkit.sheet.contact_sheet).
+
+    An ffmpeg failure raises ff.FFError, a RuntimeError, which the caller reports per scene."""
     tmp = project / ".tmp"
     tmp.mkdir(exist_ok=True)
-    frames = [tmp / ("qa-scene-%s-%d.jpg" % (scene, k)) for k in range(len(times))]
-    sheet = tmp / ("qa-scene-%s.jpg" % scene)
-    try:
-        for t, frame in zip(times, frames):
-            _run([FFMPEG, "-v", "error", "-y", "-ss", str(t), "-i", str(clip),
-                  "-frames:v", "1", "-vf", "scale=480:-2", str(frame)])
-        args = [FFMPEG, "-v", "error", "-y"]
-        for frame in frames:
-            args += ["-i", str(frame)]
-        args += ["-filter_complex", "hstack=inputs=%d" % len(frames), str(sheet)]
-        _run(args)
-    finally:
-        for frame in frames:
-            frame.unlink(missing_ok=True)
-    return sheet
+    out = tmp / ("qa-scene-%s.jpg" % scene)
+    sheet.contact_sheet(str(clip), str(out), width=480, times=list(times))
+    return out
 
 
 def _collect(project, ledger, clip_args, wanted):

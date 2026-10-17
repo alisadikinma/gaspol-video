@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from . import ml, screen
-from . import audiostudy, beats, colormatch, cover, ff, gates, grain, ingest, join, karaoke, layout, mixdown, loudness, patch, placevoice, prosody, reframe, sheet, tighten, speech, synth, tidy, title, track, unwhite
+from . import audiostudy, beats, colormatch, cover, ff, gates, grain, ingest, join, karaoke, layout, mixdown, loudness, patch, placevoice, prosody, reframe, sheet, tighten, speech, synth, tidy, title, unwhite
 
 
 def _json(p):
@@ -221,11 +221,6 @@ def main(argv=None):
     s.add_argument("--lufs", type=float, default=None,
                    help="explicit target; wins over --profile for the loudness (true peak still comes from the profile)")
 
-    s = sub.add_parser("smooth-track", help="median-filter a tracked-box json in place")
-    s.add_argument("track_json")
-    s.add_argument("--window", type=int, default=9)
-    s.add_argument("--shrink", type=float, default=1.0)
-
     s = sub.add_parser("bond", help="bond a transparent print onto cloth (needs cv2)")
     s.add_argument("clip")
     s.add_argument("out")
@@ -394,11 +389,6 @@ def main(argv=None):
             print(f"profile {a.profile}: {lufs:g} LUFS, {prof['true_peak']:g} dBTP"
                   + (" (--lufs overrides the profile)" if a.lufs is not None else ""))
             print(json.dumps(loudness.normalize(a.src, a.out, lufs, prof["true_peak"]), indent=1))
-        elif a.cmd == "smooth-track":
-            pts = _json(a.track_json)
-            with open(a.track_json, "w") as fh:
-                json.dump(track.smooth_track(pts, a.window, a.shrink), fh, indent=1)
-            print(f"{a.track_json}: {len(pts)} points smoothed")
         elif a.cmd == "screen-insert":
             if a.mode == "track" and not a.corners:
                 ap.error("--mode track needs --corners")

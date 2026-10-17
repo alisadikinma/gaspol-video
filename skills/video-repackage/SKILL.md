@@ -153,6 +153,12 @@ A/V gate 0.04 s, loudness -14 LUFS with true peak under -1 dBFS.
 | Logo that must sit on a prop (not look pasted) | `vidkit unwhite`, then `mix-blend-mode: multiply`, a little blur and grain |
 | Generated skin looks plastic / AI next to real footage | `python3 -m tools.vidkit grain <src> <out> --strength 7`, same strength on every clip, before the cut |
 | Final mix, loudness, thumbnail on first frames and as cover | `python3 -m tools.vidkit mixdown plan.json` |
+| Learn the source's sound timing (SFX onsets, tempo, energy, against words and cuts) | `python3 -m tools.vidkit audiostudy <clip> [--words words.json]` |
+| A 16:9 source shot into 9:16, panning with the subject | `python3 -m tools.vidkit reframe <src> <out> --size 1080x1920 [--keys ...]` |
+| Join scene clips with hard cuts or a dissolve, with the new timeline | `python3 -m tools.vidkit concat` / `vidkit xfade` |
+| A model-animated number or bar that must stay still | `python3 -m tools.vidkit freeze <src> <out> x y w h` |
+| Notification or alarm sound with no key and no library clip | `python3 -m tools.vidkit synth notification\|alarm <out>` |
+| Logo on the cast's shirt that follows the folds | `python3 -m tools.vidkit embroider <clip> <logo.png> <out> --at x,y --width W` (needs `tools/setup.sh --ml`) |
 
 ### 7. Hand-off
 Report plainly: what was made, what was checked, what was NOT (usually: audio listened by a human),

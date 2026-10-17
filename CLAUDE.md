@@ -14,7 +14,7 @@ JANGAN hardcode project-specific values (nama klien, fleet count, dll). Pakai `{
 
 ## Project Overview
 
-Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + 2 utility skills + 2 agents + 40 CLI tools (38 Python + 2 Node, 6 of the Python tools — `face_box.py`, `gen_app_screen.py capture`, `composite_logo.py`, `person_mask.py`, `thumb_scrim.py`, `yt_stats.py` — need the venv `tools/setup.sh` builds, the rest stay stdlib) + 41 reference documents as RAG knowledge base.
+Claude Code plugin that carries a promotional video from brainstorm to a finished, mixed file: script, image prompts (NB2, in-session render offers via `indusia-image-gen`), video prompts (VEO 3.1 / Seedance 2.0 / Kling 3.0, VEO 3.1 fast render offers via `indusia-video-gen`), app screens and screencasts for software that does not exist yet or is not reachable, Remotion shots for anything that must be readable, then post-production and packaging. 7 production skills + 1 orchestrator + repackage + 2 utility skills + 2 agents + 78 registered tools (`tools/registry.json`; most stdlib, a few need the venv from `tools/setup.sh`, the ML tools need `tools/setup.sh --ml`) + 42 reference documents loaded per phase.
 
 **Core Value:** Anyone — video agencies, freelancers, brand owners — can produce professional 2-3 minute promotional videos by following the generated production plan.
 
@@ -67,6 +67,9 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/composite_logo.py`, `tools/thumb_scrim.py` | Deterministic thumbnail post-process — real logo paste, headline scrim (needs Pillow via `_venv.py`) |
 | `tools/yt_stats.py` | Pulls YouTube Data/Analytics stats into `packaging/calibration.json` (needs the venv + an OAuth client) |
 | `tools/burn_subs.py`, `tools/edit_render.py`, `tools/gen_sfx.py`, `tools/gen_subs.py`, `tools/mix_music.py`, `tools/mix_sfx.py`, `tools/probe_clips.py` | Existing stdlib-only Phase 6 tools (assembly, SFX, subtitles, music mix, clip QA) |
+| `tools/check_vo_duration.py` | Fails when narration does not fit its cut, or a cut runs on in silence |
+| `tools/check_overlay_strings.py` | Fails when a rendered Remotion component shows an on-screen string missing from the script's approved list (expands `X 1 of 6` series) |
+| `tools/track_screen.py` | Reads the four corners of a screen at frame 0 (flood fill + fitted edge lines) for `vidkit screen-insert --mode track --corners`; exits 2 under 120 px. Placing the panel is screen-insert's job |
 | `tools/sfx_snap.py` | Snaps the cue sheet's `at_s` (a stack's parent only) onto the beats of the music bed within `--window` (default 0.12 s); writes `work/sfx-plan.snapped.json`, never the original; `--music-plan` (default `work/music-plan.json`) takes beats from every segment's track, or `--music FILE` for one bed; exit 2 bad input, exit 3 and no file when the music has no beats. Run after the cue sheet is audited and the music tracks are generated, before `mix_sfx.py` |
 | `tools/face_box.py` | GV-23 face box per sampled frame (`[x0,y0,x1,y1]` pixel ints, end-exclusive, `null` = no face) from OpenCV YuNet (cv2.FaceDetectorYN, CPU, score >= 0.6); model pinned in `tools/setup.sh`. Exit 2 on missing model or unreadable video. Test: `tests/py/test_face_box.py`, `tests/consistency/face-model-setup.sh` |
 | `tools/layout_gate.py` | GV-23 layout gate for 9:16 video, `check <project> [--video] [--ass] [--thumb GLOB] [--overlay SHOTS] [--profile] [--every]`. Measures subtitle and watermark boxes by rendering the ASS alone on black, reads the title box from `<thumb>.box.json`, scales the profile to the video's display size (not 9:16 = exit 2), flags boxes outside the safe area and subtitles or titles that touch or crowd the face box (via `face_box.py`). Exit 0 pass, 1 finding, 2 bad input or nothing measured, 3 INCOMPLETE (`--overlay <dir>`: only the json the workspace is wired to is measured); skipped face samples are listed. Writes `work/layout-report.md` and `.tmp/layout-{tiktok,reels,shorts}.jpg`. `--overlay` renders each kinetic-overlay cue's text alone on grey with Remotion (`templates/remotion/scripts/render-overlay-text.mjs`, `KineticOverlay` `textOnly`), measures it, checks safe area and face (touching only), previews `.tmp/layout-overlay-<scene>-*.jpg`; a render that cannot run exits 2, never an estimate. `overlay_plan.py --profile` refuses explicit cue positions outside the safe area and writes `safe` into the overlay json. Tests: `tests/py/test_layout_gate.py`, `tests/py/test_overlay_plan.py`, `tests/node/{overlay-fx,render_overlay_text}.test.mjs` |
@@ -78,17 +81,15 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `tools/caption_keywords.py` | Scores key phrases in a narration line (number+unit, brand term, acronym, reversal word) for kinetic-caption highlighting |
 | `tools/gen_captions.py` | Builds `work/caption-plan.json` from `vo/vo-manifest.json` words (or AssemblyAI, imported from `gen_subs.py`) plus `caption_keywords.score_spans()`; capped, deterministic, reusable unless `--force` |
 | `tools/plan_motion.py` | Fills the `motion` field on static segments of `work/edit-plan.json` — splits a segment over 5.0s into alternating punch-in/punch-out beats, gives a shorter one a single slow punch-in; never overwrites a hand-written `motion` or a `kind: "shot"` segment |
-| `tools/qa_frames.py` | Visual clip QA — a 5-frame contact sheet per rendered clip in `.tmp/qa-scene-NN.jpg` (ids may carry a letter suffix, e.g. `01b`) and a `work/visual-qa.md` verdict sheet with each scene's PLAUSIBILITY block, for Claude to judge in-session; `--check` is the V15 gate (reads verdict cells only, exit 1 on a missing, empty or `FAIL:` cell or a clip changed since judged) |
+| `tools/qa_frames.py` | Visual clip QA — a 5-frame contact sheet per rendered clip in `.tmp/qa-scene-NN.jpg` (ids may carry a letter suffix, e.g. `01b`) and a `work/visual-qa.md` verdict sheet with each scene's PLAUSIBILITY block, for Claude to judge in-session; `--check` is the V15 gate (reads verdict cells only, exit 1 on a missing, empty or `FAIL:` cell or a clip changed since judged). Tiles through `vidkit.sheet.contact_sheet(times=...)` |
 | `tools/thumb_verify.py` | GV-18 thumbnail verify gate. `init <project>` writes `packaging/thumb-verify.md` (one section per `packaging/thumb-*.png`, sha256, five-row verdict table; re-run keeps verdicts of unchanged images); `check <project>` reads only the verdict cells and exits 1 on a missing, empty, malformed or `FAIL:` cell or a changed or removed image, 2 when the sheet is missing; `UNSURE:` is a note. A thumbnail is final only after `check` exits 0. Test: `tests/py/test_thumb_verify.py` |
 | `tools/verdict_page.py` | Stills-first gate (GV-18 Phase I). `page` builds one offline `output/verdict.html` from `keyframes/scene-*.png` (JPEG data URIs via ffmpeg, PASS/MAYBE/NO, notes, Download verdict.json); the owner saves it to `work/verdict.json`; `check` exits 0 only when every keyframe is PASS (`--allow-maybe` accepts MAYBE), 1 listing missing/NO/MAYBE scenes, 2 on a missing or malformed file. stdlib + ffmpeg. Test: `tests/py/test_verdict_page.py` |
 | `tools/registry.json`, `tools/registry_build.py` | Tool registry (GV-20): every tool and every task-to-tool route in one file. `validate [--coverage]` checks schema, coverage, duplicates and ffprobe ownership; `render [--check]` writes the table in `docs/tool-routing.md`; `suggest`/`hook` feed the write-time reminder hook. Tests: `tests/py/test_registry.py`, `tests/py/test_probe_migration.py`, `tests/consistency/tool-registry-contract.sh` (coverage, duplicate and ffprobe-ratchet gates, generated table in sync) |
-| `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
-| `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, beat detection (`beats`, `vidkit.beats.detect/snap`), two-pass loudnorm, track smoothing, motion-tracked print bond (cv2). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
 | `tools/guide_vo.py` | Guide-voice takes: an expressive stock voice on eleven_v3 (audio tags) reads each line at several stabilities, to be picked with `vidkit prosody`, tightened with `vidkit tighten` and converted to the cast voice with `voice_changer.mjs`. Existing takes are never re-billed unless `--force`; key and voice id never printed. Test: `tests/py/test_guide_vo.py` |
 | `tools/retention_gate.py` | Retention report on a finished cut (`report`) and in-session b-roll verdict gate (`check`): static frame, first word, Foreshadow beat, b-roll vs spoken words, BGM headroom. Course defaults tagged `source: course`, overridable; a rule FAIL never exits 1 in report mode. Test: `tests/py/test_retention_gate.py` |
 | `tools/viral_checklist.py` | `check` the `## Viral Checklist` block of `av-script.md` (7 stages, exit 1 on a missing/empty/`FAIL:` cell); `rate` a `calibration.json` entry against the course analytics thresholds (`unknown` when a key is absent). Test: `tests/py/test_viral_checklist.py` |
 | `tools/gen_vo.mjs`, `tools/voice_changer.mjs` | ElevenLabs TTS and speech-to-speech (spans, not whole tracks) |
-| `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: `audiostudy` (SFX/speech onsets, tempo, energy, word and cut relation of a reference clip), A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, track smoothing, motion-tracked print bond (cv2), `tidy.py` (`vidkit tidy`: report, `--apply`, `--empty-tmp` for a project folder). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
+| `tools/vidkit/` | Reusable assembly library, `python3 -m tools.vidkit --help`: `audiostudy` (SFX/speech onsets, tempo, energy, word and cut relation of a reference clip), A/V and concat gates, xfade/concat join with timeline maths, freeze-box patch, contact sheets, synth alerts, word-timing and speech-gap cue snapping, two-pass loudnorm, motion-tracked print bond (cv2), `tidy.py` (`vidkit tidy`: report, `--apply`, `--empty-tmp` for a project folder). See `docs/vidkit.md`. Test: `tests/py/test_vidkit.py` |
 | `tools/vidkit/ml.py`, `requirements-ml.txt`, `tools/setup.sh --ml` | ML guard (GV-24): `bash tools/setup.sh --ml` builds `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv-ml` (torch, TAPNext++, SAM 2.1; Python 3.10+, `PYTHON_ML` overrides) and fetches two weights with pinned URL and sha256. `ml.weight`, `ml.device`, `ml.require`; a missing piece raises `MLMissing` ending `run tools/setup.sh --ml`. Stdlib only, torch imported lazily |
 | `tools/vidkit/pointtrack.py` | `track(frames, queries)`: occlusion-aware point tracking with TAPNext++ (Apache-2.0). Needs venv-ml |
 | `tools/vidkit/segment.py` | `masks(frames, frame_idx, points, labels, box)`: SAM 2.1 mask of an object through a clip from one click or box. Needs venv-ml |
@@ -146,6 +147,7 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 | `image-video-gen/08-kling-production-guide.md` | Kling 3.0 video prompts — native 4K, 5-part formula, multi-shot storyboard (6/15s), motion control, omni audio (5 langs incl mixed-language scene). **Primary** Kling reference (curated by Claude from 10-source WebSearch + UI ground truth) |
 | `image-video-gen/08b-kling-notebooklm-briefing.md` | Kling 3.0 NotebookLM-distilled Briefing Doc — independent cross-validation of 08-kling guide, contains efficiency data (rerolls/credit savings), Elements 3.0 system, 5-layer prompt formula breakdown. **Supplementary** RAG layer #2 (auto-generated from notebook `kling-prod`, regenerate via `nlm report create kling-prod`) |
 | `image-video-gen/09-voice-consistency-workflow.md` | **Cross-platform** voice-over consistency — applies to VEO 3.1 + Seedance 2.0 + Kling 3.0. 3 solution paths (Path A native voice lock per platform, Path B universal ElevenLabs post-prod, Path C single VO + sync), prompt-level discipline rules, hybrid workflow per video type, plugin integration spec for Phase 5 Step 5.0. **MANDATORY** for any video with >1 scene or character voice continuity. |
+| `image-video-gen/10-physical-plausibility-gate.md` | Phase 4B and 5 — nine defect classes and the seven-line `PLAUSIBILITY:` block (MECHANISM, COUNT, FLOW, FACING, PAIR, PEOPLE, OVERLAY SURFACE), checks K1-K7 |
 | `image-video-gen/project-instruction.md` | Image/video project instructions — critical rules, example workflows |
 
 #### Post-Production (Phase 6)
@@ -175,150 +177,64 @@ Claude Code plugin that carries a promotional video from brainstorm to a finishe
 
 ## Key Concepts
 
-### Production Pipeline (6-Phase Full Pipeline)
+Full rules live in the skills and `reference/`; this section is the part an agent must never break.
+Source of truth for every value: `reference/global-promo-config.md` (section numbers below).
 
-The plugin operates as a single end-to-end pipeline with mandatory approval gates between phases:
+### Pipeline and gates
 
-```
-Phase 1: BRAINSTORM          → Output: strategic-brief.md + cast-profile.md
-  ├─ Language selection (Bahasa Indonesia / English / Bilingual)
-  ├─ Cast builder (1-5 characters, Utama/Pendamping roles)
-  ├─ Institution detection + costume confirmation
-  ├─ Product discovery + tech doc upload
-  ├─ **Location & setting context (city, country, setting type)**
-  ├─ **Domain Deep Research (6 location-aware WebSearch queries)**
-  ├─ Target market, awareness level, platform selection
-  ├─ Emotional core discovery
-  ├─ Storyline input (user freeform / brainstorm / reference) + 7-beat arc mapping
-  ├─ Tone/mood selection (Humorous / Serious / Professional / Inspirational / Casual / Edgy)
-  └─ [USER APPROVAL GATE]
+| Phase | Output | Gate |
+|---|---|---|
+| 1 Brainstorm | `strategic-brief.md`, `cast-profile.md` | user approval; location confirmed before the 6 domain-research searches (§24) |
+| 2 Script | `av-script.md` | user approval; BODY 1 dramatizes every brainstormed pain (§25, check C1) |
+| 3 Scene breakdown | `scene-plan.md` (Render Path `platform`/`explainer`, Screen Source `capture`/`mock`/`none`) | user approval |
+| 3.5 References | `ref-manifest.md` | **hard block**: 100% of refs in `{project}/ref/`, no skip, no "lanjut dulu" |
+| 4A Asset library | `nb2-reference-prompts.md` | uniqueness filter, COMMON items skipped (§26, C2) |
+| 4B Keyframes | `image-prompts.md`, one start frame per clip | batches of max 5 scenes, `video-prompt-reviewer` per batch |
+| 4.5 Explainer | Remotion shots | clips of the kelompok exist first |
+| 5 Video prompts | `video-prompts.md` | image review per scene, reviewer per batch |
+| 6 Post | VO, edit, SFX, captions, music, mix | SFX cue sheet audited by the user before any mix; A/V duration gate |
+| 7 Package | title, three thumbnail bets, description | `thumb_verify.py check` exits 0 |
 
-Phase 2: SCRIPT               → Output: av-script.md
-  ├─ Generate 2-3 min video script
-  ├─ A/V table with beat labels + timing
-  ├─ Narration/dialogue per scene
-  ├─ Audio direction (SFX, music, ambient)
-  └─ [USER APPROVAL GATE]
+`--full` (default) writes the production plan; `--quick` writes copy-paste prompts only.
 
-Phase 3: SCENE BREAKDOWN       → Output: scene-plan.md
-  ├─ Script → Scene list (auto-calculated)
-  ├─ VEO mode per scene (Frame / Ingredients / Extend)
-  ├─ Duration allocation
-  ├─ Extension strategy
-  └─ [USER APPROVAL GATE]
+### Prompt rules that break renders when ignored
 
-Phase 3.5: REFERENCE COLLECTION  → Output: ref-manifest.md
-  ├─ Auto-derive from scene-plan.md + cast-profile.md
-  ├─ Present manifest checklist (5 categories)
-  ├─ Cultural location web search (5 facts per location via WebSearch)
-  ├─ Batch NB2 prompt generation for missing refs (6 categories)
-  ├─ User generates/uploads to {project}/ref/
-  ├─ Validate ALL refs exist
-  └─ [HARD BLOCK — 100% required before Phase 4]
+- **Audio is never optional**: dialogue/VO + SFX + ambient in every video prompt; always add `no subtitles, no audience sounds, no text overlays`.
+- Presenter: `Host says: text` (generic role, never a real name: safety filter). Lip sync needs face >30% of frame.
+- B-roll: `Voice-over narrator, [tone]: text` plus a `> POST-PROD VO:` backup line. Never bare `Voiceover:`.
+- **No em dash `—` in spoken text**; use `,` or `. `. No `[pause: Ns]` tag in a platform prompt (V16).
+- `security camera` makes Veo draw REC text: write `fixed overhead view`.
+- VEO prompts never name face ref files; NB2 prompts name them **bare** (`cast-c1-face.png`, never `ref/...`), **inline** with the element, **once** per prompt, **max 5** refs per 4B prompt (§26.4). The Required Reference Images table sits directly below each prompt heading.
+- Identity lock syntax: `Maintain exact facial identity from reference image: cast-c1-face.png`.
+- `scene-N-end.png` cross-reference only when both scenes share the environment (§27, C4).
+- NB2 aspect ratio must equal the video target (triple enforcement: first line, TECHNICAL, last line).
+- Every 4B and 5 prompt carries the seven-line `PLAUSIBILITY:` block and a `NARRATIVE CONTEXT:` block; every prompt carries a `DOMAIN CONTEXT:` line.
 
-Phase 4A: ASSET LIBRARY (NB2)   → Output: nb2-reference-prompts.md
-  ├─ Auto-scan ref/ folder (user photos = ground truth)
-  ├─ Recurring element detection (2+ scenes → standalone asset) — **v2.2.0+: combined with UNIQUENESS filter (skip COMMON-tier generic items) per global-promo-config.md §26**
-  ├─ Dynamic tier assignment with dependency graph
-  ├─ Tier-by-tier generation with validation gates
-  ├─ Extended categories: cast, vehicles, objects, products, product closeups, environments, UI composites
-  ├─ Product closeup + location photo enforcement
-  ├─ Climate-aware costume check
-  └─ [USER APPROVAL GATE]
+### VEO mode choice
 
-Phase 4B: SCENE KEYFRAMES (NB2)  → Output: image-prompts.md
-  ├─ **BATCH BY ACT (max 5 scenes/batch)**
-  ├─ Per-batch: generate → validate (prompt-reviewer agent) → approve
-  ├─ Start frame + End frame per scene (Frame mode)
-  ├─ Ingredient images (Ingredients mode)
-  ├─ EVERY visual element references Phase 4A asset (no text-only descriptions)
-  ├─ Aspect ratio triple enforcement
-  ├─ Output filename per prompt
-  ├─ Ref-to-prompt body binding
-  ├─ UI text localization
-  └─ [USER APPROVAL GATE]
+Default: **one keyframe per clip, Single I2V**. Ingredients (1-3 refs, consistent character) and
+First+Last Frame are **mutually exclusive**. First+Last only for faceless scenes and only when the
+user asks for it on a named clip (two photoreal faces = "prominent people" rejection). Extend needs a
+VEO-made 720p source; 1080p clips cannot be extended. Kling: per-second 3-15 s, Indonesian VO yes,
+Indonesian on-screen lip sync no. Platform guides: `reference/image-video-gen/02`, `07`, `08`.
 
-Phase 5: VIDEO PROMPTS (VEO)   → Output: video-prompts.md
-  ├─ **BATCH BY ACT (max 5 scenes/batch)**
-  ├─ Per-batch: generate → validate (prompt-reviewer agent) → approve
-  ├─ Per-scene VEO 3.1 prompts
-  ├─ Extension prompts (same-scene continuity)
-  ├─ Audio specs (dialogue + SFX + ambient)
-  ├─ Transition end instructions
-  ├─ Post-production checklist
-  └─ [FINAL OUTPUT]
-```
+### Story rules
 
-### Output Modes
+Customer is the hero, product is the bridge, brand is the guide. Nine commandments and 22 rejection
+signals in `reference/storytelling_script_gen/project-instruction.md`; forbidden words include
+synergy, leverage, robust, revolutionary, cutting-edge, seamlessly. Short-form (9:16) adds F12 viral
+checklist and F13 timeline (`viral_checklist.py`).
 
-- **`--full`** (default): Full production plan with cast-profile.md, ref-manifest.md, scene breakdown, storyboard notes, NB2 prompts, VEO prompts, audio specs, extension strategy, post-production checklist
-- **`--quick`**: Copy-paste ready prompts only (NB2 + VEO per scene, no production plan)
+### Cast and realism
 
-### Production Stack
-
-- **Image Model**: Nano Banana 2 (NB2) — Gemini 3.1 Flash Image
-- **Video Model (Primary)**: VEO 3.1 — 720p/1080p, 8s clips, 148s extension chain
-- **Video Model (Alt)**: Seedance 2.0 — native 2K, 15s clips, @ reference system, dual-branch AV
-- **Video Model (Alt)**: Kling 3.0 — 720p/1080p UI (4K via API), **per-second duration 3-15s** (pick exact second), multi-shot storyboard (6 shots within chosen duration), motion control, omni audio (lip-sync 5 langs EN/ZH/JA/KO/ES, mixed-language scene unique). **Bahasa Indonesia: ✅ Voice-over narrator native, ❌ on-screen lip-sync** — perfect for B-Roll ID, use VEO for face-front ID dialogue.
-- **Pipeline (VEO)**: NB2 image → VEO First+Last Frame / Ingredients → VEO Extend
-- **Pipeline (Seedance)**: NB2 image → Seedance @Image refs + Omni mode → Seedance @Video extend
-- **Pipeline (Kling)**: NB2 image → Kling I2V / First+Last / Multi-Shot Storyboard / Motion Control (no native extension; restart with new NB2 anchor for long-form)
-
-### Critical Audio Rules
-
-- Audio is NEVER optional — unspecified = VEO guesses random sounds
-- Presenter scenes: `Host says: text` (generic role, colon syntax) — NEVER real person names (safety filter). Lip sync ON, face >30% frame
-- B-Roll scenes: `Voice-over narrator, [tone]: text` — NEVER bare `Voiceover:` (lip-syncs to visible character). Every B-Roll MUST have VO narration + `> POST-PROD VO:` backup
-- NEVER use em dash `—` in dialogue/voiceover text — VEO audio engine mistranslates. Use `,` or `. `
-- Always add: `no subtitles, no audience sounds, no text overlays`
-- VEO prompts: NO face ref filenames (`cast-c{N}-face.png`) — use generic continuity language. Face refs are NB2-only.
-- NB2 prompt body text: use filename only (e.g., `cast-c1-face.png`), NEVER add `ref/` folder prefix — NB2 matches by uploaded filename, not path. All filenames MUST be inline with the element they describe (no header blocks, no standalone lines, each filename MAX 1x per prompt).
-- See `image-video-gen/02-veo-production-guide.md` for full audio specs, safety filter rules, and duration rules
-
-### VEO 3.1 Mode Selection (Mutual Exclusivity + Safety Filter)
-
-```
-Need consistent CHARACTER across shots?
-├── YES → "Ingredients to Video" (1-3 ref images)
-│         Cannot combine with First+Last Frame
-│
-└── NO, need controlled TRANSITION between two states?
-    ├── YES → Does scene have FACE >30% of frame?
-    │         ├── YES → "Single I2V" (start frame only)
-    │         │         Safety filter rejects 2 face images
-    │         │
-    │         └── NO → "First + Last Frame" (Keyframe Control)
-    │                   Generate START (NB2) + END (NB2)
-    │                   Only for faceless scenes (dashboards, products, environments)
-    │
-    └── NO, need to CONTINUE an existing clip?
-        └── "Scene Extension" (Extend)
-            Source must be VEO-generated, 720p only
-            Uses final 1 second as context anchor
-```
-
-**(v3.7.0) DEFAULT: one keyframe per clip.** Every clip is Single I2V from one NB2 start frame; the tree above applies First+Last only when the user explicitly asks for it on a named clip.
-
-**CRITICAL: Ingredients ≠ First+Last Frame. They are MUTUALLY EXCLUSIVE. Pick ONE per generation.**
-**SAFETY: First+Last Frame with 2 photorealistic face images → rejected as "prominent people." Use single I2V for face-dominant scenes.**
-
-### Key Technical Rules
-
-- **Resolution Rule:** Generate initial clip at **720p** if ANY extensions planned. 1080p = 8s only, CANNOT extend.
-- **NB2 aspect ratio MUST match VEO target** — mismatch = edge hallucination.
-- **NB2 Prompt Formula:** `Subject/Material + Lighting Architecture + Camera/Lens + Campaign Context`
-- Scene count auto-calculated from script beats. Scene → VEO mode mapping in `script-to-scene-bridge.md`.
-- VEO specs (resolution, duration, extensions, prompt limits) in `image-video-gen/02-veo-production-guide.md`.
-- NB2 parameters (CFG, denoise, thinking mode, identity lock) in `image-video-gen/01-nb2-image-generation.md`.
-- **NB2 Identity Lock Syntax:** `Maintain exact facial identity from reference image: filename.png` — use bare filename only (NO `ref/` or `keyframes/` prefix). NB2 matches uploaded files by filename; `ref/cast-c1-face.png` fails to match the uploaded `cast-c1-face.png`. **v2.2.0+: Max 5 inline references per Phase 4B prompt (combined faces + bodies + costumes + objects + envs + UI), replaces old "Max 3 identity locks per scene" (which applied to faces only). See global-promo-config.md §26.4.**
-- **Inline-Only Reference Pattern:** All NB2 reference image filenames MUST appear inline with the element they describe, NOT in header blocks. Each filename MAX 1x per prompt. Three categories: (1) identity lock inline with character: `[Name] (Maintain exact facial identity from reference image: cast-c1-face.png) in uniform...`, (2) object/env ref inline: `...the monitor — EXACTLY matching ui-anpr-screen.png: interface...`, (3) scene continuity inline: `...continuation from scene-{NN-1}-end.png — maintaining position...`. BANNED: header blocks (`Using reference image xxx.png for [purpose]`), standalone identity lock lines, duplicate filenames.
-- **Required Reference Images Table Placement:** Table MUST appear directly BELOW each image/prompt heading, BEFORE the prompt body text — NOT above the heading, NOT after the prompt body. Use bare filenames only (NO `ref/` prefix). Add note: "Upload all files to `{project}/ref/` folder."
-- **No Em Dash in VEO Audio Text:** NEVER use `—` (em dash) in `says:` or `Voice-over narrator:` text — VEO audio engine mistranslates it. Replace with `,` or `. ` in all dialogue/voiceover template placeholders.
-- Cinematography defaults per content type in `image-video-gen/04-cinematography-lookup.md`.
+1-5 characters (`creator-profile-system.md`). Anyone in 2+ scenes gets a face portrait in Phase 4A
+first (§18). Pemeran Utama: face + body + costume refs (+ side face ref); Pendamping: face ref.
+Institution keywords require a real uniform ref; brand logos are always user-provided. The 9-point
+Scene Logic Realism check is in `script-to-scene-bridge.md` §7B; narrative continuity in §7C.
 
 ### Smart Context Loading
 
-Each phase loads ONLY the reference files it needs — NOT all 23. This prevents context window overflow.
+Each phase loads ONLY the reference files it needs.
 
 | Phase | Files Loaded | Max |
 |-------|-------------|-----|
@@ -329,10 +245,8 @@ Each phase loads ONLY the reference files it needs — NOT all 23. This prevents
 | Phase 4A | global-promo-config, 01-nb2, script-to-scene-bridge (7B only) | 3 |
 | Phase 4B | global-promo-config, 01-nb2, script-to-scene-bridge, 04-cinematography | 4 per batch |
 | Phase 4.5 (explainer) | global-promo-config §29.5, 12-remotion-explainer, 18-screencast (screen scenes only) | 3 per shot |
-| Phase 5 (VEO) | global-promo-config, 02-veo, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
-| Phase 5 (Seedance) | global-promo-config, 07-seedance, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
-| Phase 5 (Kling) | global-promo-config, 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
-| Phase 5 (Mixed) | global-promo-config, 02-veo + 07-seedance + 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 7 per batch (one-time platform-guide load + voice workflow, then filter per scene) |
+| Phase 5 (VEO / Seedance / Kling) | global-promo-config, 02-veo or 07-seedance or 08-kling, 03-workflow, 04-cinematography, 09-voice-consistency | 5 per batch |
+| Phase 5 (Mixed) | global-promo-config, 02 + 07 + 08, 03-workflow, 04-cinematography, 09-voice-consistency | 7 per batch |
 | Phase 6 pass 1 (audio) | global-promo-config §29, 11-voice-cast-and-vo | 2 |
 | Phase 6 pass 2 (edit) | global-promo-config §29, 13-ffmpeg-edit | 2 |
 | Phase 6 pass 3 (SFX) | global-promo-config §29, 14-sfx-design | 2 |
@@ -340,171 +254,8 @@ Each phase loads ONLY the reference files it needs — NOT all 23. This prevents
 | Phase 6 pass 5 (final mix) | global-promo-config §29, 10-post-production-pipeline | 2 |
 | Phase 7 (packaging) | global-promo-config §29, 15-packaging | 2 |
 
-Phase 4B and 5 also load per-batch filtered data from output files (cast entries + scene entries for current batch only).
-
-Phases 4.5, 6 and 7 stay small on purpose: each pass reads its own reference plus the plan file the
-previous pass wrote, never the storytelling set. A post-production pass has no use for the hook vault.
-
-### Prompt Reviewer Agent (Independent Validator)
-
-After each batch in Phase 4B/5, a separate `prompt-reviewer` agent validates the output:
-- **Fresh context** — no generation instructions, no storytelling files
-- **Reads only:** batch prompts + cast-profile.md + scene-plan.md (ground truth)
-- **Checks:** dependency chain, costume consistency, prop scale, camera angle, aspect ratio, 9-point realism, upload table completeness
-- **Returns:** PASS/FAIL with per-prompt line-level feedback
-- **On FAIL:** generator re-generates only failing prompts (max 2 retries)
-
-This eliminates self-check bias — the validator has never seen the generation rules, so it cannot "explain away" violations.
-
-### Location & Domain Deep Research (MANDATORY — Steps 1.2c + 1.2d)
-
-AI is blind about specific product domains, AND domains are **location-specific**. RS Indonesia ≠ RS USA ≠ RS Japan. Factory di Cikarang ≠ Factory di Shenzhen. Same domain, completely different visuals — architecture, equipment brands, uniforms, signage, safety standards.
-
-**Step 1.2c: Location Context** — Confirm location/setting BEFORE domain research:
-- City/region, country, setting type (factory/hospital/port/office), indoor/outdoor
-
-**Step 1.2d: Domain Deep Research** — 6 location-qualified WebSearch queries:
-
-| # | Query | Purpose |
-|---|-------|---------|
-| 1 | `{domain} in {country} production process workflow` | Local process flow |
-| 2 | `{domain} {country} equipment machines brands commonly used` | Local equipment brands |
-| 3 | `{domain} {country} worker roles uniforms PPE requirements` | Local workforce, dress norms |
-| 4 | `{domain} {location} facility layout photos` | Local architecture, interior |
-| 5 | `{product_name} product interface dashboard features` | Product appearance |
-| 6 | `{domain} {country} regulations standards signage` | Local safety signage, certifications |
-
-Output saved to `strategic-brief.md` > Domain Knowledge section with **Local Differentiators** table (generic AI default vs actual local reality). Every NB2/VEO prompt includes `DOMAIN CONTEXT:` line with location-specific details.
-
-**HARD RULES:**
-- Location MUST be confirmed before domain research begins
-- Domain research MUST complete before Phase 2 (Script)
-- Domain research + cultural research (Step 3.5.2a) are COMPLEMENTARY
-
-See `global-promo-config.md` Section 24.
-
-### Scene Logic Realism (9-Point)
-
-Every NB2/VEO prompt must pass 9 realism checks to prevent "stock photo generic" output:
-
-1. **Environment Accuracy** — location matches cultural research, architecture/vegetation/signage match real location
-2. **Human Behavior Realism** — workers work, supervisors supervise, no "standing and smiling at camera" in action scenes
-3. **Data/Display Consistency** — dashboard numbers, ANPR readings, metrics consistent across all scenes
-4. **Uniform & Rank Accuracy** — institutional uniforms match rank/role (supervisor ≠ operator uniform, correct epaulettes/stripes)
-5. **Explicit Negatives** — prompt states what should NOT appear ("no outdoor elements" for indoor, "no sunlight" for night)
-6. **Reference Photo Enforcement** — every element with ref/ image uses it, user photos = ground truth
-7. **Timeline & Shift Consistency** — time-of-day/lighting matches across connected scenes, PPE matches shift
-
-Full checklist and per-prompt algorithm in `script-to-scene-bridge.md` Section 7B.
-
-### Character Portrait-First Rule
-
-**Any character in 2+ scenes MUST have standalone face portrait generated FIRST in Phase 4A.** Text descriptions alone = different faces every time. Applies to cast members AND recurring named extras.
-
-- Cast Pemeran Utama: face → body → costume → scene (mandatory chain)
-- Cast Pemeran Pendamping: face → scene (minimum)
-- Recurring extras (2+ scenes): face portrait in Phase 4A FIRST
-- Scene keyframes MUST reference the portrait inline — NB2 injects `cast-c{N}-face.png` inline with character description (e.g., `[Name] (Maintain exact facial identity from reference image: cast-c{N}-face.png) — description...`), filename only (NO `ref/` prefix), VEO uses generic continuity
-
-See `global-promo-config.md` Section 18.
-
-### Narrative Arc Consistency
-
-Connected scenes MUST explicitly reference each other. Every NB2/VEO prompt includes a `NARRATIVE CONTEXT:` block:
-
-```
-NARRATIVE CONTEXT:
-  Previous: Scene {N-1} — {what happened}.
-  This scene: {what happens now and WHY}.
-  Next: Scene {N+1} — {what this scene sets up}.
-  Visual breadcrumb: {shared element connecting adjacent scenes}.
-  Emotional arc: {start emotion} → {end emotion}.
-```
-
-Key rules: name the connection, add visual breadcrumbs (shared props/screens/landmarks), state cause-effect chains, share environment references, maintain character state continuity, pin data labels in UI scenes. See `script-to-scene-bridge.md` Section 7C.
-
-### Cast System (Multi-Character)
-
-Supports 1-5 characters per video.
-
-- **Pemeran Utama** (main, 1-3): FULL identity lock — face + body + costume ref MANDATORY
-- **Pemeran Pendamping** (supporting, 0-2): PARTIAL identity lock — face ref MANDATORY, body/costume OPTIONAL
-- **Ali Sadikin preset**: Pre-configured profile that fills 1 Pemeran Utama cast slot
-- **Institution-aware costume**: Auto-detects institutional brand (KAI, Pelindo, BRI, etc.) and requires uniform reference images
-- **Reference images**: `{project-folder}/ref/` — naming: `cast-c{N}-face.png`, `cast-c{N}-body.png`, `cast-c{N}-costume.png`
-- See `creator-profile-system.md` for full cast builder details and institution keyword list
-
-### Language Selection
-
-Pipeline starts with language choice (Phase 1 Step 1.0):
-
-| Option | Narration/Dialogue | NB2/VEO Prompts | Strategic Brief |
-|--------|-------------------|-----------------|-----------------|
-| Bahasa Indonesia | Indonesian | English (fixed) | Indonesian |
-| English | English | English (fixed) | English |
-| Bilingual | Indonesian + English tech terms | English (fixed) | Indonesian |
-
-**Key rule:** NB2/VEO prompt structure ALWAYS stays English (technical requirement for AI models). Only narration text and `says:` dialogue follow user's language choice.
-
-### Tone/Mood System
-
-Selected in Phase 1 Step 1.7b. 6 tones (Humorous / Serious / Professional / Inspirational / Casual / Edgy) that affect script style, lighting, camera, music, and expression across ALL subsequent phases. Full impact matrix in `global-promo-config.md` Section 13.
-
-### User Storyline Input
-
-Phase 1 Step 1.7 offers 3 modes: **freeform** (user pastes storyline, AI maps to 7-beat arc), **brainstorm** (AI guides through pain points/USP/CTA), or **reference video** (user describes a video, AI extracts and adapts structure).
-
-### Phase 3.5: Reference Image Validation Gate
-
-Mandatory gate between Scene Breakdown (Phase 3) and Image Prompts (Phase 4).
-
-**HARD BLOCK:** Cannot proceed to Phase 4 without ALL reference images validated.
-
-**5 Reference Categories (all hard block):**
-
-| # | Category | Naming Pattern | Required When |
-|---|----------|---------------|---------------|
-| 1 | Character (cast) | `ref/cast-c{N}-face.png`, `-body.png`, `-costume.png` | Any scene with character |
-| 2 | Product | `ref/product-{name}.png` | Any scene showing product |
-| 3 | Environment | `ref/env-{location}.png` | Any B-Roll or location-specific scene |
-| 4 | Brand Assets | `ref/brand-{asset}.png` | Any scene with visible logo/UI/brand |
-| 5 | Costume/Uniform | `ref/costume-{institution}.png` | When institution detected |
-
-**Auto-derive logic:** Engine scans scene-plan.md + cast-profile.md → builds ref-manifest.md → user uploads → engine validates 100% → proceed.
-
-**No skip. No override. No "lanjut dulu."**
-
-### Cultural Location Research
-
-Phase 3.5 web searches 5 facts per location (license plates, ethnicity, landmarks, architecture, climate). Without this, AI generates generic visuals — wrong plate numbers, wrong ethnicity, wrong architecture. Results inject into NB2 environment prompts and VEO atmosphere. See `global-promo-config.md` Section 14.
-
-**Brand logos MUST be user-provided** — AI cannot generate reliable logos. Ref image NB2 templates in `script-to-scene-bridge.md` Section 11.
-
-### Storytelling Core Rules
-
-**Product is NEVER the hero. Product is the BRIDGE. Customer is the hero. Brand is the guide.**
-
-9 Commandments (cannot be overridden):
-1. NEVER open with company name or logo
-2. NEVER use jargon without immediate translation
-3. Every feature MUST have a human consequence
-4. Forbidden words: synergy, leverage, robust, revolutionary, cutting-edge, seamlessly, innovative solution, state-of-the-art
-5. B-roll MUST advance the story (never decorative)
-6. Every scene MUST pass the "So What?" test
-7. CTA must be specific, time-bound, and low-friction
-8. The first 3 seconds determine everything
-9. **(v2.2.0+) BODY 1 must dramatize ALL identified problems** — count(pains dramatized as dedicated scenes in BODY 1) >= count(pains identified in Phase 1 brainstorm). Pairing OK if shared root cause (max 2/scene). Anchor pain NOT pairable. Overlay "1 of N" while N>1 = auto-fail. See `global-promo-config.md` §25.
-
-22 rejection signals auto-checked — see `storytelling_script_gen/project-instruction.md`. Target market adaptation in `F1_Audience_Psychology_Matrix.md`. 7-beat arc and awareness routing in `F2` and `F8`. 6-stage user framework alias (HOOK → Foreshadow → BODY 1 → BODY 2 → Peak → Ending+CTA) in `F2` §B0 + `global-promo-config.md` §25.
-
-### v2.2.0 Hard Rules (NEW — must read for any new project)
-
-| Rule | Reference | Validator Check |
-|---|---|---|
-| BODY 1 Completeness — all identified pains dramatized | `global-promo-config.md` §25 | C1 (Phase 2) |
-| NB2 Reference Uniqueness Filter — skip COMMON, generate UNIQUE | `global-promo-config.md` §26 | C2 (Phase 4A) |
-| Max 5 inline refs per Phase 4B prompt | `global-promo-config.md` §26.4 | C3 (Phase 4B) |
-| Cross-scene `scene-N-end.png` ref env-gated only | `global-promo-config.md` §27 | C4 (Phase 4B) |
+The `video-prompt-reviewer` agent runs with fresh context (batch prompts + `cast-profile.md` +
+`scene-plan.md` only), returns PASS/FAIL per prompt, max 2 regenerations.
 
 ## Technical Defaults
 
@@ -535,505 +286,14 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ## Debugging
 
-| Issue | Check |
-|-------|-------|
-| Edge hallucination in video | NB2 aspect ratio doesn't match VEO target — generate natively in target ratio |
-| Wrong VEO mode selected | Ingredients ≠ First+Last Frame — they are MUTUALLY EXCLUSIVE |
-| No audio in video | Audio is NEVER optional — specify all 3 layers (dialogue/VO, SFX, ambient) |
-| Lip sync fails | Wrong dialogue syntax — use colon syntax `says:` not quotation marks |
-| Frozen mouth in video | Camera too far — MCU/CU, face >30% frame, add "visible mouth openings" |
-| Identity drift across clips | Weak context in final second — hold clear pose, use same description verbatim |
-| Light jumps between clips | Different lighting in start/end frames — match Kelvin + direction in both NB2 images |
-| Can't extend clip | Clip was generated at 1080p — use 720p for extendable clips |
-| Stutter at extension joint | Abrupt motion at clip end — maintain consistent camera speed through final second |
-| Script too corporate | Check 9 Commandments (v2.2.0+) — forbidden words, missing human consequences, BODY 1 incomplete |
-| Weak hook | Must pass "So What?" test in first 3 seconds — check F5 Hook Vault |
-| CTA too generic | Must be specific, time-bound, low-friction — check F6 CTA Vault |
-| Wrong target market tone | Check F1 Audience Psychology Matrix for correct psychographic profile |
-| Missing emotional beats | Check 7-Beat Arc compliance — all beats mandatory |
-| Plastic texture in image | Over-denoising — prompt "visible pores", "natural grain", "micro-scratches" |
-| B-Roll voiceover rendered as lip sync | Bare `Voiceover:` assigns speech to visible character — use `Voice-over narrator, [tone]: text` (VEO treats narrator as off-screen) |
-| "Prominent people" safety error | Real person name in VEO `says:` + photorealistic face — use `Host says:` / `Presenter says:`, NEVER real names. NB2 can still use real names. |
-| "Prominent people" on First+Last Frame | Two photorealistic face images uploaded to VEO — use single I2V (start frame only) for face-dominant scenes (face >30% frame) |
-| Em dash audio artifact | `—` in says:/narrator: text — VEO audio engine mistranslates em dashes. Replace with `,` or `. ` |
-| B-Roll scene has no narration | Silent B-Roll breaks continuous VO flow — every B-Roll MUST have `Voice-over narrator, [tone]: text` + `> POST-PROD VO:` backup |
-| Face ref filename in VEO prompt | `cast-c{N}-face.png` in VEO prompt is useless and may trigger safety filter — face ref injection is NB2-only. VEO uses `Maintain visual continuity with reference frame character appearance.` |
-| Identity conflict between cast members | Different characters look too similar — use distinct clothing + accessories + positioning per character |
-| Wrong character appears in scene | NB2 prompt missing specific `cast-c{N}-face.png` identity lock — each prompt must reference exact cast slot (filename only, NO `ref/` prefix) |
-| Costume doesn't match institution | Wrong/generic uniform generated — use `ref/costume-{institution}.png` as upload reference, describe badge/emblem details |
-| Missing ref blocks Phase 4 | ref-manifest.md validation failed — upload ALL required refs to `{project}/ref/` per manifest |
-| Multi-char dialogue overlap | VEO renders garbled speech — lip sync is 1 speaker at a time, use sequential delivery with reaction pauses |
-| Cast member inconsistent across scenes | Weak reference phrase — use EXACT verbatim phrase from cast-profile.md in EVERY NB2 prompt |
-| Wrong language in dialogue | narration_language not applied in Phase 2 — check strategic-brief.md Language field, ensure script uses it |
-| Tone inconsistent across scenes | video_tone not applied uniformly — reference global-promo-config.md Section 13 Tone Impact Matrix |
-| Wrong license plate in video | No cultural research performed — run Step 3.5.2a web search, check plat kendaraan fact |
-| Wrong ethnicity for local extras | Cultural context missing — check strategic-brief.md Cultural Context, inject into NB2 |
-| AI-generated logo looks wrong | Logo generation unreliable — brand logo MUST be user-provided, not AI-generated |
-| Storyline missing beats | User input incomplete — Step 1.7 maps to 7-beat arc, AI suggests missing beats |
-| Cross-file drift | Run `/video-validate --refs` — checks all reference files for consistency |
-| Same element looks different across scenes | Recurring element not generated as standalone asset — auto-detect from av-script.md, generate in Phase 4A first |
-| Gate/facility hallucinated wrong | No user photo used — auto-scan ref/ folder, existing photos = ground truth, NEVER override with text description |
-| Product texture completely wrong | No product closeup reference — user photo mandatory (AI generates wrong species/shape for commodities like cangkang) |
-| Wrong aspect ratio in NB2 output | Missing triple enforcement — add aspect ratio to FIRST line, TECHNICAL section, and LAST line of every prompt |
-| UI text in wrong language | ui_text_language not applied — on-screen text must match narration_language, except technical abbreviations |
-| Composite asset has wrong sub-elements | Wrong tier assignment — composite tier = max(sub-element tiers) + 1. Generate sub-elements FIRST |
-| Ref in upload table but model ignores it | Missing ref-to-prompt body binding — every ref in table needs matching injection line in prompt body text |
-| User doesn't know where to save output | Missing Output filename — every NB2 prompt needs explicit `**Output →** ref/filename.png` line |
-| Costume inappropriate for climate | No climate-aware check — cross-check costume vs location climate after cultural research (Step 3.5.2a) |
-| Scene keyframe describes element from scratch | Asset-first violation — if element has ref in Phase 4A, scene keyframe MUST reference it, not describe from text |
-| Identity conflict between cast members | Different characters look too similar — use distinct clothing + accessories + positioning per character |
-| Wrong character appears in scene | NB2 prompt missing specific `cast-c{N}-face.png` identity lock — each prompt must reference exact cast slot (filename only, NO `ref/` prefix) |
-| Costume doesn't match institution | Wrong/generic uniform generated — use `ref/costume-{institution}.png` as upload reference, describe badge/emblem details |
-| Missing ref blocks Phase 4 | ref-manifest.md validation failed — upload ALL required refs to `{project}/ref/` per manifest |
-| Multi-char dialogue overlap | VEO renders garbled speech — lip sync is 1 speaker at a time, use sequential delivery with reaction pauses |
-| Cast member inconsistent across scenes | Weak reference phrase — use EXACT verbatim phrase from cast-profile.md in EVERY NB2 prompt |
-| Wrong language in dialogue | narration_language not applied in Phase 2 — check strategic-brief.md Language field, ensure script uses it |
-| Generic stock-photo environment | Scene Logic Realism check 1 failed — prompt must reference cultural research + ref/env-{location}.png, not generic "modern office" |
-| Workers posing instead of working | Scene Logic Realism check 2 failed — direct plausible actions: "supervisor reviewing clipboard," not "supervisor smiling at camera" |
-| Dashboard numbers inconsistent | Scene Logic Realism check 3 failed — pin specific numbers and names across all scenes showing same data |
-| Supervisor in operator uniform | Scene Logic Realism check 4 failed — uniform details must match institutional rank hierarchy (stripes, helmet color, vest) |
-| AI adds wrong elements to scene | Scene Logic Realism check 5 failed — add explicit negatives: "no outdoor elements," "no sunlight" for indoor/night |
-| Dawn scene followed by midday lighting | Scene Logic Realism check 7 failed — timeline consistency: connected scenes must share same time-of-day lighting |
-| Character face changes between scenes | Character portrait-first rule violated — generate standalone face ref in Phase 4A Tier 1 BEFORE any scene keyframe |
-| Scenes feel disconnected / no flow | Narrative arc consistency missing — add NARRATIVE CONTEXT block: connections, visual breadcrumbs, cause-effect chains |
-| Same dashboard shows different names | Data not pinned across scenes — use exact same text/numbers in every prompt showing the same data display |
-| Wrong machine/equipment in scene | No domain research — Step 1.2c Domain Deep Research must complete before script. WebSearch 5 queries about domain process/equipment/roles |
-| Operator doing wrong action | Domain knowledge missing — check strategic-brief.md Domain Knowledge > Operator Roles table for plausible actions per role |
-| Generic "factory" instead of specific domain | Missing DOMAIN CONTEXT line in prompt — inject specific equipment/process details from Domain Knowledge section |
-| Product UI/interface looks nothing like real thing | No product research — WebSearch "{product_name} product interface screenshots features" in Step 1.2c |
-| NB2 identity lock fails / face not matched | Prompt body text uses `ref/cast-c1-face.png` instead of bare `cast-c1-face.png` — NB2 matches by uploaded filename, `ref/` prefix causes lookup failure. Remove ALL folder prefixes from identity lock lines and reference image mentions in prompt body |
-| Ref image uploaded but model ignores identity | Reference filename in header block at top of prompt, not inline with character — model reads past header blocks. Move filename inline: `[Name] (Maintain exact facial identity from reference image: cast-c1-face.png) — description...` |
-| Same ref file mentioned multiple times | Duplicate filename dilutes reference signal. Each filename MAX 1x per prompt — place inline with the primary element it describes |
-| ref/ prefix in Required Reference Images table | Upload table filenames use `ref/filename.png` — user copies wrong filename to NB2. Table MUST use bare filenames only (e.g., `cast-c1-face.png`), add "Upload all to `{project}/ref/` folder" note |
-| Reference table appears above image heading | Table placement wrong — table MUST appear directly BELOW each image/prompt heading, BEFORE the prompt body. Not above heading, not after prompt body |
-| VEO voiceover mispronounces words | Em dash `—` in `says:` or `Voice-over narrator:` text — VEO audio engine mistranslates em dashes. Replace with `,` or `. ` in all dialogue/voiceover text including template placeholders |
-| **(v2.2.0) BODY 1 dramatizes only 1 pain while brainstorm identified many** | C1 validator auto-fail — Phase 2 script REJECTED. Phase 2 output MUST include Pain Coverage Table. count(pains dramatized in BODY 1 scenes) >= count(pains brainstormed). Pairing allowed (max 2/scene, shared root cause). Overlay "1 dari N" while N>1 = auto-fail trigger. See `global-promo-config.md` §25. |
-| **(v2.2.0) Phase 4A generates assets for generic items (kopi gelas, plain phone, pavement)** | C2 validator FLAG — apply UNIQUENESS filter BEFORE generating any Phase 4A asset. COMMON tier (generic everyday items that NB2 can render from text alone) = SKIP reference. UNIQUE tier (faces, logos, industry-specific equipment, custom UI) = GENERATE. Decision test: "Can a competent prompt writer describe this in 20 words and trust NB2?" YES → COMMON, skip. NO → UNIQUE, generate. See `global-promo-config.md` §26. |
-| **(v2.2.0) Phase 4B scene prompt has 8+ reference filenames** | C3 validator FAIL — Max 5 inline refs per Phase 4B prompt (combined faces + objects + env + UI). Replaces old "Max 3 identity locks". If >5 needed → split scene into 2 sub-scenes OR consolidate via composite asset (Tier 5+ per §18). See `global-promo-config.md` §26.4. |
-| **(v2.2.0) `scene-N-end.png` cross-ref between hard-cut scenes (different env)** | C4 validator FAIL — Cross-scene ref env-gated ONLY. Allowed only if env(N) == env(N+1). Hard cut (location differs) = DROP cross-ref entirely. Visual continuity carried by text SUBJECT spec + standalone identity refs (cast-c{N}-face.png) + costume verbatim + NARRATIVE CONTEXT block. Reason: NB2 treats scene-NN-end.png as compositional template — using cross-env confuses model into mixing wrong-location elements. See `global-promo-config.md` §27. |
-| **(v2.3.1) Kling Bahasa Indonesia on-screen lip-sync garbled** | Lip-sync only supports 5 langs (EN/ZH/JA/KO/ES). For ID dialogue with face >30%: switch to VEO 3.1 OR reframe scene as mouth-neutral (back-of-head, partial obscure) + `Voice-over narrator, [tone]: [ID text]`. **NOTE**: Bahasa Indonesia **Voice-over narrator IS supported natively** in Kling — only on-screen lip-sync is restricted. Most B-Roll ID scenes work natively. |
-| **(v2.3.1) Bahasa Indonesia VO not rendering in Kling** | User wrote `Host says: [Indonesian text]` for what should be B-Roll narration | Wrong syntax. B-Roll needs `Voice-over narrator, [tone]: [ID text]` (Kling treats narrator as off-screen — natively supports ID). `Host says:` triggers on-screen lip-sync path which is 5-lang restricted. |
-| **(v2.3.0) Kling multi-shot scenes flicker / shots blend** | Shot boundaries weak. Strengthen with numbered markers (`Shot 1: ... Shot 2: ...`) + transition cues (`match cut to`, `whip pan to`). Use ONLY when shots share env/character. Don't multi-shot complex narrative beats. |
-| **(v2.3.0) Kling text in scene warps to gibberish** | Same constraint as VEO/Seedance — Kling cannot render legible text. Strip logos/text from prompt, add as post-prod overlay. Brand visual = colors + shapes only, not text. |
-| **(v2.3.0) Kling prompt 200+ words = half ignored** | Kling optimal is 80-120 words. Longer prompts get half ignored, half hallucinated. Apply 5-part formula strictly: Camera + Scene + Action + Vibe/Lighting + Time/Audio. |
-| **(v2.3.0) Kling generic camera term produces static** | Vague terms (`dynamic shot`, `cinematic angle`) → static or random direction. Use specific phrases from Kling Camera Movement Library: `slow dolly-in`, `360° orbit`, `whip pan right`, `crane up`. Camera term position determines weight (start = camera dominates, end = camera follows subject). |
-| **(v2.3.0) Kling negative prompt overweighted (stiff/lifeless output)** | Generic 20-term negative dump → Kling overweights and outputs stiff motion. Use focused 3-5 terms per relevant category (human / product / motion / environment). NOT all 4 categories at once. |
-| **(v2.3.0) Kling Motion Control character faces wrong direction** | Character Orientation parameter set wrong. Toggle: `Follow Video` (replicate motion-ref spatial position) for complex motion / `Follow Image` (maintain anchor composition) when camera dominates body motion. |
-| **(v2.3.0) Kling First+Last Frame rejected as "prominent people"** | Same VEO safety filter — 2 photoreal face images = rejection. For face-dominant scenes (face >30% frame) use single I2V mode. First+Last Frame in Kling is for faceless scenes only (dashboards, products, environments). |
-| **(v2.3.0) Kling clip dialogue rushed/clipped** | Dialogue exceeds ~2.5 words/sec budget. Kling has PER-SECOND duration selector (3/4/5/6/7/8/9/10/11/12/13/14/15s) — bump duration up by 1-2 seconds to fit. E.g., 12-word line at 5s = rushed → use 6s instead. No need to split scenes just for pacing. |
-| **(v3.0.0) Same line spoken twice, once by the platform and once by the VO** | Scene has `audio_source: elevenlabs` but its platform prompt still carries a speech line. Strip the line and add the verbatim negative `no speech, no voiceover, no dialogue`. A face >30% frame should be `platform-native` instead, then normalised with the Voice Changer |
-| **(v3.0.0) A second speaker in the clip came back in the target voice** | Whole-track speech-to-speech converts every voice on the track. Pass `--spans START-END` with only the target's turns; take them from `av-script.md`, never from speaker diarization (it merged two AI voices into one label on a real clip) |
-| **(v3.0.0) Voice Changer refuses with a drift number** | Drift past 0.05s means lip-sync would no longer match. Do NOT stretch the audio — that produces exactly the artefact the locked voice exists to avoid. Reopen the mixed-source decision for that scene |
-| **(v3.0.0) `voice env ELEVENLABS_VOICE_C2 not set`** | The `VOICE:` block names an env var that `.env` does not define. Add it. The tool never substitutes another voice, by design |
-| **(v3.0.0) Explainer scene has no rendered shot** | Scene's Render Path is `explainer` but Phase 4.5 never ran for it, or the render failed. Check `{output_folder}/shots/out/`. Never fall back to a generated clip: the platform cannot render legible text, which is the whole reason for the routing |
-| **(v3.0.0) A/V duration mismatch stops the edit** | A clip's audio and video lengths differ past tolerance. Fix the clip or the plan; the gate exists because a drift of a few frames per clip compounds across a whole timeline |
-| **(v3.0.0) An SFX cue measures +0 dB no matter the gain** | The cue sits fully under continuous speech, so the duck suppresses it the whole time. Accept it as felt-not-heard, or delete it. Never chase it with gain — it spikes the moment a pause arrives |
-| **(v3.0.0) Caption text differs from the script** | Captions are built from `av-script.md`; ASR supplies TIMING only. A wrong word means the cue was hand-edited or a scene had no timing source and was left in `untimed` — timings are never guessed |
-| **(v3.0.0) Music makes the voice hard to follow** | Bed is too loud under speech, or the duck is not engaging. Check the headroom measurement the music pass prints; the bed fails soft (no music) rather than shipping a mix that buries the narration |
-| **(v3.0.0) Thumbnail promises more than the video delivers** | Packaging honesty guardrail. The frame's promise must sit inside what the video actually shows. Pick a different lever, not a bigger claim |
-| **(v2.3.0) Kling duration mismatch (padding or rushing)** | Picked 8s default when scene needed 5s (awkward pause) OR picked 5s when needed 9s (rushed). Use Kling's per-second selector — pick exact duration matching natural dialogue/beat pace. Eliminates re-pacing in post-edit. |
-| **(v3.11.0) `person_mask.py` exits 1: no person in N of M frames** | The speaker leaves the frame or is too small for the selfie segmenter on more than 10% of frames. Use a tighter clip, cut the empty part, or put that cue on the `front` layer (no mask needed). Never raise `--max-miss` to pass a clip where the person really is missing |
-| **(v3.11.0) `overlay_plan.py` refuses a cue** | It lists every problem at once, each naming scene + cue: anchor `words` not spoken after the previous cue, keyword not inside the words (use `key_words` for a number said as words), overlap > 0.1 s, a `behind` element without a mask (run `person_mask.py`), a missing `ref:`/`user:` file. Fix the plan, never the generated `overlay-<scene>.json` |
-| **(v3.11.0) `overlay_plan.py`: text is on screen N s of M s of speech (max 50%)** | The overlay is turning into subtitles. Keep only the important keywords (number, contrast, main claim, danger word), drop the rest, leave gaps with no text. Never raise `TEXT_SHARE_MAX` to pass |
-| **(v3.11.0) Overlay text touches the face** | The tool cannot measure text width. With `pos.anchor: left`, x is the block's left edge; move it or shorten the keyword, then re-check the exit-mid still |
-| **(v3.6.0) `qa_frames.py --check` exits 1 (V15 FAIL)** | A rendered clip has no section in `work/visual-qa.md`, a Verdict cell is empty, malformed or `FAIL:`, or the clip's bytes changed after it was judged. Run `python3 tools/qa_frames.py {output_folder}`, open `.tmp/qa-scene-NN.jpg`, fill the cells, re-run `--check`. Never edit a cell to pass without looking. `UNSURE:` is a note for a human, not a failure |
-| **(v3.6.0) `gen_music.py video` prints `FALLBACK palette: HTTP 403`** | The video-to-music request was refused (key without the music scope, or the endpoint rejected the proxy). Exit is 3 by design: keep the palette segments already in `music-plan.json`, and do not set `"bed_source": "video"`. The failure is recorded in `renders.json` as phase 6 so it is not silently retried; `--force` retries |
-| **(v3.6.0) `edit_render.py` refuses a dissolve: previous source has too little handle** | `transition_in` needs `dur_s` seconds of source AFTER the previous segment's `out_s` to dissolve over without moving the timeline. Extend the source, end the previous segment earlier, or shorten `dur_s`. A previous segment ending in a freeze pad (`pad_end_s > 0`) has no frames to dissolve over and is refused too |
-| **(v3.6.0) `gen_vo.mjs` fails `pause ... outside 0.2-5s` or `malformed pause tag`** | A `[pause: 1.2s]` / `[jeda: 1.2 detik]` tag has a length outside 0.2-5.0s, or the bracket is broken. Fix the tag in `av-script.md`; a wrong tag is refused, never rendered as a guess. Split a longer silence across two lines instead |
-| **(v3.6.0) The platform speaks "pause" aloud (V16)** | A `[pause: Ns]` tag was pasted into a VEO/Seedance/Kling prompt. Pause tags belong only in `av-script.md` narration, where `gen_vo.mjs` renders sample-exact silence and captions, subtitles and `verify_render.py` strip them. Remove the tag from `video-prompts.md` and use a written beat in the action instead |
-| **(v3.1.0) Tool exits 2 with `missing <module>: run tools/setup.sh`** | A dependency-bearing tool (`gen_app_screen.py`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py`) could not find Pillow/Playwright/Google client libs on `python3` or the venv. Run `bash tools/setup.sh` once; it builds `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv` and installs `requirements.txt`. |
-| **(v3.1.0) Render offer skips a scene, reason `prompt-only`** | Seedance, Kling, Scene Extension, a duration outside 4/6/8s, or an aspect outside 16:9/9:16 are not rendered by the pipeline (`indusia-video-gen` has no extend endpoint and this plugin only wires VEO 3.1 fast). Render that scene by hand in the platform's own UI. |
-| **(v3.1.0) VEO render fails `Audio generation failed`** | The prompt's audio line is a negated list (`no music, no voices`). For a scene with `audio_source: elevenlabs` the render offer retries once automatically with a positive ambience line (clip audio is discarded in the edit). For a `platform-native` scene it records `failed` and asks you, because that ambience would reach the master. |
-| **(v3.1.0) Veo draws `REC` text on screen** | The prompt contains `security camera`. Replace with `fixed overhead view` — same framing, no on-screen recording indicator. |
-| **(v3.1.0) `gen_app_screen.py mock` refuses: brand.json still holds template placeholders** | The scaffolded `shots/src/shots/brand.json` was never edited. Write it from `strategic-brief.md` (colors, fonts) before running `mock`. |
-| **(v3.1.0) NB2 draws a garbled dashboard / UI screen** | The scene needs Screen Source `capture` or `mock`, not a text-only NB2 prompt — no image model renders legible on-screen text reliably. Run `python3 tools/gen_app_screen.py capture` (or `mock`) against `{output_folder}` and reference the resulting `ui-<name>-<state>.png` inline in the Phase 4B prompt instead. |
-| **(v3.1.0) P6 (`verify_render.py`) reports missing or inserted words** | The rendered master says something different from `av-script.md`. Listen at the timestamps printed in `work/verify-report.md`; fix the edit-plan segment or regenerate the VO for that layer — never edit the report to make it pass. Exit codes: 0 PASS, 1 FAIL (words differ), 2 ERROR (the tool could not run: missing plan, ffmpeg, network), 3 SKIPPED (no AssemblyAI key). Only 0 is a pass. |
-| **(v3.1.0) `clean_voice.py` refuses with `duration changed by ...s`** | The cleaning method (`isolate` or `rnnoise`) shifted the clip's length past the 0.05s lip-sync tolerance. Do not stretch the audio to compensate; try the other method, or skip cleaning and accept the platform-native noise for that scene. |
-| **(v3.21.0) `refused: track lost on frames A-B (P% points hidden)`** | More than 30% of the tracked points were hidden for 0.5 s or longer (`screen-insert --mode track`, `embroider`). The screen or shirt left the frame or was covered. Cut the clip to the visible part, or re-shoot with the screen on green and use `--mode green` |
-| **(v3.21.0) `refused: corner jump N px at frame F`** | The tracked corners moved further in one frame than a real screen can. The track jumped to another object. Check `--corners` at frame 0, pass `--occluder` for a hand, or use a green-screen clip |
-| **(v3.21.0) `refused: homography unstable at frame F (inliers X)`** | Too few tracked points agree on one plane at that frame (fast blur, bend, cover). Do not lower the threshold. Trim the clip around that frame or use `--mode green` |
-| **(v3.21.0) `refused: green key missing on N frames`** | `screen-insert --mode green` found no green screen on N frames. The prompt lacked `flat solid chroma green screen` (video-gen Rule 26, check V17), or the screen is not green. Re-render the scene with the phrase, or use `--mode track --corners ...` |
-| **(v3.21.0) `refused: shirt area too small for design (R)`** | The shirt mask is too small for `--width`. Lower `--width`, or use a shot where the shirt is larger in frame. Check the QA sheet to see which mask SAM made |
-| **(v3.21.0) `refused: --at is not on the shirt`** | The `--at` point is outside the shirt mask at frame 0. Pick a point on the cloth, away from hands. A click on the background can still pass if SAM returns a large mask there: always open `qa-embroider.jpg` |
-| **(v3.21.0) `refused: green key missing on frames A-B`** | The green key was gone for 0.5 s or longer, so the corners would be held on a guess. Re-render the clip with the whole screen in frame, or cut the clip before A / after B. The 5%-of-the-clip rule (`green key missing on N frames`) still applies on top |
-| **(v3.21.0) `refused: screen mostly not green on frames A-B`** | In `--mode green` more than 60% of the screen was not green for 0.5 s or longer: a hand or object covers it, or the panel lighting spilled. Re-shoot, or trim to the frames where the screen shows. The JSON `occluder_share_max` tells how bad the worst frame was |
-| **(v3.21.0) `refused: occluder mask is empty at frame 0`** / **`occluder covers P% of the screen (click landed on the screen?)`** | `--occluder x,y` made SAM return nothing, or most of the screen. The point must be on the hand or object that covers the screen, not on the screen. Open frame 0, pick a point on the hand |
-| **(v3.21.0) `refused: hand mask is empty at frame 0`** / **`hand mask covers P% of the design (click landed on the shirt?)`** | A `--hand x,y` made SAM return nothing, or most of the design area. The point must be on the hand, not on the shirt. Pick a point on the skin at frame 0 |
-| **(v3.21.0) `refused: shirt lost on frames A-B`** | For 0.5 s or longer the shirt under the design was under half of what it was at frame 0 (the shirt left the frame, or SAM lost it). Do not lower the share. Trim the clip, or shoot it with the shirt in frame |
-| **(v3.21.0) `refused: track lost on frames A-B (mesh warp failed)`** | The mesh warp could not be built for 0.5 s or longer (too few tracked points visible), so the design would freeze on the last good frame. Trim the clip around A-B |
-| **(v3.21.0) `refused: track lost: only N grid points on the shirt`** | Fewer than 9 tracking points fall on the shirt under the design (shirt mask too small, or the design box sits mostly off the cloth). Move `--at` onto more cloth or lower `--width` |
-| **(v3.21.0) `cannot read fps of <clip>`** | ffprobe gave neither a frame rate nor an average frame rate. A guessed 30 fps would shift every cue. Re-encode the clip with a constant frame rate (`ffmpeg -i in -r 30 out.mp4`) |
-| **(v3.21.0) `frame size mismatch, ffmpeg decodes WxH but ...` / `encoded video is Xs but N frames ...`** | The clip decodes at another size than ffprobe reported (a display-rotation tag not honoured), or the encode lost frames, so nothing was written over a previous output. Re-encode the clip upright (`ffmpeg -i in out.mp4`) and retry |
-| **(v3.21.0) `missing <what>: run tools/setup.sh --ml`** | `venv-ml`, torch or a model weight is missing or has the wrong sha256. Run `bash tools/setup.sh --ml` (Python 3.10+; set `PYTHON_ML` if needed). Never copy a weight in by hand |
-| **(v3.1.0) Python `SSL: CERTIFICATE_VERIFY_FAILED` calling ElevenLabs/AssemblyAI** | The python.org 3.14 installer does not register system CA certificates the way Homebrew's build does. Run `/Applications/Python 3.14/Install Certificates.command` once. Affects any tool that makes an HTTPS call on that interpreter: `gen_music.py`, `clean_voice.py --method isolate`, `verify_render.py`, `gen_subs.py`. |
+Symptom or error message? `grep -n '<text>' docs/debugging.md` (one row per known failure, with cause and fix).
 
 ---
 
-**Version:** 3.21.0
+**Version:** 3.21.1
 **Last Updated:** 2026-10-17
 
-### v3.21.0 Changelog
-
-- **Surface insert (GV-24).** `vidkit screen-insert` puts an app screen into a phone/monitor in a clip, and `vidkit embroider` stitches a logo onto clothing as raised thread.
-  - **Screen insert.** `--mode green` keys a green screen and fits the four edges (fingers drop out). `--mode track` follows a screen with no key colour using TAPNext++ and a homography per frame. Video-gen Rule 26 prompts the screen as `flat solid chroma green screen`; validator check V17 fails a scene marked `insert: green` without the phrase.
-  - **Embroider.** Thread height map, per-point cloth warp from tracked points, thread shading. Differs from `bond`, which is a flat print.
-  - **Models.** TAPNext++ (Apache-2.0) and SAM 2.1 small (Apache-2.0), in their own `venv-ml` (`bash tools/setup.sh --ml`), weights pinned by sha256. Rejected: CoTracker3 (CC-BY-NC) and SAM 3 (CUDA only).
-  - **Refusals.** Seven messages, each a row in the Debugging table. A bad track exits 2 and writes no output.
-  - **Evidence.** Synthetic-clip numbers are not claims about real footage. Real-clip proof: REA scene 01 embroidery, accepted by the owner (`docs/evals/surface-insert-run.md`); screen insert has no real-clip proof yet (owner skipped it).
-  - **Known gaps.** A click on the background is not refused by `embroider` (check the QA sheet). The whole clip is held in RAM. Short occlusions of 5 frames or fewer are not flagged by TAPNext++ visibility; the SAM masks handle fingers.
-  - **Tests.** Contract `tests/consistency/surface-insert-contract.sh`, real-clip evidence `tests/consistency/surface-insert-evidence.sh`, plus `test_{ml,pointtrack,segment,screen,embroider}.py` (run under venv-ml for the model tests).
-
-### v3.20.0 Changelog
-
-- **Short-form layout and format (GV-23).** 9:16 output now has a measured safe area and a gate that blocks a bad layout.
-  - **Profiles.** `media/layout-profiles.json` + `tools/vidkit/layout.py`. Samuel measurement: subtitle 2.9 % of the height, 4 words in 2 lines, baseline 61.7 %. No Samuel cover title was found, so the title numbers stay `tafsiran`.
-  - **Karaoke and title.** `vidkit karaoke` defaults to `--profile short-organic` (`--profile none` = old look). New `vidkit title` stamps the cover title inside the safe area.
-  - **Face box.** `tools/face_box.py` uses OpenCV YuNet (`opencv-contrib-python==5.0.0.93`, model pinned by sha256 in `tools/setup.sh`). The MediaPipe face detector aborts on this Mac's Metal.
-  - **Layout gate.** `tools/layout_gate.py check` (blocking): outline-inclusive boxes measured on grey, previews per platform (`.tmp/layout-{tiktok,reels,shorts}.jpg`), exit 0 pass / 1 finding / 2 bad input or nothing measured / 3 overlay jsons not measured (INCOMPLETE), skipped face samples listed, Result line says when no face was found in any sample. Wired into `video-validate --layout`, `video-post --final`, `video-package` 7.7c and `video-repackage` 6b.
-  - **Script.** `reference/storytelling_script_gen/F13_Short_Form_Timeline.md` and `viral_checklist.py timeline` (Thumbnail 0-1 / Hook 0-3 / Foreshadow 3-6 / Body / CTA). `video-script` rule 28.
-  - **Brainstorm.** Four video types (presentasi, promo, isu, edukasi) decide the format; Step 1.5 Format Confirmation.
-  - **Repackage and package.** `video-repackage` adds a Foreshadow beat and merges two links; `video-package` writes three distinct texts (title, cover title, description); doc 21 gains the 9:16 path.
-  - **Real run.** `docs/evals/layout-gate-run.md`: a real 9:16 master, exit 1 with one true finding (subtitle too close under the face). The master had one spoken word, which the record says.
-  - **Registry.** 68 tool entries, 66 routes, 6 `ffprobe_allow` entries (adds `face_box.py`). Tests: `tests/py/test_{layout,face_box,layout_gate,vidkit}.py`, `tests/consistency/{layout-gate-contract,title-card-contract,short-form-texts-contract,viral-framework-contract,face-model-setup,repackage-merge,video-type-routing,marketplace-version}.sh`.
-  - **Not done.** More than two merge links; a 4:5 LinkedIn variant; OCR of burned-in text; separate renders per platform; cover-title numbers unmeasured; `person_mask.py` ignores rotation tags.
-
-### v3.19.0 Changelog
-
-- **File cleanup (GV-21).** `python3 tools/renders.py <project> archive --file F [--reason R]` moves an existing paid file to `_arsip/<kind>-<stem>-v<N>-<reason><ext>` before a re-render; the `video-image` and `video-gen` render offers call it after a `check` that printed `render`. `python3 -m tools.vidkit tidy <project>` reports unknown folders, subfolders inside flat folders, duplicates, stale ledger entries and old `.tmp/` files and changes nothing; `--apply` moves strays into `_arsip/folder-...` (a `folder-*` entry already in `_arsip/` is never reported or moved again); `--empty-tmp` is the only deletion and never touches `_arsip/` or `shots/out/`. It deletes a `.tmp/image` or `.tmp/video` MCP copy only when the same bytes already sit in a home folder (prints `deleted <tmp> (copy of <home>)`); an unmoved paid render, or an unreadable media file there, is kept unless `--include-mcp`. The folder contract in the four skills and the pipeline doc now lists twelve folders (adds `sfx/`, `screens/`, `packaging/`) and the subfolder rule; pipeline doc gains section 2.4. Registry totals after merging GV-22: 64 tool entries, 63 routes. Tests: `tests/py/test_renders.py`, `tests/py/test_vidkit.py`, `tests/consistency/tidy-contract.sh`.
-- **Tidy safety rules (GV-21 fix).** `--empty-tmp` keeps every file in the MCP area (`.tmp/image`, `.tmp/video`, any letter case, any type) unless it re-hashes the file and a home file with the same size and sha256 at delete time; `.tmp/vocache-*` (paid TTS cache) is always kept; per-item failures are listed and exit 1; `archive` refuses `_arsip/` symlinks, files outside a sub-folder and files inside `_arsip/` or `.tmp/`, and runs after the user approves the render; `renders.py check` prints `render` for a missing file; `--apply` never renames anything inside `_arsip/`.
-- **Tool-made subfolders and archive-after-render (GV-21 review).** `tidy` no longer reports or moves the subfolders the plugin's own tools create (`ref/sumber/`, `vo/native/`, `vo/master/`, `output/stems/`, listed in `ALLOWED_SUBDIRS`), and reports `.render-tmp` as a stray folder; the render steps in `video-image` and `video-gen` archive the old file only after the new render succeeded, and older docs no longer tell anyone to create `clips/_*`, `keyframes/_*` or `ref/_*` folders (`tests/consistency/tidy-contract.sh` checks both).
-
-### v3.18.1 Changelog
-
-- **ffprobe callers moved to vidkit (GV-22).** 12 of the 17 files on `ffprobe_allow` now probe through `tools/vidkit/ff.py` (`burn_subs`, `clean_voice`, `composite`, `edit_render`, `gen_music`, `make_stems`, `mix_music`, `mix_sfx`, `overlay_plan`, `qa_frames`) or the new Node helper `tools/vidkit/js/ff.mjs` (`gen_vo.mjs`, `voice_changer.mjs`). Each wrapper keeps its name and return, including what it does when ffprobe is missing or a file is unreadable (`tests/py/test_probe_migration.py`). `ff.probe` returns `pix_fmt`; a missing binary raises `ff.FFMissing` (a subclass of `FFError`, message `<binary> not found on PATH`); `ff.missing()` lists absent tools. The ratchet accepts `vidkit/js/ff.mjs` as the second owner. `ffprobe_allow` is down to 5, each needing fields `ff.probe` does not return or never calling ffprobe: `person_mask.py`, `probe_clips.py`, `vidkit/color.py`, `registry_build.py`, `retention_gate.py`.
-- **Escaped pipes in routes.** A route cell may contain `|` only as `\|` (GitHub table syntax); a bare `|` is refused even inside a code span. The `vidkit synth notification\|alarm` row renders correctly now.
-
-### v3.18.0 Changelog
-
-- **Tool registry (GV-20).** `tools/registry.json` is the single source for tools and routes (68 tool entries, 66 routes, 17 `ffprobe_allow` entries). `docs/tool-routing.md` table is generated from it (`python3 tools/registry_build.py render`, `render --check` in the gate); only the intro and the "When no tool fits" section are hand-written.
-  - **Gates.** Coverage: every `tools/*.py`, `tools/*.mjs`, `tools/vidkit/*.py`, `tools/vidkit/js/*.mjs` is registered or marked internal with a reason. Duplicate: two tools with the same phase and the same task set need `distinct_because` or `replaces`. ffprobe ratchet: a tool that calls `ffprobe` directly must be on `ffprobe_allow` with a written reason, so the list can only shrink. Tests: `tests/py/test_registry.py`, `tests/consistency/tool-registry-contract.sh`.
-  - **Reminder hook.** `hooks/tool-reminder.sh` (PreToolUse, Write|Edit) reminds, never blocks. It fires on a `.py`/`.mjs`/`.sh` file outside `tools/`, `tests/`, `templates/` whose content has `ffmpeg`, `ffprobe` or `remotion`, and names the matching registry tools. Test: `tests/consistency/tool-reminder-hook.sh`.
-  - **Migrated.** `check_vo_duration.py` and `track_screen.py` now use `vidkit.ff` instead of their own ffprobe code (`tests/py/test_probe_migration.py`).
-  - **Not done.** 17 ffprobe callers remain on `ffprobe_allow`, each with a written reason; moving them to `vidkit.ff` is a follow-up. Duplicate detection is exact (phase + task set) only; near-duplicates are caught by the hook reminder and by review. The `gaspol-one` marketplace version is set at release, outside this repo.
-
-### v3.17.0 Changelog
-
-- **Master quality (GV-18).** Music, SFX, colour, gates and speed of the finished master.
-  - **Music follows the topic.** `tools/music_brief.py` reads `work/music-brief.json` (written by the post skill from `strategic-brief.md` and `av-script.md`), builds per-topic, per-arc prompts and a project palette, and writes `library:<id>` segments. `gen_music.generate` takes `--recipes work/music-palette.json`.
-  - **Layered SFX.** A cue in `work/sfx-plan.json` may carry `stack` (several clips mixed as one cue), expanded by `mix_sfx.load_plan`. Eight new recipes in `media/sfx/library/palette.json` (recipes only, the clips are not generated). `tools/sfx_snap.py` with `vidkit/beats.py` snaps cue times to detected music beats.
-  - **Colour.** Final encodes (`edit_render`, `vidkit mixdown`) are tagged BT.709; `bt601` sources are converted first (`vidkit/color.py`). `vidkit/colormatch.py` measures per-clip mean colour and matches clips across a cut.
-  - **Stills-first gate.** `tools/verdict_page.py` builds an HTML page of the keyframes and reads `work/verdict.json`; clips are not rendered for a still without a pass.
-  - **Cost log.** `tools/cost_log.py` records units of billed renders in `work/cost-log.json`. No estimate, no prices.
-  - **Thumbnails.** Style-element menu (`reference/post-production/21-thumbnail-style-elements.md`) and `tools/thumb_verify.py`.
-  - **Speed.** `edit_render` keeps a per-stage fingerprint cache (`vidkit/stages.py`, `.tmp/stages.json`). `vidkit/encoder.py` probes hardware encoders, opt-in by env; measured slower on this machine, so the default stays `libx264`. `vidkit/ff.py` prints an ffmpeg heartbeat.
-  - **Loudness.** `media/loudness-profiles.json` entries need a `source`; only `default` ships. See `docs/evals/short-form-loudness-measurement.md`.
-  - **Not done.** No billed listening test (the owner tests on a real video). No real-clip colour check. No short-vertical loudness profile (no source for its numbers). GV-19 items stay out of scope. Tests: `tests/py/test_{music_brief,sfx_snap,cost_log,thumb_verify,verdict_page,vidkit,edit_render}.py`, `tests/consistency/{music-brief,sfx-stack,thumbnail-style}-contract.sh`.
-
-### v3.16.0 Changelog
-
-- **Viral style and framework (GV-19), imitation of structure only.** Style and structure observed from a public Shorts channel (Samuel Christ); framework from the owner's course notebook. No footage, voice, face, script, music or SFX is reused. `vidkit audiostudy` measures onsets, tempo, energy and the word/cut relation of a clip; the 12-clip study (`docs/evals/viral-audio-study.md`) is honest that onsets follow speech, so music tempo and SFX timing are `not measured`. `KineticOverlay` gains six sticker icons, a step counter, a red edge vignette, a falling-object burst, a `center` anchor and a `viral` caption preset tagged `source: course` (`reference/post-production/19-keyword-text-overlay.md` section 8, rendered evidence in `docs/evals/viral-overlay-run.md`). `tools/retention_gate.py` + `reference/post-production/20-retention-gate.md` + `video-validate --retention` (RT1-RT5, `reference/global-promo-config.md` section 31) report static frame, hook, foreshadow, b-roll and BGM rules on a cut and never block. `reference/storytelling_script_gen/F12_Viral_Framework.md` + `tools/viral_checklist.py` + `video-script` Hard Rule 27 + `video-validate --script` S10 put a filled 7-stage checklist into every short-form script. Tests: `test_audiostudy.py`, `test_overlay_plan.py`, `overlay-fx.test.mjs`, `test_retention_gate.py`, `test_viral_checklist.py`.
-
-### v3.14.0 Changelog
-
-- **REA finishing kit moved into the plugin.** `vidkit karaoke` (2-word karaoke ASS + centre watermark at any opacity), `vidkit cover` (thumbnail on the first frames AFTER subtitles, plus mp4 cover art), `vidkit unwhite` (logo off its white box, ffmpeg only), `vidkit mixdown` (voice + SFX cues + ducked music, two-step loudness, subs, thumbnail, from one plan json). Remotion `lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover`, props only, copied into every scaffold. `video-repackage` points at them. Checked by rebuilding the REA final mix through `mixdown` (same loudness and peak as the project script) and rendering the effects in a real Remotion workspace. Tests: `tests/py/test_vidkit.py`, `tests/node/scaffold.test.mjs`.
-
-### v3.13.0 Changelog
-
-- **Repackage workflow (`skills/video-repackage`).** The user shares a link to someone else's video; the plugin downloads it, cuts it into scenes, uses each scene as an image reference, keeps the storyline and regenerates every asset. Defaults: image model `gpt-image-2`; cast and costume localised to Indonesian unless the product itself targets another country; Ali's cloned voice; a 3-second hook, a thumbnail on the first frames and as cover metadata, a follow CTA with the `@alisadikinma` popup, and a 12% centre watermark. New `vidkit ingest` (yt-dlp) and `vidkit scenes` (scene cut, first/mid/last stills, `scenes.json`) in `tools/vidkit/ingest.py`, tested in `tests/py/test_vidkit.py`. `docs/pembelajaran-rea.md` records what the REA film taught (voice, keyframes, Remotion, final mix, hook). `global-promo-config.md` `image_model` and `render_image_model` now `gpt-image-2`. Source: REA film, 2026-10-16.
-
-### v3.12.0 Changelog
-
-- **vidkit: reusable assembly library.** `tools/vidkit/` (Python: A/V and concat gates, xfade/concat join with timeline maths, freeze-box, contact sheets, synth alerts, speech-gap cue snapping, two-pass loudnorm, track smoothing, cloth print bond) and `tools/vidkit/js/` (`env`, `eleven` tts/stt/sfx, `cast_voice`). Distilled from five finished productions; fixes two ffmpeg traps (apad after amix truncating, loudnorm timestamp shift before atrim). `templates/remotion/scripts/frames.mjs` and `qa-end.mjs`. `docs/tool-routing.md` maps task to tool and says to extend the library, not a project folder. Tests: `tests/py/test_vidkit.py`, `tests/node/vidkit-js.test.mjs`.
-
-### v3.11.0 Changelog
-
-- **Kinetic text overlay replaces the gold-serif keyword cards (GV-17).** Style taken from a 9:16 explainer the user supplied. Keywords, not subtitles: only the important words are highlighted and `overlay_plan.py` refuses text on screen for more than 50% of a scene's speech. Two-tier text (small lead words, big heavy keyword, highlight colour for numbers and hard words, an occasional handwriting word, line icons), never static: six effects (blur-to-sharp, glitch slices, count-up, handwrite, stroke draw, exit). Image/video panels, a sliding carousel and round photo bubbles sit BEHIND the speaker through a per-frame person mask, plus a source box. New `tools/person_mask.py` (MediaPipe selfie segmenter `mediapipe==1.0.1`, model fetched by `tools/setup.sh` with a pinned sha256), `tools/overlay_plan.py` (cues timed from `vo-manifest.json` words or ASR `words_file`; `key_words` for a keyword shown differently than spoken), Remotion `KineticOverlay` (`Overlay.template.tsx`, `lib/overlay-fx.tsx`, `lib/overlayFx.mjs`), brand tokens `highlight` and `scriptFont`. `video-gen` Rule 25 and `video-post` K.4 rewritten, doc 19 rewritten. `tools/keyword_cards.py` kept, marked superseded. Real render on a client scene: `docs/evals/overlay-kinetik-run.md`. Tests: `tests/consistency/{keyword-text-overlay,person-mask-setup,overlay-template-contract,overlay-evidence}.sh`, `tests/py/test_{person_mask,overlay_plan}.py`, `tests/node/overlay-fx.test.mjs`.
-
-### v3.10.0 Changelog
-
-- **Keyword text overlay pattern.** Animated highlight over a speaker, in the look the user approved: stacked lines, no box or pill, small white sans, big gold serif-italic keyword (red for a danger word), soft shadow, 0.35 s fly-in and 0.25 s fly-out on the spoken word, cue times from voice word timestamps, never on the face. Optional red alarm flash on the background only through a person mask (alphamerge; a full-frame drawbox or maskedmerge tints the person). `video-gen` Rule 25, new `reference/post-production/19-keyword-text-overlay.md`, new tool `tools/keyword_cards.py` (needs Pillow, via `_venv`). Test: `tests/consistency/keyword-text-overlay.sh`. Source: Ekaputra film K1, 2026-10-03.
-
-### v3.9.2 Changelog
-
-- **VEO clips first, Remotion after.** Within each kelompok the VEO clips are rendered and audited before any Remotion shot or overlay is built. `video-gen` Rule 24 and step 5.1b K.4; `video-explainer` prerequisite refuses to start while the kelompok's clips are missing; `video-full` drops the standalone Step 4 (Remotion before video); pipeline doc diagram and K.4 reason fixed. A card cut to a clip needs the real clip length, light and last frame. Test: `tests/consistency/clips-before-remotion.sh`. Source: Ekaputra film, 2026-10-02.
-
-### v3.9.1 Changelog
-
-- **Logo only where the camera sees it, and checked against the real file.** `video-image` Rule 43: uniform logo only on garment areas that face the camera (no back logo in a shoulder close-up; plain garment there). Rule 44: after each render compare every vehicle, cooler box, carton and uniform logo with `ref/brand-<client>-logo.png`; fix by edit pass, never re-render. `video-prompt-reviewer` C13 fails a forced or unlocked logo. Source: Ekaputra scenes 04a, 07, 12a, 18, 2026-10-02.
-
-### v3.9.0 Changelog
-
-- **Vehicle variety + one company uniform.** `video-brainstorm` Step 1.2e (Hard Rules 14, 15) asks the delivery-point types and which vehicle serves each (truck/pickup to docks and restaurants, motorbike with cooler box to housing-complex shops and alleys a truck cannot enter), saved as `### Delivery Points & Vehicles`; and the company uniform (garment, colour, logo, placement, roles), saved as `### Company Uniform` plus one verbatim phrase in `cast-profile.md` `## Company Uniform`. `video-script` rules 22-23 + 3.5.1: scene-plan covers every vehicle class marked appears=yes, STOP on a truck at a truck-excluded point, every customer employee in the uniform phrase. `video-image` prerequisite + Rules 41-42: `ref/vehicle-<class>.png` per class, `ref/costume-uniform-<client>.png` (front + back, real logo), uniform phrase in every NB2 prompt with a customer employee. `video-prompt-reviewer` check C13. Test: `tests/consistency/uniform-and-vehicle-contract.sh`. Source: Ekaputra film, 2026-10-02.
-
-### v3.8.0 Changelog
-
-- **Customer business profile + reference photos.** `video-brainstorm` Step 1.2e asks what the customer sells, where, and what a visitor sees, then collects real product and site photos (`ref/biz-product-*.png`, `ref/biz-site-*.png`, optional asset and uniform). Hard gate before Phase 4A. No photo: web research + NB2 reference the user approves (`source: generated-approved`). `video-script` 3.5.1 pre-fills the manifest from these photos and stops on a product the customer never confirmed. `video-image` prerequisite + Rule 40: env and product assets derive FROM the photos. Test: `tests/consistency/business-reference-contract.sh`. Source: Ekaputra Scenes 11/12a, 2026-10-02.
-
-### v3.7.2 Changelog
-
-- **Keyframe name without `-start`.** One frame per clip, so the file is `keyframes/scene-{NN}.png` (letters allowed: `scene-02a.png`). Docs updated across `video-image`, `video-gen`, `script-to-scene-bridge.md`, `global-promo-config.md`, Kling guide, post-production pipeline.
-- **Face fix by edit pass** (`video-image` Rule 39): when the face still drifts, edit the keyframe with the front ref only instead of re-rolling the scene.
-
-### v3.7.1 Changelog
-
-- **Fewest refs that do the job.** The side face ref is used only when the face in the keyframe is turned more than about 45°; a near-frontal face gets `cast-c{N}-face.png` alone. No stacking of real photo, 3-angle sheet or a continuity keyframe that contains the same person — NB2 averages the extra faces into someone else. Updated `video-image` Rule 38, reviewer D0, `01-nb2-image-generation.md`. Source: Ekaputra scene-06, 2026-10-02.
-
-### v3.7.0 Changelog
-
-- **One keyframe per clip.** Phase 4B renders only the start frame; no END frame and no First+Last mode unless the user explicitly asks for it on a named clip. Motion and state change move into the video prompt. Updated: `video-image` Rule 37, `video-gen` Rule 13, `script-to-scene-bridge.md` Step 3/3b/3c, `global-promo-config.md`, reviewer check D0. Source: Ekaputra film, 2026-10-02.
-- **Side-view face ref for main cast.** Phase 3.5 requires `cast-c{N}-face-side.png` (three-quarter/profile, made from the front ref) for every Pemeran Utama; Phase 4B names front AND side refs inline whenever the character is not facing camera. Updated: `video-script` manifest, `video-image` Rule 38, `01-nb2-image-generation.md`, `creator-profile-system.md`, naming tables, reviewer check D0. Source: Ekaputra scene-02b, a three-quarter face from a front-only ref did not resemble the person.
-
-### v3.6.0 Changelog
-
-- **Pause tags in narration.** `[pause: 1.2s]` or `[jeda: 1.2 detik]` inside a layer's `text` in
-  `audio-plan.json` now renders as silence. `tools/gen_vo.mjs` splits the text at each tag, sends
-  one ElevenLabs request per speech chunk (chained through `previousIds` so delivery stays warm),
-  decodes each chunk to PCM, joins them with zero samples and encodes once, so a pause is exact to
-  the sample and word offsets come from sample counts, not from probing an mp3 with encoder
-  padding. A length outside 0.2-5.0s or a broken bracket is refused. `strip_pause_tags()` in
-  `tools/gen_subs.py` is imported by `tools/gen_captions.py` and `tools/verify_render.py`, so
-  captions, subtitles and the P6 diff never see the tag. Adapted from MoneyPrinterTurbo.
-- **Dissolves at act changes.** A segment in `work/edit-plan.json` may carry
-  `transition_in: {dur_s}`. `tools/edit_render.py` renders the segment BEFORE it `dur_s` longer,
-  from source frames past its `out_s` (the handle), and merges the pair with an ffmpeg `xfade`
-  under a `-t` cap equal to the planned length, so the timeline does not move by a frame and the
-  A/V gate still holds. The plan is refused when there is no previous segment, the previous source
-  has too little handle, or the previous segment ends in a freeze pad (nothing to dissolve over).
-  Motion on the handle is clamped so the zoom does not overshoot.
-- **Visual QA of rendered clips (V15).** New `tools/qa_frames.py` tiles five frames per rendered
-  clip into `.tmp/qa-scene-NN.jpg` and writes `work/visual-qa.md`, one section per scene with its
-  `PLAUSIBILITY:` block and a seven-row verdict table that Claude fills after looking at the sheet.
-  Verdicts survive a re-run for an unchanged clip and are cleared for a changed one. `--check`
-  reads only the Verdict cells and exits 1 on a missing, empty or `FAIL:` cell. Validator check
-  V15 and `video-gen` Rule 23. Catches the defects the plausibility gate names but only a picture
-  can confirm, before the edit is paid for.
-- **Video-to-music bed.** `tools/gen_music.py video` sends a picture-only proxy of the master
-  (`.tmp/music-proxy.mp4`) to ElevenLabs and writes `output/music.mp3` sized to the master, logged
-  in `renders.json` as phase 6 so an unchanged result is reused and not re-billed. Any failure
-  (HTTP error, missing key, bad TLS) exits 3 with `FALLBACK palette: <reason>`; the tool never
-  rewrites a plan it did not write, so `video-post` keeps the palette segments. On success the plan
-  gets `"bed_source": "video"` (`palette` otherwise). Adapted from MoneyPrinterTurbo.
-- **V16.** A pause tag inside a platform prompt in `video-prompts.md` is a FAIL: the platform
-  would speak it. Reviewer check V16 and `video-validate` V16.
-- **Nothing general is generated twice.**
-  - `tools/gen_vo.mjs` fingerprints each layer (text, voice env, a sha256 of the voice id, model,
-    settings) into `vo-manifest.json` and reuses an unchanged layer with no request. The speech
-    chunks around pause tags are cached flat in `.tmp/vocache-*.mp3`, so changing only a pause
-    length re-requests nothing.
-  - Generated SFX clips and music tracks moved out of the versioned plugin cache (where the next
-    update would have dropped them) into `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/library/{sfx,music}`
-    via the new `tools/asset_home.py`. Adoption copies whatever an older version dir already holds,
-    and music plans may name a track as `library:<id>`.
-  - New `tools/asset_library.py` keeps a cross-project library of generic images, matched only on
-    the exact normalised prompt plus aspect. It refuses anything that names `cast-`, `brand-`,
-    `ui-`, `product-`, `costume-`, `env-`, an identity lock or a scene continuity frame, because
-    those are project-specific by definition. `video-image` checks the library before a Phase 4A
-    render and offers to add a generic asset after one.
-- **Real scene naming in QA.** `qa_frames.py` reads `### S01b —` headings and `scene-01b.mp4` clips
-  as their own scenes (`qa-scene-01b.jpg`) instead of folding `01`, `01b` and `01c` into one — found
-  on a real project before release.
-- **Docs.** `reference/post-production/11-voice-cast-and-vo.md` (pause tags),
-  `13-ffmpeg-edit.md` (dissolves and handles) and `17-music-bed.md` (video bed, fallback) carry the
-  detail; `video-post`, `video-gen`, `video-script`, `video-validate` and both agents point at it.
-- **Tool count:** 29 CLI tools (27 Python + 2 Node) — counted from `tools/`; earlier releases stopped updating this number at 19 while `check_vo_duration.py`, `check_overlay_strings.py`, `track_screen.py`, `caption_keywords.py`, `gen_captions.py` and `plan_motion.py` landed. Excluded on purpose: TwelveLabs
-  analysis, Sonilo, other render adapters, slide/zoom transitions, transitions outside act
-  changes.
-
-### v3.4.0 Changelog
-
-- **Physical Plausibility Gate.** New `reference/image-video-gen/10-physical-plausibility-gate.md`
-  documents nine defect classes measured in one production, all of them found by the client AFTER
-  the render was paid for, and all of them passing the existing compliance checks: impossible
-  mechanisms (a fuel filler on the side of a tank), duplicated objects (two barriers, two
-  antennas, two nozzles), wrong orientation (a phone upside down), unreadable direction (a truck
-  arriving framed exactly like the truck leaving), two characters reading as one person, overlays
-  that cannot attach, broken pairs, story-logic holes, and sound/picture mismatch. Every Phase 4B
-  and Phase 5 prompt now carries a seven-question `PLAUSIBILITY:` block (MECHANISM, COUNT, FLOW,
-  FACING, PAIR, PEOPLE, OVERLAY SURFACE), each answer also expressed in the prompt text.
-  `video-image` Rules 35-36, `video-gen` Rules 21-22, validator checks K1-K7.
-- **Flow Gate on the script.** `video-script` gained three rules: close the loop (a measurement
-  claim needs before-reading, event, after-reading and a resulting number), every scene answers
-  "what changed?", and an object that is taken or carried is visible in frame. Scene pairs are
-  recorded in `scene-plan.md` with identical-vs-differ columns. Validator check C12.
-- **`tools/track_screen.py`** — four-corner screen tracking for overlays. Flood fill from a seed
-  inside the screen, each edge fitted to a line by least squares over its middle 20-80%, the four
-  lines intersected, corners smoothed with an EMA, QA frames written with the corners drawn. It
-  refuses (exit 2) when the screen is under 120px wide, or when the fill covers less than 85% of
-  the fitted quad. Replaces four ad-hoc measuring attempts that each shipped a visibly wrong
-  panel.
-- **`templates/remotion/lib/quad-screen.tsx`** — `QuadScreenTracked` maps a panel onto four moving
-  corners by homography (CSS `matrix3d`). A screen seen off-axis is a trapezoid, so box plus
-  rotation always overhangs one corner.
-- **Two machine checks instead of prose.** `tools/check_vo_duration.py` fails when narration does
-  not fit its cut, or when a cut runs on in silence; `tools/check_overlay_strings.py` reads the
-  rendered Remotion components and fails on any on-screen string missing from the script's
-  approved list, expanding `X 1 of 6` … `X 6 of 6` series.
-
-### v3.3.0 Changelog
-
-- **Folder contract is now enforceable, not implied.**
-  `reference/post-production/10-post-production-pipeline.md` §2 gained §2.1-§2.3: nine folders and
-  no others, variants distinguished by a filename suffix instead of a new subfolder, `.tmp/` for
-  every derived file, `_arsip/` for rejected paid artefacts. The same rule is a numbered Hard Rule
-  in `video-image`, `video-gen`, `video-explainer` and `video-post`. Written after a project
-  reached 25 folders — seven of preview JPEGs, seven of "temporary" copies nobody deleted, and
-  three differently named archives — and the user could no longer tell what was safe to delete.
-- **MCP renders land in `.tmp/`, not `.render-tmp/`.** One scratch folder, and it is the one the
-  contract already allows anyone to delete.
-- **`voice_changer.mjs` writes its intermediate wav/mp3 to the project's `.tmp/`**, not to a
-  `.work/` folder beside the output. `GASPOL_TMP_DIR` overrides it when the output is not under a
-  project's `vo/`.
-- **Never `sips --out <folder>/<file>`** — documented in the contract after sips twice replaced the
-  target FOLDER with a single image, destroying every preview in it. Use `ffmpeg -vf scale`.
-- **Version gates fixed.** `tests/consistency/*` still demanded 3.2.0 after the 3.2.1 release, so
-  `tests/run.sh` had been failing on `main`. Both gates now track this release.
-
-### v3.1.0 Changelog
-
-- **In-session rendering.** Phase 4 and Phase 5 now offer to render the approved batch instead of
-  only writing copy-paste prompts: `mcp__indusia-image-gen__generate_image` (`nano-banana-2`) for
-  NB2 stills, `mcp__indusia-video-gen__generate_video` (`veo-3.1-fast`) for VEO clips. Rendering is
-  always an offer per batch (max 5 scenes), never automatic, and every output is tracked in
-  `{output_folder}/renders.json` so an unchanged prompt is not re-billed. Seedance, Kling, Scene
-  Extension, and durations/aspects the MCP does not accept stay copy-paste — reported as
-  `prompt-only`, not silently dropped. A `security camera` phrase in a VEO prompt is rewritten to
-  `fixed overhead view` before rendering (it makes Veo draw `REC` text). When a render fails with
-  `Audio generation failed` — usually a negated audio list like `no music, no voices` — the render
-  is retried once with a positive ambience description for that render only; the approved prompt
-  text on file is never rewritten. See `docs/evals/indusia-render-probe.md` for the filename
-  preservation finding this scheme relies on.
-- **App screens and screencasts.** `tools/gen_app_screen.py capture` drives Playwright against a real
-  URL; `tools/gen_app_screen.py mock` renders a Remotion TSX component to a still for software that
-  does not exist yet or cannot be reached, sharing pinned data (`screens/data.json`) across every
-  scene that shows the same screen. A new `Screen Source` column (`capture | mock | none`) on the
-  Scene Breakdown table routes these scenes away from NB2 entirely (Rule 34, validator check C11).
-  A screencast shot type (`reference/post-production/18-screencast.md`, `templates/remotion/lib/
-  screencast.tsx` + `browser.tsx`) animates the captured or mocked screen in Phase 4.5, timed to the
-  narration. `screens/manifest.json` marks mock screens `simulated: true`; `video-package` reads that
-  flag so packaging copy never claims a mocked flow as a shipped feature.
-- **`gen_music.py`** fills `media/music/library/tracks/` from the mood palette via ElevenLabs Music
-  (library-first — an existing track is never re-billed without `--force`), so the music pass has
-  something to play instead of shipping voice-only by default. Real run recorded in
-  `docs/evals/gen-music-run.md`.
-- **`verify_render.py` and validator check P6** — a second ASR pass (AssemblyAI) transcribes the
-  rendered master and diffs it against the narration/dialogue text in `av-script.md`: inserted
-  words (ghost speech), missing words (clipped), replaced words, intra-sentence gaps ≥ 0.40s,
-  low-confidence tokens (< 0.70), and per-scene drift (> 0.25s). Before the diff, the tool collapses
-  spoken and written numbers on both sides — Indonesian and English number words, thousands
-  separators, and `%` → `persen` — so `"empat puluh dua"` and `"42"` match instead of showing up as
-  a false P6 failure. Exit 3 (no `ASSEMBLYAI_API_KEY` and no `--asr-json`) is reported as `SKIPPED`
-  in `video-validate --post`, never as `PASS`. Real run recorded in `docs/evals/verify-render-run.md`.
-- **`clean_voice.py`** cleans `platform-native` dialogue (ElevenLabs Voice Isolator or ffmpeg
-  `arnndn` with the RNNoise models in `tools/models/rnnoise/`) before the Voice Changer runs, with
-  the same duration-preservation refusal the Voice Changer already enforces. Two real runs on a
-  Moni project clip recorded in `docs/evals/clean-voice-run.md`.
-- **`composite.py` gains `split`** (picture-in-picture — the master is cropped into a box, an alpha
-  shot composited over it) **and `insert`** (the master freezes at a timestamp, the shot plays in
-  full with its own audio, the master resumes; output duration = master + shot). Both run through
-  the existing A/V duration gate.
-- **`make_stems.py`** writes full-length voice/SFX/music WAV stems to `output/stems/` for a human
-  editor, gains baked in, no ducking.
-- **Remotion QA and generic kit.** `templates/remotion/scripts/{gen-registry,render-all,qa-frames,
-  render-stills}.mjs` are copied into every scaffolded workspace; `templates/remotion/lib/{brand.ts,
-  kit.tsx,browser.tsx,screencast.tsx}` are generic pieces ported from `claude-youtube-editor` with
-  every Claude-Code-specific component and `lucide-react` dependency removed. Style presets joined
-  `12-remotion-explainer.md` as a new section.
-- **Packaging tools.** `composite_logo.py` and `thumb_scrim.py` post-process a thumbnail already
-  rendered by the image plugin (real logo paste, headline scrim to a target contrast) — they render
-  nothing new, so the GV-1 split between this plugin and the image plugin stands. `yt_stats.py auth
-  | fetch` pulls views/watch-time/retention into `packaging/calibration.json` over a read-only OAuth
-  scope; a real run needs a Google Cloud OAuth Desktop client the user has not created yet, so it is
-  recorded as open debt (`yt_stats real run pending — no OAuth client`) rather than faked.
-- **Dependencies, finally allowed, but opt-in.** `tools/setup.sh` builds one venv at
-  `${GASPOL_VIDEO_HOME:-~/.gaspol-video}/venv` (Pillow, Playwright, google-api-python-client,
-  google-auth-oauthlib) outside the plugin's own cache so an update never wipes it. `tools/_venv.py`
-  re-execs into it on demand; every other tool stays stdlib-only and keeps running on bare
-  `python3`.
-- **Tool count:** 19 CLI tools (17 Python + 2 Node), up from ten; most stay dependency-free, four
-  (`gen_app_screen.py capture`, `composite_logo.py`, `thumb_scrim.py`, `yt_stats.py`) need the venv.
-- **Excluded on purpose** (see the spec's Scope table and Out-of-scope list): rendering Seedance,
-  Kling, GROK, or VEO Scene Extensions (the MCP servers connected here only expose `nano-banana-2`
-  stills and `veo-3.1-fast` clips with no extend endpoint — those platforms stay copy-paste);
-  `gen_video.py` (fal) and `gen_avatar.mjs` (this plugin's proven lip-sync path is VEO native
-  lip-sync + the ElevenLabs Voice Changer, not a separate avatar generator); the clean-cut family
-  (`render_cuts`, `cutlib`, `analyze_cut`, `make_proxy`, `make_review`, `format_transcript`,
-  `editor/` — built for editing a long-form recording, not a short assembled promo);
-  `brand-setup`, `yt_upload.py`, `notion_sync.py` (this plugin's brand values already come from
-  `strategic-brief.md`, and upload/sync are outside what a video-production plugin should own);
-  `lib/vscode.tsx` (Claude-Code-specific, no use in a generic promo); `gen_thumbnail.py` (thumbnail
-  rendering is the image plugin's job — this ticket only adds the deterministic post-process on top
-  of it); implementing `from-file`/`from-manifest` in `geminigen-api-client` (a stub in another
-  repo, not fixed here); changing `voice_changer.mjs` (its claim already stands for the platforms
-  this plugin renders).
-
-### v3.0.0 Changelog
-
-- **Renamed** `ai-video-promo-engine` → **`gaspol-video`**, published through the `gaspol-one` marketplace.
-- **Three new skills:** `/video-explainer` (Phase 4.5, Remotion shots for scenes that must be readable),
-  `/video-post` (Phase 6, five passes: VO → edit → SFX → subtitles+music → mix), `/video-package`
-  (Phase 7, title + thumbnail bets + description).
-- **Ten CLI tools** in `tools/`, zero dependencies: python3 stdlib, node builtins, ffmpeg.
-- **Eight new references** in `reference/post-production/` (10 through 17), plus §29-30 in the global config.
-- **Render Path** column added to the Scene Breakdown table: `platform` or `explainer`, decided at Phase 3,
-  before NB2 credits are spent.
-- **Voice cast:** per-character `VOICE:` block in `cast-profile.md`. Voice ids live in `.env` and are named,
-  never written, in the repo.
-- **Speech-to-speech converts spans, not tracks** (fix after a real multi-speaker failure) — see the
-  debugging rows above and `docs/evals/voice-changer-probe.md` run 4.
-- **Adopted from `hassancs91/claude-youtube-editor`:** ElevenLabs VO and voice changing, AssemblyAI timing,
-  ffmpeg assembly, packaging decisions. **From `harry0703/MoneyPrinterTurbo`:** burned subtitles and the
-  music bed. Rejected from both: clean-cut, brand-setup, YouTube upload, stock-footage matching, the LLM
-  script writer, the WebUI and service layer, moviepy, `edge-tts`, and any local whisper model. See `NOTICE`.
-- **Validator:** agent checks C5-C10, plus I17, V13, V14 and a new `--post` section (P1-P5).
-
-### v2.4.0 Changelog
-
-- **NEW reference file `09-voice-consistency-workflow.md`** (~4200 tokens, cross-platform):
-  - Path A — Native voice lock per platform: Kling Elements 3.0 (audio sample or video extraction), Seedance @Audio1 (max 15s ref), VEO NOT supported
-  - Path B — Universal ElevenLabs Voice Changer post-prod (3-step workflow: generate → export → voice changer)
-  - Path C — Single VO recording + video sync (B-Roll-heavy promo)
-  - Hybrid workflow per video type (Pure-VEO / Pure-Kling / Pure-Seedance / Mixed / B-Roll-heavy)
-  - Prompt-level discipline rules (verbatim voice description, accent lock, one emotion per scene)
-  - Anti-patterns table + cost/time comparison
-- **video-gen SKILL.md:** NEW Step 5.0a VOICE CONSISTENCY STRATEGY runs BEFORE Step 5.0 Platform Selection. Voice consistency invariant added to cross-platform invariants table
-- **CLAUDE.md Smart Context Loading:** ALL Phase 5 rows (VEO / Seedance / Kling / Mixed) now include `09-voice-consistency.md` (5-7 refs per batch instead of 4-6)
-- **00-index.md + agent:** voice consistency reference row added
-
-### v2.3.1 Changelog (fact correction)
-
-- **Bahasa Indonesia audio support — clarified two-tier model**:
-  - ✅ Voice-over narrator (off-screen, B-Roll) — **SUPPORTED NATIVELY** in Kling 3.0
-  - ❌ On-screen lip-sync (face >30% speaking ID) — restricted to 5 langs (EN/ZH/JA/KO/ES)
-  - Previously incorrectly stated "NO Bahasa Indonesia" — now correctly distinguishes lip-sync vs VO paths
-- **Impact:** Most Indonesian B-Roll production scenes work natively in Kling without post-prod dub. Only switch to VEO for face-front ID dialogue scenes.
-- **Files updated:** 7 (08-kling guide, global-promo-config, script-to-scene-bridge, video-gen SKILL.md, CLAUDE.md, 00-index, README)
-
-### v2.3.0 Changelog
-
-- **NEW reference file `08-kling-production-guide.md`** (~7200 tokens): Kling 3.0 specs, 5-part prompt formula, 5 modes (T2V/I2V/First-Last/Multi-Shot/Motion Control), Omni audio (5 langs incl mixed-language scene), camera movement library, negative prompt strategy, cross-platform comparison vs VEO/Seedance
-- **Global config (Section 2):** Added Kling 3.0 Defaults table. `video_model` enum extended to `veo | seedance | kling | mixed`
-- **Global config (Section 9):** Added Kling prompt length guidelines (80-120 words optimal, 5-part formula)
-- **video-gen SKILL.md:** Added **Step 5.0 Platform Selection** before Image Review. Platform-conditional CONTEXT LOADING (load matching guide only). Cross-platform invariants table. Per-scene mode selection happens during Image Review.
-- **script-to-scene-bridge.md:** Added Step 3c (Kling Mode Selection per Scene) with full 5-mode decision tree
-- **CLAUDE.md:** Production Stack lists Kling as 3rd alt platform with constraints. Smart Context Loading adds Phase 5 (Kling) and Phase 5 (Mixed) rows. Debugging Checklist adds 8 Kling-specific rows
-- **Agent (`video-engine-agent.md`):** Reference table adds Kling row; capability list mentions tri-platform Phase 5
-- **00-index.md:** Production stack lists 3 video models; constraints section adds Kling clip duration + no-native-extension + 5-language lip-sync + cannot-render-text constraints
-- **plugin.json:** v2.1.1 → 2.3.0, description mentions all three platforms, keywords add `Kling`
-
-### v2.2.0 Changelog
-
-### v2.2.0 Changelog
-
-- **§25 added (global-promo-config.md):** Narrative Arc Hard Rules — 6-stage user framework alias to 7-beat, BODY 1 Completeness rule (count pain dramatized ≥ count pain brainstormed), pairing rules, validator C1
-- **§26 added (global-promo-config.md):** NB2 Reference Image Inclusion Rule — Uniqueness Filter (UNIQUE/COMMON/AMBIGUOUS), 2-question decision test, combined filter (uniqueness AND recurrence), Max 5 inline refs per Phase 4B prompt (replaces old Max 3 identity locks), validators C2 + C3
-- **§27 added (global-promo-config.md):** Cross-Scene Reference Conditional (Environment-Gated) — replaces blanket "MUST reference scene-N-end.png" rule. Cross-ref allowed ONLY if env(N) == env(N+1). Hard cuts drop cross-ref entirely. Validator C4
-- **video-prompt-reviewer.md:** Added 4 new validator checks (C1-C4) cross-referenced to §25-§27. Updated batch report table with applicability matrix
-- **video-script SKILL.md:** Added Hard Rule #15 (BODY 1 Pain Coverage HARD GATE)
-- **video-image SKILL.md:** Updated Rule #24 (env-gated cross-ref conditional), added Rule #31 (uniqueness filter Phase 4A), added Rule #32 (max 5 inline refs Phase 4B)
-- **F2_Narrative_Arc_and_Video_Typology.md:** Added 6-stage user framework alias subsection
-- **project-instruction.md:** Added BODY 1 COVERAGE line in Production Notes output template + 2 new entries in Structural Failures table
-- **script-to-scene-bridge.md:** Updated sequential cross-ref rule (env-gated), Required Reference Images table row 11 conditional, production checklist 4 new v2.2.0 checks
-- **01-nb2-image-generation.md:** Added Uniqueness Filter subsection + Max 5 Inline References subsection
+Release history: [CHANGELOG.md](CHANGELOG.md).
 
 ## gaspol Ticket Counter
 
@@ -1043,3 +303,5 @@ Last ticket: GV-25
 ## Tool-first rule (library)
 
 Before writing any script for video, audio, animation or assembly, read `docs/tool-routing.md` and use the listed tool. If nothing fits, extend `tools/vidkit/` (Python) or `tools/vidkit/js/` (Node) in this plugin, with a test, in the same session. Register it by adding its entry (tool + route) to `tools/registry.json`, then run `python3 tools/registry_build.py render`; do not edit the table in `docs/tool-routing.md` by hand. Never leave a reusable script in a project folder.
+
+**New-tool gate (GV-25).** `python3 tools/registry_build.py validate --coverage` (run by `bash tests/run.sh`) refuses a tool that overlaps another tool of the same phase on ≥50% of tasks without `distinct_because`/`replaces`, that no test names (file name, import line, `vidkit.<stem>`), or that no skill, agent, reference, hook, template or other tool uses (a `vidkit <cmd>` mention counts; `docs/` does not). Fix the cause; `internal_reason` only for a real imported helper.

@@ -99,7 +99,9 @@ def approved_from_markdown(md: Path, heading: str) -> set[str]:
                 collecting, level = True, len(m.group(1))
                 continue
         if collecting:
-            spans = [s for s in re.findall(r"`([^`]+)`", line) if RE_HAS_LETTER.search(s)]
+            # A number-only span (`08:41`) is kept: it is the approved part of a composed line
+            # like `KELUAR YARD 08:41`. Spans with no letter and no digit are dropped.
+            spans = [s for s in re.findall(r"`([^`]+)`", line) if re.search(r"[^\W_]", s)]
             out.update(spans)
             out.update(expand_series(line, spans))
     if not out:

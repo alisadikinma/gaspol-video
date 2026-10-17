@@ -76,18 +76,24 @@ coded shot.
    title-safe margin, all at 1080p.
 7. **A shot carries no audio.** The narration is already playing underneath.
 
-9. **(v3.4.0) A panel on a screen is attached by homography, never by a box.** An overlay that
-   sits on a monitor or phone inside a live-action clip uses `QuadScreenTracked`
-   (`templates/remotion/lib/quad-screen.tsx`), fed by corner tracks from
-   `python3 tools/track_screen.py <clip> work/track-scene-NN.json --seed x,y --qa .tmp/qa-NN`.
-   A screen seen off-axis is a trapezoid, not a rotated rectangle (measured on one monitor: left
-   edge 524px, right edge 375px), so box-plus-rotation always overhangs a corner. Corners are read
-   from fitted edge lines, never from extreme points and never eyeballed, and the QA frames are
-   looked at before the overlay is rendered.
+9. **(v3.21.1) A panel on a screen is rendered here, then placed by `vidkit screen-insert`.**
+   Render the panel content as a normal screen/screencast shot (`shots/out/<shot>.mp4`, or a still
+   PNG for a held screen). Place it into the clip:
+   `python3 -m tools.vidkit screen-insert clips/scene-NN.mp4 shots/out/<shot>.mp4 clips/scene-NN-screen.mp4 --mode green --qa .tmp/qa-NN`
+   when the clip's screen was prompted `flat solid chroma green screen` (video-gen Rule 26, check
+   V17). Otherwise use `--mode track --corners x,y,x,y,x,y,x,y`: the four corners at frame 0,
+   clockwise from top-left, read from
+   `python3 tools/track_screen.py <clip> work/track-scene-NN.json --seed x,y --qa .tmp/qa-NN`
+   (`keys[0].corners`). A screen seen off-axis is a trapezoid, not a rotated rectangle (measured
+   on one monitor: left edge 524px, right edge 375px), so a box plus rotation always overhangs a
+   corner; screen-insert maps the panel by homography per frame. Look at
+   `.tmp/qa-NN/qa-screen.jpg` before the shot is used. A `refused: ...` exit 2 means trim the
+   clip or re-render it (`docs/debugging.md`); never fall back to the Remotion
+   `quad-screen.tsx` component, which is legacy and kept only for old projects.
 
-10. **(v3.4.0) Decide tracked-panel vs floating card from a measurement, not from taste.** Frontal
-   and ≥300px wide → tracked. Oblique >15° or 120-300px → tracked only if the corners are
-   measurable. Under 120px wide, or a screen that faces away from the camera → floating card. A
+10. **(v3.4.0) Decide screen-insert vs floating card from a measurement, not from taste.** Frontal
+   and ≥300px wide → screen-insert. Oblique >15° or 120-300px → screen-insert only if the corners
+   are measurable. Under 120px wide, or a screen that faces away from the camera → floating card. A
    guard-post monitor measured 60x45px in a 1920x1080 frame; a panel tracked onto a monitor facing
    the actor rendered behind the device. `track_screen.py` exits 2 below the width floor.
 
@@ -243,8 +249,8 @@ See `skills/video-post/SKILL.md` Pass 4.1 for that workflow.
 - [ ] No shot carries its own audio track
 - [ ] Shot ids recorded in `scene-plan.md`
 - [ ] **(v3.11.1)** No highlight, circle or arrow baked into a base image; every marker is a timed Remotion layer, and clipping images have a `.lines.json` sidecar
-- [ ] **(v3.4.0)** Screen-attached panels use `QuadScreenTracked` with a `track_screen.py` track, and the QA frames were inspected
-- [ ] **(v3.4.0)** Every surface under 120px wide, or facing away from camera, became a floating card instead of a tracked panel
+- [ ] **(v3.21.1)** Screen-attached panels are placed with `vidkit screen-insert` (green or track), and `qa-screen.jpg` was inspected
+- [ ] **(v3.4.0)** Every surface under 120px wide, or facing away from camera, became a floating card instead of a screen-insert panel
 - [ ] **(v3.4.0)** On-screen strings pass `python3 tools/check_overlay_strings.py shots/src --from-markdown av-script.md --heading "Blok 4"`
 
 ## Degradation

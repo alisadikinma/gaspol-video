@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Track the FOUR CORNERS of a screen in a clip, so a Remotion panel lands on the glass.
 
+Since v3.21.1 its only job is reading the four corners for `vidkit screen-insert --mode track
+--corners x,y,x,y,x,y,x,y` (keys[0].corners, clockwise from top-left). Placing the panel is
+screen-insert's job.
+
     python3 tools/track_screen.py clips/scene-15.mp4 work/track-scene-15.json \
         --seed 640,520 --from 0.0 --to 6.0 --step 0.5 --threshold 165 --qa .tmp/qa-s15
 
