@@ -439,6 +439,44 @@ class MediaTest(unittest.TestCase):
         m = sheet.montage([s, s, s], self.dir / "m.jpg", cols=2, cell=(200, 100))
         self.assertTrue(Path(m).stat().st_size > 0)
 
+    def _red_then_blue(self):
+        clip = self.dir / "rb.mp4"
+        ff.ffmpeg("-f", "lavfi", "-i", "color=c=red:s=64x64:d=1:r=25",
+                  "-f", "lavfi", "-i", "color=c=blue:s=64x64:d=1:r=25",
+                  "-filter_complex", "[0:v][1:v]concat=n=2:v=1[o]", "-map", "[o]",
+                  "-pix_fmt", "yuv420p", str(clip))
+        return clip
+
+    def _rgb(self, img):
+        w, h = ff.probe(img)["video"]["width"], ff.probe(img)["video"]["height"]
+        raw = ff.run_bytes(["ffmpeg", "-v", "error", "-i", str(img), "-f", "rawvideo",
+                            "-pix_fmt", "rgb24", "-"])
+        return w, h, raw
+
+    def test_contact_sheet_exact_times(self):
+        # GV-25: qa_frames needs exact times (incl. the last frame); the fps path cannot hit them.
+        out = sheet.contact_sheet(str(self._red_then_blue()), str(self.dir / "t.jpg"),
+                                  width=64, times=[0.5, 1.5])
+        w, h, raw = self._rgb(out)
+        self.assertEqual((w, h), (128, 64))
+        px = lambda x, y: raw[(y * w + x) * 3:(y * w + x) * 3 + 3]
+        r, g, b = px(32, 32)
+        self.assertGreater(r, b + 100)
+        r, g, b = px(96, 32)
+        self.assertGreater(b, r + 100)
+
+    def test_contact_sheet_times_edges(self):
+        clip = str(self._red_then_blue())
+        with self.assertRaises(ValueError):
+            sheet.contact_sheet(clip, str(self.dir / "e.jpg"), times=[])
+        with self.assertRaises(ValueError):
+            sheet.contact_sheet(clip, str(self.dir / "e.jpg"), times=[-1])
+        one = sheet.contact_sheet(clip, str(self.dir / "one.jpg"), width=64, times=[1.96])
+        self.assertEqual(self._rgb(one)[:2], (64, 64))
+        grid = sheet.contact_sheet(clip, str(self.dir / "grid.jpg"), width=64, cols=2,
+                                   times=[0.2, 1.0, 1.8])
+        self.assertEqual(self._rgb(grid)[:2], (128, 128))
+
     def test_synth_presets_are_audible_but_not_clipped(self):
         for name, length in (("notification", 0.6), ("alarm", 2.2)):
             out = getattr(synth, name)(self.dir / f"{name}.wav")

@@ -448,3 +448,17 @@ class LedgerLetteredCollapseTest(unittest.TestCase):
         ledger = {"renders": [ledger_entry(7, "clips/take-final.mp4")]}
         found = qa_frames._collect(Path("/nonexistent"), ledger, [], None)
         self.assertEqual(found, {"07": "clips/take-final.mp4"})
+
+
+class MakeSheetDelegationTest(unittest.TestCase):
+    def test_make_sheet_delegates_to_vidkit_sheet(self):
+        # GV-25: frame tiling lives in vidkit.sheet; qa_frames only names the file.
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            clip = project / "clips" / "scene-01.mp4"
+            with mock.patch.object(qa_frames.sheet, "contact_sheet") as cs:
+                out = qa_frames.make_sheet(clip, project, "01", [0.0, 1.0])
+            cs.assert_called_once_with(str(clip), str(project / ".tmp" / "qa-scene-01.jpg"),
+                                       width=480, times=[0.0, 1.0])
+            self.assertEqual(out, project / ".tmp" / "qa-scene-01.jpg")
