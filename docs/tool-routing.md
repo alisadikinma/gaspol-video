@@ -75,6 +75,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Check a Remotion overlay shows only approved on-screen text | `python3 tools/check_overlay_strings.py <shots-dir> --from-markdown av-script.md --heading "<block>"` |
 | Inventory a project's generated clips (durations, audio presence) | `python3 tools/probe_clips.py <project>` writes `work/clip-manifest.json` |
 | Find which tool does a job / check the registry | `python3 tools/registry_build.py suggest --text-file F`, `validate --coverage`, `render` |
+| Re-render a paid asset without losing the old one | `python3 tools/renders.py <project> archive --file F --reason R` (moves the old file into `_arsip/` before the new render) |
 <!-- registry:routes:end -->
 
 ## When no tool fits (inject back)

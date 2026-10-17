@@ -360,7 +360,8 @@
       "tasks": [
         "render-ledger",
         "prompt-hash",
-        "eligibility"
+        "eligibility",
+        "render-archive"
       ],
       "phase": "shared",
       "replaces": [],
@@ -1243,6 +1244,13 @@
       "use": "`python3 tools/registry_build.py suggest --text-file F`, `validate --coverage`, `render`",
       "tools": [
         "tools/registry_build.py"
+      ]
+    },
+    {
+      "task": "Re-render a paid asset without losing the old one",
+      "use": "`python3 tools/renders.py <project> archive --file F --reason R` (moves the old file into `_arsip/` before the new render)",
+      "tools": [
+        "tools/renders.py"
       ]
     }
   ],

@@ -6,6 +6,7 @@
     python3 tools/renders.py <project> check --file F --prompt-file P
     python3 tools/renders.py <project> record --json '<entry json>'
     python3 tools/renders.py <project> eligible --json '<scene json>'
+    python3 tools/renders.py <project> archive --file F [--reason R]
 
 Every render a skill offers through the indusia MCP tools gets one entry in
 `{project}/renders.json`, keyed by output file. The ledger lets a batch re-offer
@@ -18,7 +19,9 @@ first, then pass `--prompt-file`) — never Python function names, which a skill
 way to invoke: `hash` prints the prompt's sha256; `check` prints `render` or
 `up-to-date`; `record` validates and writes one ledger entry (`--json-file` for a
 large entry); `eligible` prints `eligible` or `ineligible: <reason>` for a Phase 5
-scene.
+scene; `archive` moves an existing output file into `_arsip/` (named
+`<kind>-<stem>-v<N>-<reason><ext>`) before it is re-rendered, so a paid artefact is
+never overwritten.
 """
 
 import argparse
@@ -98,6 +101,68 @@ def record(project, entry: dict) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, path)
+
+
+ARCHIVE_DIR = "_arsip"
+
+_PHASE_KIND = {"4A": "gambar", "4B": "keyframe", "5": "klip", "6": "audio"}
+_EXT_KIND = {".mp4": "klip", ".mov": "klip", ".mp3": "audio", ".wav": "audio"}
+
+
+def _slug(reason: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (reason or "").lower()).strip("-")[:40].strip("-")
+    return slug or "diganti"
+
+
+def _archive_kind(project, file: str, phase, ext: str) -> str:
+    if phase is None:
+        try:
+            for entry in load(project)["renders"]:
+                if entry.get("file") == file:
+                    phase = entry.get("phase")
+                    break
+        except RenderLedgerError:
+            phase = None
+    if phase in _PHASE_KIND:
+        return _PHASE_KIND[phase]
+    return _EXT_KIND.get(ext.lower(), "gambar")
+
+
+def archive_file(project, file, reason="", phase=None):
+    """Move `project/file` into `project/_arsip/<kind>-<stem>-v<N>-<reason><ext>`.
+
+    N is the largest existing version for the same kind and stem plus one, so a number
+    is never reused. Returns the destination, or None when the file does not exist.
+    Raises ValueError for a path outside the project, a symlink, a directory, or a
+    destination that already exists. The ledger is not touched."""
+    root = Path(project).resolve()
+    src = Path(project) / file
+    resolved = src.resolve()
+    if resolved != root and root not in resolved.parents:
+        raise ValueError(f"file escapes project: {file}")
+    if src.is_symlink():
+        raise ValueError(f"file is a symlink: {file}")
+    if src.is_dir():
+        raise ValueError(f"file is a directory: {file}")
+    if not src.exists():
+        return None
+
+    kind = _archive_kind(project, file, phase, src.suffix)
+    prefix = f"{kind}-{src.stem}-v"
+    pattern = re.compile(re.escape(prefix) + r"(\d+)-")
+    archive_dir = Path(project) / ARCHIVE_DIR
+    highest = 0
+    if archive_dir.is_dir():
+        for existing in archive_dir.iterdir():
+            match = pattern.match(existing.name)
+            if match:
+                highest = max(highest, int(match.group(1)))
+    dest = archive_dir / f"{prefix}{highest + 1}-{_slug(reason)}{src.suffix}"
+    if dest.exists():
+        raise ValueError(f"archive destination exists: {dest.name}")
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    os.replace(src, dest)
+    return dest
 
 
 def parse_mcp_result(text: str) -> dict:
@@ -239,6 +304,19 @@ def _cmd_eligible(args):
     return 0
 
 
+def _cmd_archive(args):
+    try:
+        dest = archive_file(args.project, args.file, args.reason)
+    except ValueError as exc:
+        print(f"renders: {exc}", file=sys.stderr)
+        return 1
+    if dest is None:
+        print(f"nothing to archive: {args.file}")
+    else:
+        print(f"archived {args.file} -> {ARCHIVE_DIR}/{dest.name}")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("project")
@@ -261,6 +339,10 @@ def main(argv=None):
     p_eligible.add_argument("--json")
     p_eligible.add_argument("--json-file")
 
+    p_archive = sub.add_parser("archive", help="move an existing output into _arsip/")
+    p_archive.add_argument("--file", required=True)
+    p_archive.add_argument("--reason", default="")
+
     args = ap.parse_args(argv)
 
     if args.cmd == "hash":
@@ -271,6 +353,8 @@ def main(argv=None):
         return _cmd_record(args)
     if args.cmd == "eligible":
         return _cmd_eligible(args)
+    if args.cmd == "archive":
+        return _cmd_archive(args)
 
     try:
         ledger = load(args.project)
