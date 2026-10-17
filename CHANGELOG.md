@@ -90,6 +90,8 @@ Every release of gaspol-video, newest first. The README carries the product over
   - **Seed.** `voice_changer.mjs --seed N` sends the `seed` field; `cast_voice.mjs` is only the per-cast batch runner and passes settings and seed as params.
   - **Contact sheet.** `vidkit.sheet.contact_sheet(times=[...])` takes exact timestamps; `qa_frames.py` tiles through it. V15 and file names unchanged.
   - Registry: one tool entry fewer, 78 routes.
+  - **New-tool gate.** `registry_build.py validate --coverage` refuses a tool that overlaps another of the same phase on ≥50% of tasks, that no test names, or that no skill, reference or tool uses (`docs/` does not count). Proof: the old `vidkit/track.py` is refused. First real findings fixed: `gen_music`/`gen_sfx` distinct, `guide_vo.py` documented in reference 11, six `vidkit` commands listed in `video-repackage`, `check_overlay_strings.py` tested (and a bug fixed: number-only approved spans were dropped).
+  - **README** rewritten with five illustrations and the machine-learning stack. **CLAUDE.md** cut from 1,054 to 306 lines: history moved here, the error table to `docs/debugging.md`.
 
 ## v3.21.0 Changelog
 

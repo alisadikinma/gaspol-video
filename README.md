@@ -227,7 +227,7 @@ tests/               bash tests/run.sh
 
 ## Changelog
 
-Every release is in [CHANGELOG.md](CHANGELOG.md). Latest: **v3.21.1**, one tool per job. Screen panels go through `vidkit screen-insert` only, `vidkit smooth-track` is retired, `voice_changer.mjs --seed`, and `vidkit sheet` takes exact timestamps.
+Every release is in [CHANGELOG.md](CHANGELOG.md). Latest: **v3.21.1**, one tool per job. Screen panels go through `vidkit screen-insert` only, `vidkit smooth-track` is retired, `voice_changer.mjs --seed`, `vidkit sheet` takes exact timestamps, and a registry gate now refuses near-duplicate, untested or unused tools.
 
 ## Contributing
 
