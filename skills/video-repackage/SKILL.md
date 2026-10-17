@@ -95,7 +95,9 @@ A/V gate 0.04 s, loudness -14 LUFS with true peak under -1 dBFS.
 ### 6b. Tools for the packaging (do not rewrite them)
 | Need | Use |
 |---|---|
-| Karaoke subtitles + watermark | `python3 -m tools.vidkit karaoke` |
+| Karaoke subtitles + watermark | `python3 -m tools.vidkit karaoke`. Default `--profile short-organic`: 56 px, 4 words in 2 lines, last baseline about 61.7% from the top. `--profile none` = the old look |
+| Cover title inside the safe area | `python3 -m tools.vidkit title <img> "<text>" <out>` |
+| Text and watermark in the 9:16 safe area, off the face | `python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>]`; not final until it exits 0 |
 | Follow popup, "Ssst!", "WOW!", thumbnail art | Remotion `lib/ali-effects.tsx`: `FollowModal`, `ShushEffect`, `WowBurst`, `ThumbCover` |
 | Logo that must sit on a prop (not look pasted) | `vidkit unwhite`, then `mix-blend-mode: multiply`, a little blur and grain |
 | Final mix, loudness, thumbnail on first frames and as cover | `python3 -m tools.vidkit mixdown plan.json` |

@@ -143,6 +143,19 @@ python3 tools/thumb_verify.py check {output_folder}
 matching fix from the failure table in `21-thumbnail-style-elements.md`, at most 2 re-rolls per
 thumbnail, then ask the owner. Never edit a cell without looking at the image.
 
+### Step 7.7c: 9:16 cover title and layout gate (GV-23)
+
+For a 9:16 thumbnail, stamp the title with the tool, never with a prompt:
+
+```bash
+python3 -m tools.vidkit title packaging/thumb-a.png "<TITLE, max words per profile>" packaging/thumb-a-titled.png
+python3 tools/layout_gate.py check {output_folder} --thumb "packaging/thumb-*-titled.png"
+```
+
+`title` writes `<out>.box.json` with the measured box. A thumbnail is not final until
+`layout_gate.py check` exits 0 (title inside the safe area and off the face). Run it before
+`thumb_verify.py init`.
+
 ### Step 7.8: Optional deterministic post-process (v3.1.0)
 
 Once the image plugin returns thumbnail plates, these two tools render nothing new — they finish
@@ -170,6 +183,7 @@ scrim falls short. Both are optional; skip them when the plate already reads cle
 - [ ] Calibration mode stated in the output; uncalibrated defaults labelled as such
 - [ ] No target CTR quoted that the user has not measured
 - [ ] No image generated in this plugin
+- [ ] 9:16: title stamped with `vidkit title` and `layout_gate.py check --thumb` exited 0 before `thumb_verify.py`
 - [ ] `thumb_verify.py check` exited 0 before any thumbnail was offered as final
 - [ ] Platform shape respected — no bets produced for a platform with no cover
 

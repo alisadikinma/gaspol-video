@@ -642,6 +642,18 @@ is dropped:
 ffmpeg -r <src_fps> -i master-mixed.mp4 -c:v libx264 -crf 19 -pix_fmt yuv420p -c:a aac master-h264.mp4
 ```
 
+### 5.0b Layout gate (9:16, GV-23)
+
+For an `aspect: 9:16` film, after the mix and before P6:
+
+```bash
+python3 tools/layout_gate.py check {output_folder} --video output/master-mixed.mp4 --ass <subs.ass>
+```
+
+The film is not final until `layout_gate.py check` exits 0. Exit 1 lists boxes outside the safe
+area or on the face; exit 2 means the gate could not run. Both block `--final`. Fix the subtitle
+profile or margin (`vidkit karaoke`, default `--profile short-organic`) and re-run.
+
 ### 5.1 Verify the render says what the script says (P6, v3.1.0)
 
 ```bash

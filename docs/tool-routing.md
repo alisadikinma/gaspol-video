@@ -41,7 +41,7 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Final loudness (-14 LUFS) with A/V kept aligned | `vidkit normalize` |
 | Final loudness to a named, sourced target (`--profile NAME`; unknown or unsourced profile exits 2) | `vidkit normalize --profile`, `loudness.profile()` |
 | Pick the loudness target of a final mix by name | mixdown plan key `loudness_profile` (explicit `lufs` wins) |
-| Karaoke subtitles from a word list + centre watermark (any opacity) | `python3 -m tools.vidkit karaoke words.json out.ass --total N --watermark @handle` |
+| Karaoke subtitles from a word list + centre watermark (any opacity); default `--profile short-organic`, `--profile none` = old look | `python3 -m tools.vidkit karaoke words.json out.ass --total N --watermark @handle` |
 | Thumbnail on the first frames + as mp4 cover (subtitles stay off it) | `python3 -m tools.vidkit cover video thumb out [--ass f.ass]` |
 | Logo on a white box -> mark that blends onto a prop | `python3 -m tools.vidkit unwhite logo.png out.png`, then CSS `mix-blend-mode: multiply` |
 | Final mix in one command (voice + SFX cues + ducked music, -14 LUFS, subs, thumbnail) | `python3 -m tools.vidkit mixdown plan.json` |
@@ -78,6 +78,8 @@ The table below is generated. Edit `tools/registry.json`, then run
 | Re-render a paid asset without losing the old one | `python3 tools/renders.py <project> archive --file F --reason R` (moves the old file into `_arsip/` before the new render) |
 | Keep the project folder clean / find stray folders and duplicates | `python3 -m tools.vidkit tidy <project>` (report only; `--apply` moves strays to `_arsip/`, `--empty-tmp` empties `.tmp/`) |
 | Face box per frame, for the layout gate | `face_box.py` |
+| Check text and watermark sit in the 9:16 safe area | `python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>]` |
+| Stamp the thumbnail title | `python3 -m tools.vidkit title <img> "<text>" <out>` |
 <!-- registry:routes:end -->
 
 ## When no tool fits (inject back)

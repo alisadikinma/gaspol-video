@@ -659,7 +659,7 @@ All configurable values live in `reference/global-promo-config.md` — single so
 
 ### v3.18.0 Changelog
 
-- **Tool registry (GV-20).** `tools/registry.json` is the single source for tools and routes (62 tool entries, 61 routes, 17 `ffprobe_allow` entries). `docs/tool-routing.md` table is generated from it (`python3 tools/registry_build.py render`, `render --check` in the gate); only the intro and the "When no tool fits" section are hand-written.
+- **Tool registry (GV-20).** `tools/registry.json` is the single source for tools and routes (68 tool entries, 66 routes, 17 `ffprobe_allow` entries). `docs/tool-routing.md` table is generated from it (`python3 tools/registry_build.py render`, `render --check` in the gate); only the intro and the "When no tool fits" section are hand-written.
   - **Gates.** Coverage: every `tools/*.py`, `tools/*.mjs`, `tools/vidkit/*.py`, `tools/vidkit/js/*.mjs` is registered or marked internal with a reason. Duplicate: two tools with the same phase and the same task set need `distinct_because` or `replaces`. ffprobe ratchet: a tool that calls `ffprobe` directly must be on `ffprobe_allow` with a written reason, so the list can only shrink. Tests: `tests/py/test_registry.py`, `tests/consistency/tool-registry-contract.sh`.
   - **Reminder hook.** `hooks/tool-reminder.sh` (PreToolUse, Write|Edit) reminds, never blocks. It fires on a `.py`/`.mjs`/`.sh` file outside `tools/`, `tests/`, `templates/` whose content has `ffmpeg`, `ffprobe` or `remotion`, and names the matching registry tools. Test: `tests/consistency/tool-reminder-hook.sh`.
   - **Migrated.** `check_vo_duration.py` and `track_screen.py` now use `vidkit.ff` instead of their own ffprobe code (`tests/py/test_probe_migration.py`).

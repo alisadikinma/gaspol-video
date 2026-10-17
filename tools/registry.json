@@ -655,7 +655,7 @@
     },
     {
       "id": "tools/vidkit/karaoke.py",
-      "purpose": "Build karaoke ASS subtitles from a word list plus an optional centre watermark line.",
+      "purpose": "Karaoke ASS from a word list plus centre watermark; default profile short-organic (56 px, 4 words in 2 lines).",
       "tasks": [
         "karaoke-ass",
         "word-groups",
@@ -845,7 +845,7 @@
       "phase": "shared",
       "replaces": [],
       "distinct_because": "",
-      "internal_reason": "Loader library for layout profiles; used by the karaoke, title and layout gate tools. Public route added in the wiring phase."
+      "internal_reason": "Library, no CLI of its own: loads media/layout-profiles.json and measures text boxes for vidkit karaoke, vidkit title and tools/layout_gate.py."
     },
     {
       "id": "tools/vidkit/title.py",
@@ -857,7 +857,7 @@
       "phase": "7",
       "replaces": [],
       "distinct_because": "",
-      "internal_reason": "Reached through `python3 -m tools.vidkit title`. Public route added in the wiring phase."
+      "internal_reason": ""
     },
     {
       "id": "tools/face_box.py",
@@ -874,7 +874,7 @@
     },
     {
       "id": "tools/layout_gate.py",
-      "purpose": "Layout gate for 9:16 video: subtitle, watermark and title boxes against the profile safe area and the face box.",
+      "purpose": "Layout gate for 9:16 video: subtitle, watermark and title boxes vs the safe area and the face; report and previews.",
       "tasks": [
         "layout-gate",
         "safe-area-gate"
@@ -882,7 +882,7 @@
       "phase": "6",
       "replaces": [],
       "distinct_because": "",
-      "internal_reason": "Public route added in the wiring phase (GV-23 Phase H)."
+      "internal_reason": ""
     }
   ],
   "routes": [
@@ -1081,7 +1081,7 @@
       "tools": []
     },
     {
-      "task": "Karaoke subtitles from a word list + centre watermark (any opacity)",
+      "task": "Karaoke subtitles from a word list + centre watermark (any opacity); default `--profile short-organic`, `--profile none` = old look",
       "use": "`python3 -m tools.vidkit karaoke words.json out.ass --total N --watermark @handle`",
       "tools": [
         "tools/vidkit/karaoke.py"
@@ -1339,6 +1339,20 @@
       "use": "`face_box.py`",
       "tools": [
         "tools/face_box.py"
+      ]
+    },
+    {
+      "task": "Check text and watermark sit in the 9:16 safe area",
+      "use": "`python3 tools/layout_gate.py check <project> --video <mp4> --ass <ass> [--thumb <png>]`",
+      "tools": [
+        "tools/layout_gate.py"
+      ]
+    },
+    {
+      "task": "Stamp the thumbnail title",
+      "use": "`python3 -m tools.vidkit title <img> \"<text>\" <out>`",
+      "tools": [
+        "tools/vidkit/title.py"
       ]
     }
   ],

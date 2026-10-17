@@ -20,6 +20,7 @@ Unified validation skill for the AI Video Promo Engine. Covers 5 validation targ
 | `--image` | NB2 prompt rules + actual keyframe image review | image-prompts.md + keyframes/*.png |
 | `--video` | VEO prompt rules, visual QA verdicts (V1-V16) | video-prompts.md + scene-plan.md + work/visual-qa.md |
 | `--post` | Post-production: rendered master and plan files (P1-P6) |
+| `--layout` | Text and watermark inside the 9:16 safe area, clear of the face (blocking) | ass + master and/or `packaging/thumb-*.png` + `.box.json` |
 | `--retention` | Retention gate on a finished cut (RT1-RT5, report only) | master + av-script.md + vo-manifest.json + edit-plan.json |
 | `--refs` | Cross-file reference consistency (24 checks) | All reference + skill + agent files |
 | `--all` | Everything above, including `--retention` | All files |
@@ -577,6 +578,28 @@ Check names are `RT1`-`RT5` here so they do not collide with the `--refs` checks
 | RT5 BGM under the voice | R5 | `output/stems/voice.wav` + `music.wav` | voice at least 12 dB over music in every spoken span; `not measured` without stems |
 
 Status values: `PASS`, `FAIL`, `not measured` (an input is missing; never read as PASS), `needs verdict` (RT4 cells still empty). Exit 2 means the tool could not run.
+
+## Layout Validation (`--layout`)
+
+For 9:16 short video only. Runs the layout gate: subtitle, watermark and cover-title boxes are
+measured (text outline included, not computed) and compared with the safe area of the layout
+profile (`media/layout-profiles.json`, default `short-organic`) and with the speaker's face box.
+
+```
+python3 tools/layout_gate.py check {output_folder} --video output/master-mixed.mp4 --ass <subs.ass> [--thumb "packaging/thumb-*.png"]
+```
+
+It writes `work/layout-report.md` and one preview per platform to `.tmp/layout-{tiktok,reels,shorts}.jpg`.
+Face samples with no face are listed under "Skipped", never counted as a pass.
+
+| Exit | Meaning |
+|---|---|
+| 0 | No finding. |
+| 1 | At least one finding (text outside the safe area, on the face, or a title over the face). Blocking. |
+| 2 | Bad input: missing file, unknown profile, not 9:16, thumbnail without its `.box.json`, missing face model or venv. Blocking: the gate did not run. |
+
+A finding blocks `video-post --final` and `video-package`. Fix the ASS or the title position and
+re-run; never widen the profile to pass.
 
 ## Output Format
 
