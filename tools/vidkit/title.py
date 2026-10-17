@@ -3,6 +3,7 @@
 ffmpeg drawtext does the drawing. The returned box is measured, not computed: the same
 drawtext (box in white) is rendered on a black canvas and read back with layout.text_box.
 """
+import itertools
 import json
 import os
 import shutil
@@ -49,36 +50,43 @@ def resolve_font():
     raise ValueError("no usable title font from fc-match (" + "; ".join(tried) + ")")
 
 
-def split_lines(words):
-    """Up to two lines, split at the word boundary nearest the middle of the text."""
-    if len(words) < 2:
+def split_lines(words, n=None):
+    """Split words into `n` lines (default: up to three, one word minimum per line) with the
+    widest line as short as possible; ties go to the more even split."""
+    n = min(3, len(words)) if n is None else min(n, len(words))
+    if n < 2:
         return [" ".join(words)]
-    total = len(" ".join(words))
-    best = min(range(1, len(words)),
-               key=lambda k: abs(len(" ".join(words[:k])) - total / 2))
-    return [" ".join(words[:best]), " ".join(words[best:])]
+    best, best_key = None, None
+    for cuts in itertools.combinations(range(1, len(words)), n - 1):
+        edges = (0,) + cuts + (len(words),)
+        lines = [" ".join(words[edges[i]:edges[i + 1]]) for i in range(n)]
+        lens = [len(x) for x in lines]
+        key = (max(lens), sum(x * x for x in lens))
+        if best_key is None or key < best_key:
+            best, best_key = lines, key
+    return best
 
 
-def _filter(textfiles, font, size, pad, cy, box_color):
+def _filter(textfiles, font, size, pad, cy, box_color, cx=0.5):
     """One drawtext per line, each centred on X with its own box. Boxes of two lines tile
     exactly (line pitch = text height + 2 * pad) and the pair is centred on `cy`."""
     parts = []
     for i, tf in enumerate(textfiles):
-        if len(textfiles) == 1:
+        k = len(textfiles)
+        if k == 1:
             y = f"h*{cy}-text_h/2"
-        elif i == 0:
-            y = f"h*{cy}-text_h-{pad}"
         else:
-            y = f"h*{cy}+{pad}"
+            # lines tile exactly: pitch = text_h + 2*pad, the stack is centred on cy
+            y = f"h*{cy}+({i}-{k}/2)*(text_h+2*{pad})+{pad}"
         parts.append(f"drawtext=fontfile='{font}':textfile='{tf}':fontsize={size}:fontcolor=white"
-                     f":x=(w-text_w)/2:y={y}:box=1:boxcolor={box_color}:boxborderw={pad}")
+                     f":x=w*{cx}-text_w/2:y={y}:box=1:boxcolor={box_color}:boxborderw={pad}")
     return ",".join(parts)
 
 
-def _measure(textfiles, font, size, pad, cy, w, h, tmp):
+def _measure(textfiles, font, size, pad, cy, w, h, tmp, cx):
     probe_png = os.path.join(tmp, "measure.png")
     ff.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color=black:s={w}x{h}",
-            "-vf", _filter(textfiles, font, size, pad, cy, "white"), "-frames:v", "1", probe_png])
+            "-vf", _filter(textfiles, font, size, pad, cy, "white", cx), "-frames:v", "1", probe_png])
     return layout.text_box(probe_png)
 
 
@@ -108,31 +116,51 @@ def stamp(img, text, out, profile="short-organic", y_pct=None):
     pct = layout.value(prof, "title.font_pct")
     min_pct = layout.value(prof, "title.min_font_pct")
     sx0, sy0, sx1, sy1 = layout.safe_box({**prof, "width": w, "height": h})
-    lines = split_lines(words)
+    cx = (sx0 + sx1) / 2 / w
+    usable = sx1 - sx0
+    n_max = min(3, len(words))
     with tempfile.TemporaryDirectory() as tmp:
-        textfiles = []
-        for i, line in enumerate(lines):
-            tf = os.path.join(tmp, f"title{i}.txt")
-            Path(tf).write_text(line, encoding="utf-8")
-            textfiles.append(tf)
-        while True:
+        def files(lines):
+            out_files = []
+            for i, line in enumerate(lines):
+                tf = os.path.join(tmp, f"title{len(lines)}-{i}.txt")
+                Path(tf).write_text(line, encoding="utf-8")
+                out_files.append(tf)
+            return out_files
+
+        counts = [n for n in (2, 3) if n <= n_max] or [1]
+        layouts = {n: split_lines(words, n) for n in counts}
+        tfs = {n: files(layouts[n]) for n in counts}
+        chosen, size, pad, box = None, None, None, None
+        widest_at_min = None
+        while chosen is None:
             size = round(pct * h)
             pad = round(size * PAD_PCT)
-            box = _measure(textfiles, font, size, pad, cy, w, h, tmp)
-            if box is None:
-                raise ValueError("title rendered nothing: check the font")
-            if box[0] >= sx0 and box[2] <= sx1:
+            for n in counts:
+                box = _measure(tfs[n], font, size, pad, cy, w, h, tmp, cx)
+                if box is None:
+                    raise ValueError("title rendered nothing: check the font")
+                if box[0] >= sx0 and box[2] <= sx1:
+                    chosen = n
+                    break
+                if pct <= min_pct + 1e-9:
+                    wd = box[2] - box[0]
+                    widest_at_min = wd if widest_at_min is None else min(widest_at_min, wd)
+            if chosen is not None:
                 break
-            if pct - SHRINK_STEP < min_pct - 1e-9:
-                raise ValueError(f"title is {box[2] - box[0]}px wide, centred on the screen it is wider than the "
-                                 f"safe area {[sx0, sx1]} at min_font_pct {min_pct}")
+            if pct <= min_pct + 1e-9:
+                raise ValueError(f"title does not fit the safe area: usable width {usable} px, widest line "
+                                 f"{widest_at_min} px at min font ({min_pct} of the height); "
+                                 f"shorten the longest word")
             pct = max(pct - SHRINK_STEP, min_pct)
+        lines = layouts[chosen]
+        textfiles = tfs[chosen]
         if box[0] < sx0 or box[2] > sx1 or box[1] < sy0 or box[3] > sy1:
             raise ValueError(f"title box {box} falls outside the safe area {[sx0, sy0, sx1, sy1]}")
         ff.ensure_parent(out)
         ff.run(["ffmpeg", "-y", "-v", "error", "-i", img,
-                "-vf", _filter(textfiles, font, size, pad, cy, "black@0.85"),
+                "-vf", _filter(textfiles, font, size, pad, cy, "black@0.85", cx),
                 "-frames:v", "1", out])
     Path(str(out) + ".box.json").write_text(json.dumps(
-        {"box": box, "profile": profile, "text": " ".join(words), "font": font}, indent=1))
+        {"box": box, "profile": profile, "text": " ".join(words), "font": font, "lines": lines}, indent=1))
     return box

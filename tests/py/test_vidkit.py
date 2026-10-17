@@ -2372,8 +2372,27 @@ class TitleTest(unittest.TestCase):
 
     def test_box_is_centred_on_x_and_near_center_y(self):
         box = title.stamp(self.img, "RUMAH 70 MILIAR", self.out)
-        self.assertAlmostEqual((box[0] + box[2]) / 2, 540, delta=3)
+        sx0, _, sx1, _ = layout.safe_box(layout.load("short-organic"))
+        self.assertAlmostEqual((box[0] + box[2]) / 2, (sx0 + sx1) / 2, delta=3)
         self.assertAlmostEqual((box[1] + box[3]) / 2, 0.38 * 1920, delta=6)
+
+    def test_real_titles_that_were_refused_now_fit_inside_the_safe_area(self):
+        sx0, sy0, sx1, sy1 = layout.safe_box(layout.load("short-organic"))
+        for t in ("Alisha Superstar Sekolah", "Alisha Superstar Cilik", "Alisha Jadi Superstar",
+                  "Alisha Si Superstar", "Alisha Jadi Bintang"):
+            box = title.stamp(self.img, t, self.out)
+            self.assertTrue(sx0 <= box[0] and box[2] <= sx1 and sy0 <= box[1] and box[3] <= sy1, (t, box))
+
+    def test_five_words_can_use_three_lines(self):
+        box = title.stamp(self.img, "ALISHA JADI SUPERSTAR SEKOLAH HARI", self.out)
+        doc = json.loads(Path(str(self.out) + ".box.json").read_text())
+        self.assertEqual(doc["box"], box)
+        self.assertLessEqual(len(doc.get("lines", [])), 3)
+
+    def test_split_lines_balances_up_to_three_lines(self):
+        self.assertEqual(len(title.split_lines(["ALISHA", "SUPERSTAR", "SEKOLAH"])), 3)
+        self.assertEqual(title.split_lines(["A", "B"]), ["A", "B"])
+        self.assertLessEqual(len(title.split_lines(["HARI", "INI", "ALISHA", "JADI", "BINTANG"])), 3)
 
     def test_y_pct_override_moves_the_box(self):
         box = title.stamp(self.img, "RUMAH 70 MILIAR", self.out, y_pct=0.45)
@@ -2390,8 +2409,9 @@ class TitleTest(unittest.TestCase):
                 title.stamp(self.img, t, self.out)
 
     def test_refuses_line_too_wide_at_min_font(self):
-        with self.assertRaisesRegex(ValueError, "wider than the safe area"):
-            title.stamp(self.img, "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF", self.out)
+        with self.assertRaisesRegex(ValueError, r"usable width \d+ px.*widest line \d+ px at min font"):
+            title.stamp(self.img, "ABCDEFGHIJKLMNOPQRST", self.out)
+        self.assertFalse(self.out.exists())
 
     def test_refuses_non_9_16_input(self):
         wide = Path(self.d.name) / "wide.png"

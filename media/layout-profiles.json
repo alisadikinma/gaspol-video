@@ -8,10 +8,10 @@
                  "per_group": {"value": 4, "source": "data: docs/evals/short-form-layout-measurement.md, median of 6; clip medians 3-6, median 4.25 rounded down"},
                  "baseline_y_pct": {"value": 0.617, "source": "data: docs/evals/short-form-layout-measurement.md, median of 6; last-line baseline Y 1184 / 1920"},
                  "chin_gap_pct": {"value": 0.10, "source": "tafsiran: notebook fd70ee32"}},
-    "title": {"font_pct": {"value": 0.10, "source": "tafsiran: notebook fd70ee32 8-12%; no title on 6 Samuel clips, see docs/evals/short-form-layout-measurement.md"},
+    "title": {"font_pct": {"value": 0.065, "source": "tafsiran: fit check 2026-10-17 — 3-5 word ALL CAPS titles must fit the safe width; notebook 8-12 % did not fit (docs/evals/layout-gate-run.md)"},
               "center_y_pct": {"value": 0.38, "source": "tafsiran: notebook fd70ee32 30-45%; no title on 6 Samuel clips, see docs/evals/short-form-layout-measurement.md"},
               "max_words": {"value": 5, "source": "data: notebook fd70ee32, Samuel titles 3-5 words"},
-              "min_font_pct": {"value": 0.07, "source": "tafsiran: no measurement yet"}},
+              "min_font_pct": {"value": 0.04, "source": "tafsiran: fit check 2026-10-17 — 3-5 word ALL CAPS titles must fit the safe width; notebook 8-12 % did not fit (docs/evals/layout-gate-run.md)"}},
     "timeline_tolerance_s": {"value": 1.0, "source": "tafsiran: no measurement yet"}},
   "short-ads": {"inherits": "short-organic",
     "safe": {"bottom": {"pct": 0.35, "source": "official: Meta ads Reels/Stories 35%"}}}}}

@@ -107,10 +107,15 @@ class LayoutTest(unittest.TestCase):
             self.assertIn("docs/evals/short-form-layout-measurement.md", src, key)
 
     def test_title_values_name_the_measurement_that_found_no_title(self):
-        for key in ("title.font_pct", "title.center_y_pct"):
+        src = self._leaf("title.center_y_pct")["source"]
+        self.assertTrue(src.startswith("tafsiran:"))
+        self.assertIn("docs/evals/short-form-layout-measurement.md", src)
+
+    def test_title_size_values_name_the_fit_check(self):
+        for key in ("title.font_pct", "title.min_font_pct"):
             src = self._leaf(key)["source"]
             self.assertTrue(src.startswith("tafsiran:"), key)
-            self.assertIn("docs/evals/short-form-layout-measurement.md", src, key)
+            self.assertIn("docs/evals/layout-gate-run.md", src, key)
 
 
 if __name__ == "__main__":

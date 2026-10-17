@@ -39,3 +39,23 @@ The red bands are the platform UI zones and sit outside the green safe box. The 
 1. **Title width is asymmetric.** The title is centred on the screen but the safe box is 65 px left, 108 px right. The widest centred line is therefore 2 x (972 - 540) = 864 px, not 907. `vidkit title` refuses with `title is N px wide, centred on the screen it is wider than the safe area` for these (min_font_pct 0.07): "Alisha Superstar Sekolah" (1080), "Alisha Superstar Cilik" (1080), "Alisha Jadi Superstar" (905), "Alisha Si Superstar" (885), "Alisha Jadi Bintang" (905). Only "Alisha Si Bintang" fit. A 3-5 word Indonesian title often has a word like SUPERSTAR or SEKOLAH that is too wide at 7 % font. The refusal is correct (it never stamps a title the gate would fail), but the message does not say that the safe area is asymmetric.
 2. The cover title numbers stay interpretation (no Samuel cover title was found); this run checked the title against the safe area only.
 3. A single-word track proves the pipeline end to end but is a weak test of subtitle wrapping (4 words in 2 lines is not exercised). A talking-head Short would be a better second run.
+
+## After the fix (same day): titles use the full safe width, up to 3 lines
+
+Fix: the title is centred on the safe-area centre x (518.5 px, not 540), may use 3 lines (words split to balance line width), `font_pct` 0.065, `min_font_pct` 0.04 (both `tafsiran`, source in `media/layout-profiles.json`). The refusal now reads `title does not fit the safe area: usable width 907 px, widest line N px at min font (0.04 of the height); shorten the longest word`.
+
+Before and after, 1080x1920, same frame:
+
+| title | before | after (box, lines) |
+|---|---|---|
+| Alisha Superstar Sekolah | refused (1080 px) | ok, [106, 498, 930, 960], 3 lines |
+| Alisha Superstar Cilik | refused (1080 px) | ok, [106, 498, 930, 959], 3 lines |
+| Alisha Jadi Superstar | refused (905 px) | ok, [97, 575, 940, 883], 2 lines |
+| Alisha Si Superstar | refused (885 px) | ok, [106, 575, 930, 883], 2 lines |
+| Alisha Jadi Bintang | refused (905 px) | ok, [97, 575, 940, 883], 2 lines |
+
+A single 20-letter word still refuses: `usable width 907 px, widest line 1062 px at min font`.
+
+Gate re-run with "Alisha Superstar Sekolah" as the cover, same video and ASS: **exit 1**, same single finding (subtitle at 39.30 s, 108 px under the face, needs 192), 1 skipped sample (`no face detected on thumbnail cover2.png`). The title adds no finding.
+
+Cover look: three stacked lines ALISHA / SUPERSTAR / SEKOLAH, white bold caps on black boxes, each line centred on the safe area, the widest (SUPERSTAR) nearly edge to edge of the safe box. The block sits at about 26-50 % of the height and covers the child's lower face and the snack she holds. That is the profile's `center_y_pct` 0.38 (tafsiran) on this frame; the gate does not catch it because it finds no face on the cover (the face is partly hidden by the title itself). A risk to keep: a 3-line title is tall.
