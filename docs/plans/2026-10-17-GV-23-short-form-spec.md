@@ -109,8 +109,10 @@ promise must be in the video. Doc 21 gains the 9:16 path; the 16:9 path is uncha
 - Text boxes are measured, not guessed: the subtitle ASS, overlay text and title are re-rendered
   alone on black with ffmpeg; the bounding box of non-black pixels is the real box.
 - Checks: every text/watermark box inside the profile's safe area; subtitle and title boxes do not
-  intersect the face box; subtitle top is at least the chin gap below the face box.
-- Face box: MediaPipe face detector on every Nth frame (model fetched by `tools/setup.sh`, pinned
+  intersect the face box; a subtitle below the face starts at least the chin gap below it (a
+  subtitle wholly above the face does not cover it and passes — decided 2026-10-17).
+- Face box: OpenCV YuNet (`cv2.FaceDetectorYN`, CPU) on every Nth frame — the MediaPipe face
+  detector aborts on this Mac's Metal backend, owner chose YuNet 2026-10-17 (model fetched by `tools/setup.sh`, pinned
   sha256, venv via `_venv.py`). No face in a frame = face checks skipped for that frame, reported.
 - Preview: one frame per platform with a mock UI overlay, `.tmp/layout-{tiktok,reels,shorts}.jpg`.
 - Called by `video-post --final` and `video-package` before anything is final; `video-validate
@@ -128,7 +130,7 @@ promise must be in the video. Doc 21 gains the 9:16 path; the 16:9 path is uncha
 | Samuel numbers | 6 real Shorts, measured | new | clips not committed |
 | Subtitle | `vidkit karaoke` | defaults changed | |
 | Thumbnail title | `vidkit title` | new | ffmpeg only |
-| Face box | MediaPipe face detector | new | pinned model |
+| Face box | OpenCV YuNet (`face_detection_yunet_2023mar.onnx`) | new | pinned model |
 | Gate | `tools/layout_gate.py` | new | blocking |
 | Skill registration | `gaspol-one/.claude-plugin/marketplace.json` | changed | separate repo |
 
